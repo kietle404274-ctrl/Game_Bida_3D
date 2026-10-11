@@ -26,6 +26,8 @@ namespace Game.Billiards.Core
         [SerializeField] private UI.GameplayHUD gameplayHUD;
         [SerializeField] private AI.AIController aiController;
         [SerializeField] private Network.NetworkMatchManager networkMatchManager;
+        [SerializeField] private Audio.AudioManager audioManager;
+        [SerializeField] private VFX.VFXManager vfxManager;
         [SerializeField] private PhysicsConfig physicsConfig;
 
         [Header("Auto Start")]
@@ -65,6 +67,8 @@ namespace Game.Billiards.Core
             if (gameplayHUD == null) gameplayHUD = FindObjectOfType<UI.GameplayHUD>();
             if (aiController == null) aiController = FindObjectOfType<AI.AIController>();
             if (networkMatchManager == null) networkMatchManager = FindObjectOfType<Network.NetworkMatchManager>();
+            if (audioManager == null) audioManager = FindObjectOfType<Audio.AudioManager>();
+            if (vfxManager == null) vfxManager = FindObjectOfType<VFX.VFXManager>();
         }
 
         public void SetupWiring()

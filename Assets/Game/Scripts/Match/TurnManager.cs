@@ -153,6 +153,11 @@ namespace Game.Billiards.Match
 
             OnShotClockExpired?.Invoke();
 
+            if (Audio.AudioManager.Instance != null)
+            {
+                Audio.AudioManager.Instance.PlayFoul();
+            }
+
             ShotResult timeoutResult = new ShotResult
             {
                 foul = FoulType.ShotClockExpired
@@ -228,6 +233,12 @@ namespace Game.Billiards.Match
             {
                 int winnerIndex = (result.outcome == RackOutcome.PlayerAWins) ? 0 : 1;
                 stateManager.RecordRackWin(winnerIndex);
+
+                // Audio Feedback (Milestone M10)
+                if (Audio.AudioManager.Instance != null)
+                {
+                    Audio.AudioManager.Instance.PlayWinFanfare();
+                }
                 return;
             }
 
@@ -235,6 +246,13 @@ namespace Game.Billiards.Match
             if (result.HasFoul)
             {
                 Debug.Log($"[TurnManager] Phát hiện lỗi: {result.foul}! Đổi lượt và cấp Ball-in-Hand cho đối thủ.");
+
+                // Audio Feedback (Milestone M10)
+                if (Audio.AudioManager.Instance != null)
+                {
+                    Audio.AudioManager.Instance.PlayFoul();
+                }
+
                 stateManager.State.SwitchTurn();
                 OnTurnChanged?.Invoke(stateManager.CurrentPlayerIndex);
 

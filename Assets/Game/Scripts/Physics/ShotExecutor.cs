@@ -85,6 +85,18 @@ namespace Game.Billiards.Physics
                 movementMonitor.StartMonitoring();
             }
 
+            // 4. Kích hoạt Audio và VFX (Milestone M10)
+            if (Audio.AudioManager.Instance != null)
+            {
+                Audio.AudioManager.Instance.PlayCueHit(command.power01);
+            }
+
+            if (VFX.VFXManager.Instance != null)
+            {
+                VFX.VFXManager.Instance.PlayChalkPuff(cueBall.transform.position, shotDir);
+                VFX.VFXManager.Instance.TriggerBreakShotFeedback(command.power01);
+            }
+
             OnShotExecuted?.Invoke(command);
             return true;
         }

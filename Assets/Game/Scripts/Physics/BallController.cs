@@ -225,6 +225,26 @@ namespace Game.Billiards.Physics
         private void OnCollisionEnter(Collision collision)
         {
             OnCollisionOccurred?.Invoke(this, collision);
+
+            // Audio Feedback (Milestone M10)
+            if (Audio.AudioManager.Instance != null)
+            {
+                float relativeSpeed = collision.relativeVelocity.magnitude;
+                var otherBall = collision.gameObject.GetComponent<BallController>();
+                if (otherBall != null)
+                {
+                    // Chỉ để bi có số thứ tự nhỏ hơn phát âm thanh để tránh phát đúp âm thanh va chạm
+                    if (this.ballNumber < otherBall.BallNumber)
+                    {
+                        Audio.AudioManager.Instance.PlayBallHit(relativeSpeed);
+                    }
+                }
+                else
+                {
+                    // Va chạm với băng cao su hoặc thành bàn
+                    Audio.AudioManager.Instance.PlayCushionHit(relativeSpeed);
+                }
+            }
         }
     }
 }

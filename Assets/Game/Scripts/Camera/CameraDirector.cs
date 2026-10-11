@@ -52,6 +52,11 @@ namespace Game.Billiards.Camera
         private float currentYaw = 0f;
         private float currentPitch = 18f;
 
+        // Camera Micro-Shake (M10)
+        private float shakeTimer = 0f;
+        private float totalShakeDuration = 0f;
+        private float currentShakeIntensity = 0f;
+
         public CameraState CurrentState => currentState;
         public UnityEngine.Camera MainCamera => mainCamera;
 
@@ -109,6 +114,13 @@ namespace Game.Billiards.Camera
             currentState = CameraState.Aim;
         }
 
+        public void TriggerCameraShake(float duration = 0.22f, float intensity = 0.04f)
+        {
+            shakeTimer = duration;
+            totalShakeDuration = duration;
+            currentShakeIntensity = intensity;
+        }
+
         private void LateUpdate()
         {
             if (mainCamera == null) return;
@@ -122,6 +134,21 @@ namespace Game.Billiards.Camera
                 case CameraState.ShotWide:
                     UpdateWideShotCamera();
                     break;
+            }
+
+            // Áp dụng Camera Micro-Shake nếu đang kích hoạt (M10)
+            if (shakeTimer > 0f && totalShakeDuration > 0f)
+            {
+                shakeTimer -= Time.deltaTime;
+                float progress = Mathf.Clamp01(shakeTimer / totalShakeDuration);
+                float currentIntensity = currentShakeIntensity * progress;
+
+                Vector3 shakeOffset = new Vector3(
+                    Mathf.Sin(Time.time * 55f) * currentIntensity,
+                    Mathf.Cos(Time.time * 45f) * currentIntensity,
+                    0f
+                );
+                mainCamera.transform.position += shakeOffset;
             }
         }
 

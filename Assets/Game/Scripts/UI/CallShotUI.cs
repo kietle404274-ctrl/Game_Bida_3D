@@ -199,6 +199,10 @@ namespace Game.Billiards.UI
             if (isSafetyActive)
             {
                 inputController.SetCallSafety(true);
+                if (VFX.VFXManager.Instance != null)
+                {
+                    VFX.VFXManager.Instance.SetPocketCallMarker(Vector3.zero, false);
+                }
                 if (statusSummaryText != null)
                 {
                     statusSummaryText.text = "CHIẾN THUẬT: ĐÁNH AN TOÀN (SAFETY)";
@@ -218,10 +222,23 @@ namespace Game.Billiards.UI
                         statusSummaryText.text = $"GỌI: Bi {ballNum} vào {pocketNames[pocketId]}";
                         statusSummaryText.color = Color.white;
                     }
+
+                    if (VFX.VFXManager.Instance != null && ballManager != null && ballManager.TableWrapper != null)
+                    {
+                        var pocket = ballManager.TableWrapper.GetPocket(pocketId);
+                        if (pocket != null)
+                        {
+                            VFX.VFXManager.Instance.SetPocketCallMarker(pocket.PocketPosition, true);
+                        }
+                    }
                 }
                 else
                 {
                     inputController.ClearCallShot();
+                    if (VFX.VFXManager.Instance != null)
+                    {
+                        VFX.VFXManager.Instance.SetPocketCallMarker(Vector3.zero, false);
+                    }
                     if (statusSummaryText != null)
                     {
                         statusSummaryText.text = "Chưa chọn cú đánh gọi!";

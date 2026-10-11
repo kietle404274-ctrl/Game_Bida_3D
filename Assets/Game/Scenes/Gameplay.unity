@@ -4231,6 +4231,8 @@ GameObject:
   - component: {fileID: 700000023}
   - component: {fileID: 700000024}
   - component: {fileID: 700000025}
+  - component: {fileID: 700000026}
+  - component: {fileID: 700000027}
   m_Layer: 0
   m_Name: Systems
   m_TagString: Untagged
@@ -5256,3 +5258,35 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   networkTickRate: 20
+--- !u!114 &700000026
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8400717fae20487bb644e08ccb96a43a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  audioLibrary: {fileID: 11400000, guid: ad217ea92e2f48dc9c54a82f1b77bed2, type: 2}
+  sfxMainSource: {fileID: 0}
+  uiSource: {fileID: 0}
+  musicSource: {fileID: 0}
+  sfxPoolSize: 6
+--- !u!114 &700000027
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9f1b4a3628e945cfa8e15486a4392bd7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  chalkPuffParticles: {fileID: 0}
+  pocketCallMarker: {fileID: 0}
+  cameraDirector: {fileID: 1667188190}

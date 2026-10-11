@@ -35,6 +35,12 @@ namespace Game.Billiards.Physics
             {
                 ball.MarkPocketed(pocketId);
                 OnPocketTriggered?.Invoke(pocketId, ball);
+
+                // Audio Feedback (Milestone M10)
+                if (Audio.AudioManager.Instance != null)
+                {
+                    Audio.AudioManager.Instance.PlayPocketDrop();
+                }
             }
         }
     }

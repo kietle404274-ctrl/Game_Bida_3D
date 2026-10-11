@@ -89,18 +89,39 @@ namespace Game.Billiards.UI
 
         private void OnMasterVolumeChanged(float val)
         {
-            PlayerPrefs.SetFloat("Volume_Master", val);
-            AudioListener.volume = val;
+            if (Game.Billiards.Audio.AudioManager.Instance != null)
+            {
+                Game.Billiards.Audio.AudioManager.Instance.SetMasterVolume(val);
+            }
+            else
+            {
+                PlayerPrefs.SetFloat("Volume_Master", val);
+                AudioListener.volume = val;
+            }
         }
 
         private void OnMusicVolumeChanged(float val)
         {
-            PlayerPrefs.SetFloat("Volume_Music", val);
+            if (Game.Billiards.Audio.AudioManager.Instance != null)
+            {
+                Game.Billiards.Audio.AudioManager.Instance.SetMusicVolume(val);
+            }
+            else
+            {
+                PlayerPrefs.SetFloat("Volume_Music", val);
+            }
         }
 
         private void OnSfxVolumeChanged(float val)
         {
-            PlayerPrefs.SetFloat("Volume_SFX", val);
+            if (Game.Billiards.Audio.AudioManager.Instance != null)
+            {
+                Game.Billiards.Audio.AudioManager.Instance.SetSFXVolume(val);
+            }
+            else
+            {
+                PlayerPrefs.SetFloat("Volume_SFX", val);
+            }
         }
 
         private void OnSurrenderClicked()
