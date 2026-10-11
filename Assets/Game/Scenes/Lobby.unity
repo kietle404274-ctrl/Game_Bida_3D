@@ -5272,6 +5272,8 @@ GameObject:
   m_Component:
   - component: {fileID: 710000011}
   - component: {fileID: 710000012}
+  - component: {fileID: 710000013}
+  - component: {fileID: 710000014}
   m_Layer: 0
   m_Name: LobbySystems
   m_TagString: Untagged
@@ -5313,6 +5315,35 @@ MonoBehaviour:
   quitGameButton: {fileID: 0}
   difficultyModalRoot: {fileID: 0}
   onlineModalRoot: {fileID: 0}
+  onlineRoomUI: {fileID: 710000014}
   settingsModalRoot: {fileID: 0}
   rulesModalRoot: {fileID: 0}
   quitConfirmModalRoot: {fileID: 0}
+--- !u!114 &710000013
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 710000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b72bcb2b85d044e1b6af18e8bb152b96, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  autoConnectOnStart: 0
+--- !u!114 &710000014
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 710000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 09ed02fe79b34a65b504b0bab76ca33d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  onlineRootPanel: {fileID: 0}
+  lobbySubPanel: {fileID: 0}
+  roomSubPanel: {fileID: 0}

@@ -32,6 +32,7 @@ namespace Game.Billiards.UI
 
         [Header("Online 1v1 Modal")]
         [SerializeField] private GameObject onlineModalRoot;
+        [SerializeField] private OnlineRoomUI onlineRoomUI;
         [SerializeField] private Button createRoomButton;
         [SerializeField] private InputField roomCodeInput;
         [SerializeField] private Button joinRoomButton;
@@ -149,8 +150,15 @@ namespace Game.Billiards.UI
         public void ShowOnlineModal()
         {
             HideAllModals();
-            if (onlineModalRoot != null) onlineModalRoot.SetActive(true);
-            if (onlineStatusText != null) onlineStatusText.text = "Sẵn sàng tạo phòng hoặc tham gia bằng Room ID";
+            if (onlineRoomUI != null)
+            {
+                onlineRoomUI.OpenOnlinePanel();
+            }
+            else
+            {
+                if (onlineModalRoot != null) onlineModalRoot.SetActive(true);
+                if (onlineStatusText != null) onlineStatusText.text = "Sẵn sàng tạo phòng hoặc tham gia bằng Room ID";
+            }
         }
 
         public void ShowSettingsModal()
@@ -174,6 +182,7 @@ namespace Game.Billiards.UI
         public void HideAllModals()
         {
             if (difficultyModalRoot != null) difficultyModalRoot.SetActive(false);
+            if (onlineRoomUI != null) onlineRoomUI.CloseOnlinePanel();
             if (onlineModalRoot != null) onlineModalRoot.SetActive(false);
             if (settingsModalRoot != null) settingsModalRoot.SetActive(false);
             if (rulesModalRoot != null) rulesModalRoot.SetActive(false);
