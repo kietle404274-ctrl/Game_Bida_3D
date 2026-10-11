@@ -30,6 +30,7 @@ namespace Game.Billiards.Match
 
         public bool IsActive => isActive;
         public bool BehindHeadStringOnly => behindHeadStringOnly;
+        public bool IsHeadStringOnly => behindHeadStringOnly;
         public bool IsPlacementValid => isPlacementValid;
         public Vector3 CurrentPosition => currentPosition;
 
@@ -178,6 +179,20 @@ namespace Game.Billiards.Match
         public bool IsPositionValid(Vector3 pos)
         {
             currentPosition = pos;
+            return ValidatePlacement();
+        }
+
+        public bool TryPlaceBallAt(Vector3 targetPosition)
+        {
+            if (!isActive) return false;
+            currentPosition = targetPosition;
+
+            var cueBall = ballManager != null ? ballManager.CueBall : null;
+            if (cueBall != null)
+            {
+                cueBall.transform.position = currentPosition;
+            }
+
             return ValidatePlacement();
         }
 

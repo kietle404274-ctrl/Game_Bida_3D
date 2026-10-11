@@ -4229,6 +4229,7 @@ GameObject:
   - component: {fileID: 700000021}
   - component: {fileID: 700000022}
   - component: {fileID: 700000023}
+  - component: {fileID: 700000024}
   m_Layer: 0
   m_Name: Systems
   m_TagString: Untagged
@@ -5052,6 +5053,7 @@ MonoBehaviour:
   eventCollector: {fileID: 700000021}
   turnManager: {fileID: 700000022}
   gameplayHUD: {fileID: 700000023}
+  aiController: {fileID: 700000024}
   physicsConfig: {fileID: 11400000, guid: e97274f2d4384091ac38dcea024154e5, type: 2}
   autoResetRackOnStart: 1
 --- !u!1001 &700000040
@@ -5215,3 +5217,28 @@ MonoBehaviour:
   inputController: {fileID: 700000015}
   ballManager: {fileID: 700000012}
   movementMonitor: {fileID: 700000011}
+
+--- !u!114 &700000024
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7f159c71e02d455998a33902bc2152f0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  isAIEnabled: 1
+  aiPlayerIndex: 1
+  difficulty: 1
+  matchStateManager: {fileID: 700000019}
+  turnManager: {fileID: 700000022}
+  ballManager: {fileID: 700000012}
+  tableWrapper: {fileID: 700000031}
+  shotExecutor: {fileID: 700000013}
+  cueController: {fileID: 700000014}
+  cameraDirector: {fileID: 1667188190}
+  ballInHandController: {fileID: 700000017}
+  thinkDurationSeconds: 1

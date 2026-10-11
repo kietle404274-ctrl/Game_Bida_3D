@@ -24,6 +24,7 @@ namespace Game.Billiards.Core
         [SerializeField] private Rules.ShotEventCollector eventCollector;
         [SerializeField] private TurnManager turnManager;
         [SerializeField] private UI.GameplayHUD gameplayHUD;
+        [SerializeField] private AI.AIController aiController;
         [SerializeField] private PhysicsConfig physicsConfig;
 
         [Header("Auto Start")]
@@ -61,6 +62,7 @@ namespace Game.Billiards.Core
             if (eventCollector == null) eventCollector = FindObjectOfType<Rules.ShotEventCollector>();
             if (turnManager == null) turnManager = FindObjectOfType<TurnManager>();
             if (gameplayHUD == null) gameplayHUD = FindObjectOfType<UI.GameplayHUD>();
+            if (aiController == null) aiController = FindObjectOfType<AI.AIController>();
         }
 
         public void SetupWiring()
@@ -130,6 +132,12 @@ namespace Game.Billiards.Core
             if (gameplayHUD != null && matchStateManager != null && turnManager != null && inputController != null && ballManager != null && movementMonitor != null)
             {
                 gameplayHUD.Initialize(matchStateManager, turnManager, inputController, ballManager, movementMonitor, contactSelector);
+            }
+
+            // 10. Khởi tạo AIController
+            if (aiController != null && matchStateManager != null && turnManager != null && ballManager != null && tableWrapper != null && shotExecutor != null && cueController != null && cameraDirector != null && ballInHandController != null)
+            {
+                aiController.Initialize(matchStateManager, turnManager, ballManager, tableWrapper, shotExecutor, cueController, cameraDirector, ballInHandController);
             }
         }
     }
