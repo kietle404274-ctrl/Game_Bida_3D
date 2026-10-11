@@ -19,6 +19,10 @@ namespace Game.Billiards.Core
         [SerializeField] private PlayerInputController inputController;
         [SerializeField] private BallInHandController ballInHandController;
         [SerializeField] private UI.CueBallContactSelector contactSelector;
+        [SerializeField] private MatchStateManager matchStateManager;
+        [SerializeField] private Rules.Wpa8BallRuleEngine ruleEngine;
+        [SerializeField] private Rules.ShotEventCollector eventCollector;
+        [SerializeField] private TurnManager turnManager;
         [SerializeField] private PhysicsConfig physicsConfig;
 
         [Header("Auto Start")]
@@ -51,6 +55,10 @@ namespace Game.Billiards.Core
             if (inputController == null) inputController = FindObjectOfType<PlayerInputController>();
             if (ballInHandController == null) ballInHandController = FindObjectOfType<BallInHandController>();
             if (contactSelector == null) contactSelector = FindObjectOfType<UI.CueBallContactSelector>();
+            if (matchStateManager == null) matchStateManager = FindObjectOfType<MatchStateManager>();
+            if (ruleEngine == null) ruleEngine = FindObjectOfType<Rules.Wpa8BallRuleEngine>();
+            if (eventCollector == null) eventCollector = FindObjectOfType<Rules.ShotEventCollector>();
+            if (turnManager == null) turnManager = FindObjectOfType<TurnManager>();
         }
 
         public void SetupWiring()
@@ -86,13 +94,31 @@ namespace Game.Billiards.Core
                 ballInHandController.Initialize(ballManager, tableWrapper, cameraDirector);
             }
 
-            // 4. Khởi tạo ShotExecutor
+            // 4. Khởi tạo ShotEventCollector
+            if (eventCollector != null && ballManager != null && tableWrapper != null)
+            {
+                eventCollector.Initialize(ballManager, tableWrapper);
+            }
+
+            // 5. Khởi tạo MatchStateManager
+            if (matchStateManager != null)
+            {
+                matchStateManager.Initialize(MatchSettings.Default);
+            }
+
+            // 6. Khởi tạo ShotExecutor
             if (shotExecutor != null && physicsConfig != null && ballManager != null && movementMonitor != null)
             {
                 shotExecutor.Initialize(physicsConfig, ballManager, movementMonitor);
             }
 
-            // 5. Khởi tạo PlayerInputController
+            // 7. Khởi tạo TurnManager
+            if (turnManager != null && matchStateManager != null && ruleEngine != null && eventCollector != null && shotExecutor != null && movementMonitor != null && ballManager != null && ballInHandController != null)
+            {
+                turnManager.Initialize(matchStateManager, ruleEngine, eventCollector, shotExecutor, movementMonitor, ballManager, ballInHandController);
+            }
+
+            // 8. Khởi tạo PlayerInputController
             if (inputController != null && cameraDirector != null && cueController != null && shotExecutor != null && movementMonitor != null)
             {
                 inputController.Initialize(cameraDirector, cueController, shotExecutor, movementMonitor, ballInHandController, contactSelector);

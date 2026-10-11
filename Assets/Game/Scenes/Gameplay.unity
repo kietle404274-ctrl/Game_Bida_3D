@@ -4224,6 +4224,10 @@ GameObject:
   - component: {fileID: 700000016}
   - component: {fileID: 700000017}
   - component: {fileID: 700000018}
+  - component: {fileID: 700000019}
+  - component: {fileID: 700000020}
+  - component: {fileID: 700000021}
+  - component: {fileID: 700000022}
   m_Layer: 0
   m_Name: Systems
   m_TagString: Untagged
@@ -5042,6 +5046,10 @@ MonoBehaviour:
   inputController: {fileID: 700000015}
   ballInHandController: {fileID: 700000017}
   contactSelector: {fileID: 700000018}
+  matchStateManager: {fileID: 700000019}
+  ruleEngine: {fileID: 700000020}
+  eventCollector: {fileID: 700000021}
+  turnManager: {fileID: 700000022}
   physicsConfig: {fileID: 11400000, guid: e97274f2d4384091ac38dcea024154e5, type: 2}
   autoResetRackOnStart: 1
 --- !u!1001 &700000040
@@ -5114,3 +5122,65 @@ MonoBehaviour:
   currentContact: {x: 0, y: 0}
   keyAdjustSpeed: 1.5
   isOpen: 0
+
+--- !u!114 &700000019
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a654f0c37c2a4e518e078bcbf9aad943, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  initialBreakPlayerIndex: 0
+  raceToRacks: 5
+  shotTimeLimitSeconds: 30
+--- !u!114 &700000020
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d4643bbb9be40e3842d82c775501767, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  breakMinRailsRequirement: 4
+--- !u!114 &700000021
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 37ffb3f544a34bd1b63a9126cf6563bf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ballManager: {fileID: 700000012}
+  tableWrapper: {fileID: 700000031}
+--- !u!114 &700000022
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ff7972c448064713a4f14b374463e354, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  matchStateManager: {fileID: 700000019}
+  ruleEngine: {fileID: 700000020}
+  eventCollector: {fileID: 700000021}
+  shotExecutor: {fileID: 700000013}
+  movementMonitor: {fileID: 700000011}
+  ballManager: {fileID: 700000012}
+  ballInHandController: {fileID: 700000017}
