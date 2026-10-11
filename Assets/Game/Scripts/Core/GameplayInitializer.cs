@@ -23,6 +23,7 @@ namespace Game.Billiards.Core
         [SerializeField] private Rules.Wpa8BallRuleEngine ruleEngine;
         [SerializeField] private Rules.ShotEventCollector eventCollector;
         [SerializeField] private TurnManager turnManager;
+        [SerializeField] private UI.GameplayHUD gameplayHUD;
         [SerializeField] private PhysicsConfig physicsConfig;
 
         [Header("Auto Start")]
@@ -59,6 +60,7 @@ namespace Game.Billiards.Core
             if (ruleEngine == null) ruleEngine = FindObjectOfType<Rules.Wpa8BallRuleEngine>();
             if (eventCollector == null) eventCollector = FindObjectOfType<Rules.ShotEventCollector>();
             if (turnManager == null) turnManager = FindObjectOfType<TurnManager>();
+            if (gameplayHUD == null) gameplayHUD = FindObjectOfType<UI.GameplayHUD>();
         }
 
         public void SetupWiring()
@@ -122,6 +124,12 @@ namespace Game.Billiards.Core
             if (inputController != null && cameraDirector != null && cueController != null && shotExecutor != null && movementMonitor != null)
             {
                 inputController.Initialize(cameraDirector, cueController, shotExecutor, movementMonitor, ballInHandController, contactSelector);
+            }
+
+            // 9. Khởi tạo GameplayHUD
+            if (gameplayHUD != null && matchStateManager != null && turnManager != null && inputController != null && ballManager != null && movementMonitor != null)
+            {
+                gameplayHUD.Initialize(matchStateManager, turnManager, inputController, ballManager, movementMonitor, contactSelector);
             }
         }
     }

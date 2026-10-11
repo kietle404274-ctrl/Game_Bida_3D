@@ -28,17 +28,24 @@ namespace Game.Billiards.Input
 
         private float currentPower01 = 0.35f;
         private Vector2 cueContact01 = Vector2.zero;
+        private int calledBallNumber = -1;
+        private int calledPocketId = -1;
+        private bool calledSafety = false;
         private bool isTurnActive = true;
         private bool isShotInProgress = false;
 
         public float CurrentPower01 => currentPower01;
         public Vector2 CueContact01 => cueContact01;
+        public int CalledBallNumber => calledBallNumber;
+        public int CalledPocketId => calledPocketId;
+        public bool CalledSafety => calledSafety;
         public bool IsAimingAllowed => isTurnActive && !isShotInProgress && 
                                        (ballInHandController == null || !ballInHandController.IsActive) &&
                                        (movementMonitor == null || movementMonitor.AreAllBallsResting);
 
         public event Action<float> OnPowerChanged;
         public event Action<ShotCommand> OnShotInitiated;
+        public event Action<int, int, bool> OnCallShotChanged; // (ball, pocket, isSafety)
 
         private void Start()
         {
@@ -128,6 +135,33 @@ namespace Game.Billiards.Input
             cueContact01 = Vector2.ClampMagnitude(contact, 1f);
         }
 
+        public void SetCallShot(int ballNumber, int pocketId)
+        {
+            calledBallNumber = ballNumber;
+            calledPocketId = pocketId;
+            calledSafety = false;
+            OnCallShotChanged?.Invoke(calledBallNumber, calledPocketId, calledSafety);
+        }
+
+        public void SetCallSafety(bool isSafety)
+        {
+            calledSafety = isSafety;
+            if (isSafety)
+            {
+                calledBallNumber = -1;
+                calledPocketId = -1;
+            }
+            OnCallShotChanged?.Invoke(calledBallNumber, calledPocketId, calledSafety);
+        }
+
+        public void ClearCallShot()
+        {
+            calledBallNumber = -1;
+            calledPocketId = -1;
+            calledSafety = false;
+            OnCallShotChanged?.Invoke(-1, -1, false);
+        }
+
         private void Update()
         {
             if (!IsAimingAllowed) return;
@@ -194,7 +228,10 @@ namespace Game.Billiards.Input
                 shooterActorId: 0,
                 direction: cameraDirector.AimDirection,
                 power01: currentPower01,
-                cueContact01: cueContact01
+                cueContact01: cueContact01,
+                calledBallNumber: calledBallNumber,
+                calledPocketId: calledPocketId,
+                calledSafety: calledSafety
             );
 
             OnShotInitiated?.Invoke(command);

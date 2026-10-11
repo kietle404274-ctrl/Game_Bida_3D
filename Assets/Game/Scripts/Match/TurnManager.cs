@@ -20,8 +20,18 @@ namespace Game.Billiards.Match
         private ShotCommand lastExecutedCommand;
         public ShotResult LastShotResult { get; private set; }
 
+        private float remainingShotTime = 0f;
+        private float totalShotTime = 0f;
+        private bool isTimerRunning = false;
+
+        public float RemainingShotTime => remainingShotTime;
+        public float TotalShotTime => totalShotTime;
+        public bool IsTimerRunning => isTimerRunning;
+
         public event Action<ShotResult> OnShotEvaluated;
         public event Action<int> OnTurnChanged;
+        public event Action<float, float> OnShotTimerTick; // (remaining, total)
+        public event Action OnShotClockExpired;
 
         public void Initialize(MatchStateManager sManager, Wpa8BallRuleEngine rEngine, ShotEventCollector eCollector, ShotExecutor executor, BallMovementMonitor monitor, BallManager bManager, BallInHandController bihCtrl)
         {
@@ -38,6 +48,12 @@ namespace Game.Billiards.Match
 
         private void SubscribeEvents()
         {
+            if (stateManager != null)
+            {
+                stateManager.OnPhaseChanged -= HandlePhaseChanged;
+                stateManager.OnPhaseChanged += HandlePhaseChanged;
+            }
+
             if (shotExecutor != null)
             {
                 shotExecutor.OnShotExecuted -= HandleShotExecuted;
@@ -59,6 +75,9 @@ namespace Game.Billiards.Match
 
         private void OnDestroy()
         {
+            if (stateManager != null)
+                stateManager.OnPhaseChanged -= HandlePhaseChanged;
+
             if (shotExecutor != null)
                 shotExecutor.OnShotExecuted -= HandleShotExecuted;
 
@@ -69,8 +88,84 @@ namespace Game.Billiards.Match
                 ballInHandController.OnBallInHandConfirmed -= HandleBallInHandConfirmed;
         }
 
+        private void Update()
+        {
+            if (isTimerRunning && stateManager != null && stateManager.CurrentPhase == MatchPhase.Aiming)
+            {
+                remainingShotTime -= Time.deltaTime;
+                OnShotTimerTick?.Invoke(Mathf.Max(0f, remainingShotTime), totalShotTime);
+
+                if (remainingShotTime <= 0f)
+                {
+                    HandleShotClockExpired();
+                }
+            }
+        }
+
+        private void HandlePhaseChanged(MatchPhase phase)
+        {
+            if (phase == MatchPhase.Aiming)
+            {
+                StartShotTimer();
+            }
+            else
+            {
+                StopShotTimer();
+            }
+        }
+
+        public void StartShotTimer()
+        {
+            if (stateManager == null) return;
+
+            int timerSec = (int)stateManager.State.settings.shotTimer;
+            if (timerSec > 0)
+            {
+                totalShotTime = timerSec;
+                remainingShotTime = timerSec;
+                isTimerRunning = true;
+                OnShotTimerTick?.Invoke(remainingShotTime, totalShotTime);
+            }
+            else
+            {
+                isTimerRunning = false;
+                remainingShotTime = 0f;
+                totalShotTime = 0f;
+            }
+        }
+
+        public void StopShotTimer()
+        {
+            isTimerRunning = false;
+        }
+
+        private void HandleShotClockExpired()
+        {
+            StopShotTimer();
+            Debug.LogWarning("[TurnManager] Hết giờ đánh (Shot Clock Expired)! Chuyển lượt và đối thủ nhận Ball-in-Hand.");
+
+            OnShotClockExpired?.Invoke();
+
+            ShotResult timeoutResult = new ShotResult
+            {
+                foul = FoulType.ShotClockExpired
+            };
+            LastShotResult = timeoutResult;
+            OnShotEvaluated?.Invoke(timeoutResult);
+
+            stateManager.State.SwitchTurn();
+            OnTurnChanged?.Invoke(stateManager.CurrentPlayerIndex);
+            stateManager.SetPhase(MatchPhase.BallInHand);
+
+            if (ballInHandController != null)
+            {
+                ballInHandController.EnterBallInHand(false);
+            }
+        }
+
         private void HandleShotExecuted(ShotCommand command)
         {
+            StopShotTimer();
             lastExecutedCommand = command;
 
             if (eventCollector != null)

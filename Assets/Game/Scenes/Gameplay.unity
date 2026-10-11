@@ -4228,6 +4228,7 @@ GameObject:
   - component: {fileID: 700000020}
   - component: {fileID: 700000021}
   - component: {fileID: 700000022}
+  - component: {fileID: 700000023}
   m_Layer: 0
   m_Name: Systems
   m_TagString: Untagged
@@ -5050,6 +5051,7 @@ MonoBehaviour:
   ruleEngine: {fileID: 700000020}
   eventCollector: {fileID: 700000021}
   turnManager: {fileID: 700000022}
+  gameplayHUD: {fileID: 700000023}
   physicsConfig: {fileID: 11400000, guid: e97274f2d4384091ac38dcea024154e5, type: 2}
   autoResetRackOnStart: 1
 --- !u!1001 &700000040
@@ -5184,3 +5186,32 @@ MonoBehaviour:
   movementMonitor: {fileID: 700000011}
   ballManager: {fileID: 700000012}
   ballInHandController: {fileID: 700000017}
+
+--- !u!114 &700000023
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 11616defdf02425798467c5448920603, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  playerLeftPanel: {fileID: 0}
+  playerRightPanel: {fileID: 0}
+  matchHeader: {fileID: 0}
+  powerBar: {fileID: 0}
+  callShotUI: {fileID: 0}
+  eventToast: {fileID: 0}
+  helpUI: {fileID: 0}
+  rulesUI: {fileID: 0}
+  settingsUI: {fileID: 0}
+  resultUI: {fileID: 0}
+  contactSelector: {fileID: 700000018}
+  matchStateManager: {fileID: 700000019}
+  turnManager: {fileID: 700000022}
+  inputController: {fileID: 700000015}
+  ballManager: {fileID: 700000012}
+  movementMonitor: {fileID: 700000011}
