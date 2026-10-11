@@ -33,6 +33,8 @@ namespace Game.Billiards.Match
         public event Action<float, float> OnShotTimerTick; // (remaining, total)
         public event Action OnShotClockExpired;
 
+        [SerializeField] private Network.NetworkMatchManager networkMatchManager;
+
         public void Initialize(MatchStateManager sManager, Wpa8BallRuleEngine rEngine, ShotEventCollector eCollector, ShotExecutor executor, BallMovementMonitor monitor, BallManager bManager, BallInHandController bihCtrl)
         {
             stateManager = sManager;
@@ -44,6 +46,11 @@ namespace Game.Billiards.Match
             ballInHandController = bihCtrl;
 
             SubscribeEvents();
+        }
+
+        public void SetNetworkMatchManager(Network.NetworkMatchManager netMgr)
+        {
+            networkMatchManager = netMgr;
         }
 
         private void SubscribeEvents()
@@ -185,6 +192,14 @@ namespace Game.Billiards.Match
                 return;
 
             eventCollector.StopTracking();
+
+            // Client trong trận Online: dừng tracking và đợi snapshot authoritative từ Master Client (Rule 119/120)
+            if (networkMatchManager != null && networkMatchManager.IsOnlineMatch && !networkMatchManager.IsMaster)
+            {
+                Debug.Log("[TurnManager] [Client] Toàn bộ bi đã dừng. Đang đợi kết quả authoritative từ Master Client...");
+                return;
+            }
+
             stateManager.SetPhase(MatchPhase.ResolveShot);
 
             // 1. Đánh giá cú đánh qua Wpa8BallRuleEngine độc lập
@@ -196,6 +211,12 @@ namespace Game.Billiards.Match
 
             // 2. Chuyển trạng thái trận đấu dựa trên kết quả luật
             ResolveShotOutcome(finalResult);
+
+            // 3. Nếu là Master Client trong trận Online: Broadcast kết quả và snapshot cho Client (Rule 120)
+            if (networkMatchManager != null && networkMatchManager.IsOnlineMatch && networkMatchManager.IsMaster)
+            {
+                networkMatchManager.BroadcastTurnOutcome(finalResult);
+            }
         }
 
         private void ResolveShotOutcome(ShotResult result)

@@ -236,6 +236,15 @@ namespace Game.Billiards.Input
 
             OnShotInitiated?.Invoke(command);
 
+            var session = Core.GameSession.Instance;
+            bool isOnlineClient = (session != null && session.CurrentGameMode == Core.GameMode.OnlinePvP && !Photon.Pun.PhotonNetwork.IsMasterClient);
+
+            if (isOnlineClient)
+            {
+                // Client trong trận Online: không tự ý chạy vật lý (Rule 114). Đợi Master phê duyệt.
+                return;
+            }
+
             // Kích hoạt animation cơ đẩy tới -> khi chạm bi thì tác dụng lực vật lý và chuyển camera rộng
             if (cueController != null)
             {

@@ -25,6 +25,7 @@ namespace Game.Billiards.Core
         [SerializeField] private TurnManager turnManager;
         [SerializeField] private UI.GameplayHUD gameplayHUD;
         [SerializeField] private AI.AIController aiController;
+        [SerializeField] private Network.NetworkMatchManager networkMatchManager;
         [SerializeField] private PhysicsConfig physicsConfig;
 
         [Header("Auto Start")]
@@ -63,6 +64,7 @@ namespace Game.Billiards.Core
             if (turnManager == null) turnManager = FindObjectOfType<TurnManager>();
             if (gameplayHUD == null) gameplayHUD = FindObjectOfType<UI.GameplayHUD>();
             if (aiController == null) aiController = FindObjectOfType<AI.AIController>();
+            if (networkMatchManager == null) networkMatchManager = FindObjectOfType<Network.NetworkMatchManager>();
         }
 
         public void SetupWiring()
@@ -157,6 +159,32 @@ namespace Game.Billiards.Core
                 {
                     aiController.SetAIEnabled(session.IsPlayerBAi, 1);
                     aiController.SetDifficulty(session.SelectedAIDifficulty);
+                }
+            }
+
+            // 11. Khởi tạo NetworkMatchManager (Milestone M9)
+            if (networkMatchManager != null)
+            {
+                networkMatchManager.Initialize(
+                    matchStateManager,
+                    turnManager,
+                    ballManager,
+                    shotExecutor,
+                    inputController,
+                    cueController,
+                    cameraDirector,
+                    movementMonitor,
+                    ballInHandController
+                );
+
+                if (turnManager != null)
+                {
+                    turnManager.SetNetworkMatchManager(networkMatchManager);
+                }
+
+                if (networkMatchManager.IsOnlineMatch && aiController != null)
+                {
+                    aiController.SetAIEnabled(false, 1);
                 }
             }
         }
