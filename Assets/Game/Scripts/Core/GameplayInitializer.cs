@@ -107,7 +107,20 @@ namespace Game.Billiards.Core
             // 5. Khởi tạo MatchStateManager
             if (matchStateManager != null)
             {
-                matchStateManager.Initialize(MatchSettings.Default);
+                var session = GameSession.Instance;
+                if (session != null)
+                {
+                    matchStateManager.Initialize(
+                        session.CurrentSettings, 
+                        session.PlayerAName, 
+                        session.PlayerBName, 
+                        session.IsPlayerBAi
+                    );
+                }
+                else
+                {
+                    matchStateManager.Initialize(MatchSettings.Default);
+                }
             }
 
             // 6. Khởi tạo ShotExecutor
@@ -138,6 +151,13 @@ namespace Game.Billiards.Core
             if (aiController != null && matchStateManager != null && turnManager != null && ballManager != null && tableWrapper != null && shotExecutor != null && cueController != null && cameraDirector != null && ballInHandController != null)
             {
                 aiController.Initialize(matchStateManager, turnManager, ballManager, tableWrapper, shotExecutor, cueController, cameraDirector, ballInHandController);
+
+                var session = GameSession.Instance;
+                if (session != null)
+                {
+                    aiController.SetAIEnabled(session.IsPlayerBAi, 1);
+                    aiController.SetDifficulty(session.SelectedAIDifficulty);
+                }
             }
         }
     }
