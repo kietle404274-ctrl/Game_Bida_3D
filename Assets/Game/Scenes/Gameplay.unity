@@ -4204,6 +4204,7 @@ Transform:
   m_Children:
   - {fileID: 700000013}
   - {fileID: 700000021}
+  - {fileID: 700000042}
   m_Father: {fileID: 0}
   m_RootOrder: 5
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -4218,6 +4219,9 @@ GameObject:
   - component: {fileID: 700000013}
   - component: {fileID: 700000011}
   - component: {fileID: 700000012}
+  - component: {fileID: 700000014}
+  - component: {fileID: 700000015}
+  - component: {fileID: 700000016}
   m_Layer: 0
   m_Name: Systems
   m_TagString: Untagged
@@ -4266,7 +4270,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   physicsConfig: {fileID: 11400000, guid: e97274f2d4384091ac38dcea024154e5, type: 2}
-  tableWrapper: {fileID: 114000, guid: 7415e46b3bc9404ba822466461352274, type: 3}
+  tableWrapper: {fileID: 700000031}
   movementMonitor: {fileID: 700000011}
   balls: []
 --- !u!1 &700000020
@@ -4957,3 +4961,118 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 7415e46b3bc9404ba822466461352274, type: 3}
+
+--- !u!114 &1667188190
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1667188178}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 68cbe15901f74cf2a131d051925e53db, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  cueBallTarget: {fileID: 700000200}
+  mainCamera: {fileID: 1667188181}
+  aimDistance: 1.15
+  aimHeightOffset: 0.08
+  minPitch: 8
+  maxPitch: 55
+  mouseSensitivity: 2.5
+  smoothSpeed: 12
+  wideCameraPosition: {x: 0, y: 3.2, z: -1.5}
+  tableCenter: {x: 0, y: 0.835, z: 0}
+  transitionSpeed: 4
+--- !u!114 &700000014
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: de302aabb913411db62bca8ebc255c25, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  physicsConfig: {fileID: 11400000, guid: e97274f2d4384091ac38dcea024154e5, type: 2}
+  ballManager: {fileID: 700000012}
+  movementMonitor: {fileID: 700000011}
+--- !u!114 &700000015
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f8f1189e2c06475b9ff3daffac536352, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  cameraDirector: {fileID: 1667188190}
+  cueController: {fileID: 700000041}
+  shotExecutor: {fileID: 700000014}
+  movementMonitor: {fileID: 700000011}
+  powerScrollStep: 0.05
+  defaultPower01: 0.35
+  minPower01: 0.05
+--- !u!114 &700000016
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c66b1e6c7e15415e89d6c2ecb04b9aab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ballManager: {fileID: 700000012}
+  movementMonitor: {fileID: 700000011}
+  tableWrapper: {fileID: 700000031}
+  shotExecutor: {fileID: 700000014}
+  cameraDirector: {fileID: 1667188190}
+  cueController: {fileID: 700000041}
+  inputController: {fileID: 700000015}
+  physicsConfig: {fileID: 11400000, guid: e97274f2d4384091ac38dcea024154e5, type: 2}
+  autoResetRackOnStart: 1
+--- !u!1001 &700000040
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 700000002}
+    m_Modifications:
+    - target: {fileID: 1000, guid: 0d15308e0cf14764a5d98b847f8d8c30, type: 3}
+      propertyPath: m_Name
+      value: CueStickWrapper
+      objectReference: {fileID: 0}
+    - target: {fileID: 4000, guid: 0d15308e0cf14764a5d98b847f8d8c30, type: 3}
+      propertyPath: m_RootOrder
+      value: 2
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 0d15308e0cf14764a5d98b847f8d8c30, type: 3}
+--- !u!114 &700000041 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 114000, guid: 0d15308e0cf14764a5d98b847f8d8c30, type: 3}
+  m_PrefabInstance: {fileID: 700000040}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &700000042 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 4000, guid: 0d15308e0cf14764a5d98b847f8d8c30, type: 3}
+  m_PrefabInstance: {fileID: 700000040}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &700000031 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 114000, guid: 7415e46b3bc9404ba822466461352274, type: 3}
+  m_PrefabInstance: {fileID: 700000030}
+  m_PrefabAsset: {fileID: 0}

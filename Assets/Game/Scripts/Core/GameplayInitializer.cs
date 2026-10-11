@@ -1,0 +1,92 @@
+using UnityEngine;
+using Game.Billiards.Camera;
+using Game.Billiards.Core;
+using Game.Billiards.Input;
+using Game.Billiards.Match;
+using Game.Billiards.Physics;
+
+namespace Game.Billiards.Core
+{
+    public class GameplayInitializer : MonoBehaviour
+    {
+        [Header("Components")]
+        [SerializeField] private BallManager ballManager;
+        [SerializeField] private BallMovementMonitor movementMonitor;
+        [SerializeField] private TableWrapper tableWrapper;
+        [SerializeField] private ShotExecutor shotExecutor;
+        [SerializeField] private CameraDirector cameraDirector;
+        [SerializeField] private CueController cueController;
+        [SerializeField] private PlayerInputController inputController;
+        [SerializeField] private PhysicsConfig physicsConfig;
+
+        [Header("Auto Start")]
+        [Tooltip("Tự động xếp dàn bi WPA 8-Ball khi bắt đầu scene")]
+        [SerializeField] private bool autoResetRackOnStart = true;
+
+        private void Awake()
+        {
+            FindReferencesIfMissing();
+        }
+
+        private void Start()
+        {
+            SetupWiring();
+
+            if (autoResetRackOnStart && ballManager != null)
+            {
+                ballManager.ResetRack();
+            }
+        }
+
+        private void FindReferencesIfMissing()
+        {
+            if (ballManager == null) ballManager = FindObjectOfType<BallManager>();
+            if (movementMonitor == null) movementMonitor = FindObjectOfType<BallMovementMonitor>();
+            if (tableWrapper == null) tableWrapper = FindObjectOfType<TableWrapper>();
+            if (shotExecutor == null) shotExecutor = FindObjectOfType<ShotExecutor>();
+            if (cameraDirector == null) cameraDirector = FindObjectOfType<CameraDirector>();
+            if (cueController == null) cueController = FindObjectOfType<CueController>();
+            if (inputController == null) inputController = FindObjectOfType<PlayerInputController>();
+        }
+
+        public void SetupWiring()
+        {
+            // 1. Khởi tạo BallManager
+            if (ballManager != null)
+            {
+                ballManager.InitializeRegistry();
+            }
+
+            // 2. Liên kết bi cái với CameraDirector và CueController
+            var cueBall = ballManager != null ? ballManager.CueBall : null;
+            if (cueBall != null)
+            {
+                if (cameraDirector != null)
+                {
+                    cameraDirector.SetCueBallTarget(cueBall.transform);
+                }
+
+                if (cueController != null)
+                {
+                    cueController.SetCueBallTarget(cueBall.transform);
+                    if (cameraDirector != null)
+                    {
+                        cueController.UpdateAim(cameraDirector.AimDirection, 0.35f);
+                    }
+                }
+            }
+
+            // 3. Khởi tạo ShotExecutor
+            if (shotExecutor != null && physicsConfig != null && ballManager != null && movementMonitor != null)
+            {
+                shotExecutor.Initialize(physicsConfig, ballManager, movementMonitor);
+            }
+
+            // 4. Khởi tạo PlayerInputController
+            if (inputController != null && cameraDirector != null && cueController != null && shotExecutor != null && movementMonitor != null)
+            {
+                inputController.Initialize(cameraDirector, cueController, shotExecutor, movementMonitor);
+            }
+        }
+    }
+}
