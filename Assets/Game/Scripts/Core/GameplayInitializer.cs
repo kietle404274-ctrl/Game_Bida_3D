@@ -17,6 +17,8 @@ namespace Game.Billiards.Core
         [SerializeField] private CameraDirector cameraDirector;
         [SerializeField] private CueController cueController;
         [SerializeField] private PlayerInputController inputController;
+        [SerializeField] private BallInHandController ballInHandController;
+        [SerializeField] private UI.CueBallContactSelector contactSelector;
         [SerializeField] private PhysicsConfig physicsConfig;
 
         [Header("Auto Start")]
@@ -47,6 +49,8 @@ namespace Game.Billiards.Core
             if (cameraDirector == null) cameraDirector = FindObjectOfType<CameraDirector>();
             if (cueController == null) cueController = FindObjectOfType<CueController>();
             if (inputController == null) inputController = FindObjectOfType<PlayerInputController>();
+            if (ballInHandController == null) ballInHandController = FindObjectOfType<BallInHandController>();
+            if (contactSelector == null) contactSelector = FindObjectOfType<UI.CueBallContactSelector>();
         }
 
         public void SetupWiring()
@@ -76,16 +80,22 @@ namespace Game.Billiards.Core
                 }
             }
 
-            // 3. Khởi tạo ShotExecutor
+            // 3. Khởi tạo BallInHandController
+            if (ballInHandController != null && ballManager != null && tableWrapper != null && cameraDirector != null)
+            {
+                ballInHandController.Initialize(ballManager, tableWrapper, cameraDirector);
+            }
+
+            // 4. Khởi tạo ShotExecutor
             if (shotExecutor != null && physicsConfig != null && ballManager != null && movementMonitor != null)
             {
                 shotExecutor.Initialize(physicsConfig, ballManager, movementMonitor);
             }
 
-            // 4. Khởi tạo PlayerInputController
+            // 5. Khởi tạo PlayerInputController
             if (inputController != null && cameraDirector != null && cueController != null && shotExecutor != null && movementMonitor != null)
             {
-                inputController.Initialize(cameraDirector, cueController, shotExecutor, movementMonitor);
+                inputController.Initialize(cameraDirector, cueController, shotExecutor, movementMonitor, ballInHandController, contactSelector);
             }
         }
     }

@@ -13,6 +13,8 @@ namespace Game.Billiards.Input
         [SerializeField] private CueController cueController;
         [SerializeField] private ShotExecutor shotExecutor;
         [SerializeField] private BallMovementMonitor movementMonitor;
+        [SerializeField] private Match.BallInHandController ballInHandController;
+        [SerializeField] private UI.CueBallContactSelector contactSelector;
 
         [Header("Input Tuning")]
         [Tooltip("Bước tăng giảm lực khi lăn con lăn chuột")]
@@ -31,7 +33,9 @@ namespace Game.Billiards.Input
 
         public float CurrentPower01 => currentPower01;
         public Vector2 CueContact01 => cueContact01;
-        public bool IsAimingAllowed => isTurnActive && !isShotInProgress && (movementMonitor == null || movementMonitor.AreAllBallsResting);
+        public bool IsAimingAllowed => isTurnActive && !isShotInProgress && 
+                                       (ballInHandController == null || !ballInHandController.IsActive) &&
+                                       (movementMonitor == null || movementMonitor.AreAllBallsResting);
 
         public event Action<float> OnPowerChanged;
         public event Action<ShotCommand> OnShotInitiated;
@@ -44,6 +48,16 @@ namespace Game.Billiards.Input
             {
                 movementMonitor.OnAllBallsSettled += HandleAllBallsSettled;
             }
+
+            if (contactSelector != null)
+            {
+                contactSelector.OnContactPointChanged += SetCueContact;
+            }
+
+            if (ballInHandController != null)
+            {
+                ballInHandController.OnBallInHandConfirmed += HandleBallInHandConfirmed;
+            }
         }
 
         private void OnDestroy()
@@ -52,19 +66,51 @@ namespace Game.Billiards.Input
             {
                 movementMonitor.OnAllBallsSettled -= HandleAllBallsSettled;
             }
+
+            if (contactSelector != null)
+            {
+                contactSelector.OnContactPointChanged -= SetCueContact;
+            }
+
+            if (ballInHandController != null)
+            {
+                ballInHandController.OnBallInHandConfirmed -= HandleBallInHandConfirmed;
+            }
         }
 
-        public void Initialize(CameraDirector camDir, CueController cueCtrl, ShotExecutor executor, BallMovementMonitor monitor)
+        public void Initialize(CameraDirector camDir, CueController cueCtrl, ShotExecutor executor, BallMovementMonitor monitor, Match.BallInHandController bihCtrl = null, UI.CueBallContactSelector selector = null)
         {
             cameraDirector = camDir;
             cueController = cueCtrl;
             shotExecutor = executor;
             movementMonitor = monitor;
+            ballInHandController = bihCtrl;
+            contactSelector = selector;
 
             if (movementMonitor != null)
             {
                 movementMonitor.OnAllBallsSettled -= HandleAllBallsSettled;
                 movementMonitor.OnAllBallsSettled += HandleAllBallsSettled;
+            }
+
+            if (contactSelector != null)
+            {
+                contactSelector.OnContactPointChanged -= SetCueContact;
+                contactSelector.OnContactPointChanged += SetCueContact;
+            }
+
+            if (ballInHandController != null)
+            {
+                ballInHandController.OnBallInHandConfirmed -= HandleBallInHandConfirmed;
+                ballInHandController.OnBallInHandConfirmed += HandleBallInHandConfirmed;
+            }
+        }
+
+        private void HandleBallInHandConfirmed(Vector3 confirmedPos)
+        {
+            if (cueController != null)
+            {
+                cueController.SetAimingState(true);
             }
         }
 

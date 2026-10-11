@@ -4222,6 +4222,8 @@ GameObject:
   - component: {fileID: 700000014}
   - component: {fileID: 700000015}
   - component: {fileID: 700000016}
+  - component: {fileID: 700000017}
+  - component: {fileID: 700000018}
   m_Layer: 0
   m_Name: Systems
   m_TagString: Untagged
@@ -5038,6 +5040,8 @@ MonoBehaviour:
   cameraDirector: {fileID: 1667188190}
   cueController: {fileID: 700000041}
   inputController: {fileID: 700000015}
+  ballInHandController: {fileID: 700000017}
+  contactSelector: {fileID: 700000018}
   physicsConfig: {fileID: 11400000, guid: e97274f2d4384091ac38dcea024154e5, type: 2}
   autoResetRackOnStart: 1
 --- !u!1001 &700000040
@@ -5076,3 +5080,37 @@ MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 114000, guid: 7415e46b3bc9404ba822466461352274, type: 3}
   m_PrefabInstance: {fileID: 700000030}
   m_PrefabAsset: {fileID: 0}
+
+--- !u!114 &700000017
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c4d32c6c67644e0595fc531e6c2ec63b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ballManager: {fileID: 700000012}
+  tableWrapper: {fileID: 700000031}
+  cameraDirector: {fileID: 1667188190}
+  moveSpeed: 1
+  overlapBuffer: 0.005
+  minDistanceToPocket: 0.09
+--- !u!114 &700000018
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 906ea0407f2145d9bdc78896ff71d912, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  currentContact: {x: 0, y: 0}
+  keyAdjustSpeed: 1.5
+  isOpen: 0

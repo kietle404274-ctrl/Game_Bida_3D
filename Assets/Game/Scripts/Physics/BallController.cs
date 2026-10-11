@@ -141,6 +141,67 @@ namespace Game.Billiards.Physics
             );
         }
 
+        private void FixedUpdate()
+        {
+            if (isPocketed || rb == null || rb.isKinematic || physicsConfig == null)
+                return;
+
+            // Kiểm tra bi có đang tiếp xúc với mặt nỉ bàn hay không (độ cao y xấp xỉ bán kính bi)
+            if (rb.velocity.sqrMagnitude < 0.0001f && rb.angularVelocity.sqrMagnitude < 0.0001f)
+                return;
+
+            ApplyClothSpinInteraction();
+        }
+
+        /// <summary>
+        /// Mô phỏng tương tác ma sát trượt và ma sát lăn giữa bi và nỉ bàn:
+        /// - Khi có xoáy cu-lê (topspin): ma sát nỉ kéo bi tiến tới sau va chạm.
+        /// - Khi có xoáy trô (backspin): ma sát nỉ kéo giật lùi bi cái về sau.
+        /// - Khi có ép phê (sidespin): suy giảm xoáy đứng theo spinDecay.
+        /// </summary>
+        private void ApplyClothSpinInteraction()
+        {
+            float r = physicsConfig.BallRadius;
+            Vector3 v = rb.velocity;
+            Vector3 w = rb.angularVelocity;
+
+            // Vận tốc trượt tại điểm tiếp xúc đáy bi với mặt nỉ (r_contact = 0, -r, 0)
+            // v_slip = v + (w x r_contact)
+            // w x (0, -r, 0) = (-w.z * r, 0, w.x * r)
+            Vector3 vSlip = new Vector3(
+                v.x - (w.z * r),
+                0f,
+                v.z + (w.x * r)
+            );
+
+            float slipSpeed = vSlip.magnitude;
+            if (slipSpeed > 0.005f)
+            {
+                // Lực ma sát động cản trở vận tốc trượt
+                float normalForce = rb.mass * 9.81f;
+                float frictionMagnitude = normalForce * physicsConfig.ClothFriction;
+
+                Vector3 frictionDir = -vSlip / slipSpeed;
+                Vector3 frictionForce = frictionDir * frictionMagnitude;
+
+                // Tác dụng lực ma sát lên trọng tâm
+                rb.AddForce(frictionForce, ForceMode.Force);
+
+                // Momen lực (torque) đưa bi dần về trạng thái lăn thuần túy
+                // tau = r_contact x F = (0, -r, 0) x (Fx, 0, Fz) = (-r * Fz, 0, r * Fx)
+                Vector3 torque = new Vector3(-r * frictionForce.z, 0f, r * frictionForce.x);
+                rb.AddTorque(torque, ForceMode.Force);
+            }
+
+            // Suy giảm xoáy đứng (sidespin / ép phê) theo thời gian
+            if (Mathf.Abs(w.y) > 0.01f)
+            {
+                float decayRate = physicsConfig.SpinDecay * Time.fixedDeltaTime;
+                float newWy = Mathf.MoveTowards(w.y, 0f, decayRate * Mathf.Abs(w.y));
+                rb.angularVelocity = new Vector3(w.x, newWy, w.z);
+            }
+        }
+
         public void SetState(BallState state)
         {
             ballNumber = state.ballNumber;
