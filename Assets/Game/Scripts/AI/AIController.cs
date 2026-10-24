@@ -105,6 +105,11 @@ namespace Game.Billiards.AI
             {
                 matchStateManager.OnPhaseChanged -= HandlePhaseChanged;
                 matchStateManager.OnPhaseChanged += HandlePhaseChanged;
+
+                matchStateManager.OnRackEnded -= HandleRackEnded;
+                matchStateManager.OnRackEnded += HandleRackEnded;
+                matchStateManager.OnMatchWon -= HandleMatchWon;
+                matchStateManager.OnMatchWon += HandleMatchWon;
             }
 
             if (turnManager != null)
@@ -119,6 +124,8 @@ namespace Game.Billiards.AI
             if (matchStateManager != null)
             {
                 matchStateManager.OnPhaseChanged -= HandlePhaseChanged;
+                matchStateManager.OnRackEnded -= HandleRackEnded;
+                matchStateManager.OnMatchWon -= HandleMatchWon;
             }
 
             if (turnManager != null)
@@ -131,6 +138,33 @@ namespace Game.Billiards.AI
                 StopCoroutine(activeAIRoutine);
                 activeAIRoutine = null;
             }
+        }
+
+        private void HandleRackEnded(Core.RackOutcome outcome)
+        {
+            CancelActiveRoutine();
+        }
+
+        private void HandleMatchWon(int winnerIndex)
+        {
+            CancelActiveRoutine();
+        }
+
+        /// <summary>Dừng mọi hành động đang dở của AI (suy nghĩ, ngắm, đặt bi) khi ván/trận kết thúc.</summary>
+        private void CancelActiveRoutine()
+        {
+            if (activeAIRoutine != null)
+            {
+                StopCoroutine(activeAIRoutine);
+                activeAIRoutine = null;
+            }
+        }
+
+        private bool IsShotAllowedPhase()
+        {
+            if (matchStateManager == null) return false;
+            var p = matchStateManager.CurrentPhase;
+            return p == MatchPhase.Aiming || p == MatchPhase.BreakSetup;
         }
 
         private bool IsMyTurn()
@@ -327,7 +361,7 @@ namespace Game.Billiards.AI
 
             while (wanderTimer < wanderDuration)
             {
-                if (!IsMyTurn()) { activeAIRoutine = null; yield break; }
+                if (!IsMyTurn() || !IsShotAllowedPhase()) { activeAIRoutine = null; yield break; }
 
                 float t = wanderTimer / wanderDuration;
                 float damping = 1f - Mathf.SmoothStep(0f, 1f, t); // 1 -> 0
@@ -344,7 +378,7 @@ namespace Game.Billiards.AI
                 yield return null;
             }
 
-            if (!IsMyTurn()) { activeAIRoutine = null; yield break; }
+            if (!IsMyTurn() || !IsShotAllowedPhase()) { activeAIRoutine = null; yield break; }
 
             if (cueController != null)
             {
@@ -359,7 +393,7 @@ namespace Game.Billiards.AI
             {
                 cueController.TriggerStrikeAnimation(() =>
                 {
-                    if (shotExecutor != null)
+                    if (shotExecutor != null && IsShotAllowedPhase())
                     {
                         shotExecutor.ExecuteShot(finalCommand);
                     }

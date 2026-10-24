@@ -151,14 +151,43 @@ namespace Game.Billiards.UI
         {
             ShowConfirmDialog("Bạn có chắc chắn muốn ĐẦU HÀNG ván đấu này không?", () =>
             {
-                if (matchStateManager != null)
+                var net = FindObjectOfType<Game.Billiards.Network.NetworkMatchManager>();
+                if (net != null && net.IsOnlineMatch)
                 {
-                    // Người đầu hàng nhường điểm thắng ván cho đối thủ
-                    int opponentIndex = (matchStateManager.CurrentPlayerIndex == 0) ? 1 : 0;
+                    // Online: gửi sự kiện đầu hàng cho đối thủ và ghi điểm đồng bộ trên cả hai máy
+                    net.Surrender();
+                }
+                else if (matchStateManager != null)
+                {
+                    // Người đầu hàng là người chơi cục bộ (không phụ thuộc lượt hiện tại); đối thủ nhận điểm ván
+                    int surrenderingIndex = GetLocalPlayerIndex();
+                    int opponentIndex = (surrenderingIndex == 0) ? 1 : 0;
                     matchStateManager.RecordRackWin(opponentIndex);
                 }
                 Hide();
             });
+        }
+
+        /// <summary>Xác định chỉ số người chơi đang dùng máy này: online = Master/Client, offline = người chơi không phải AI.</summary>
+        private int GetLocalPlayerIndex()
+        {
+            bool isOnline = (Game.Billiards.Core.GameSession.Instance != null &&
+                             Game.Billiards.Core.GameSession.Instance.CurrentGameMode == Game.Billiards.Core.GameMode.OnlinePvP);
+            if (isOnline)
+            {
+                var net = FindObjectOfType<Game.Billiards.Network.NetworkMatchManager>();
+                if (net != null) return net.LocalPlayerIndex;
+            }
+
+            var players = matchStateManager.State.players;
+            if (players != null)
+            {
+                for (int i = 0; i < players.Length; i++)
+                {
+                    if (!players[i].isAI) return i;
+                }
+            }
+            return matchStateManager.CurrentPlayerIndex;
         }
 
         private void OnQuitClicked()

@@ -28,6 +28,8 @@ namespace Game.Billiards.Network
         public const byte EVENT_TURN_RESULT = 103;
         public const byte EVENT_MATCH_ENDED = 104;
         public const byte EVENT_CALL_SHOT = 105;
+        public const byte EVENT_SURRENDER = 106;
+        public const byte EVENT_STATS_SYNC = 107;
 
         // Helper sinh mã phòng ngẫu nhiên (VD: "POOL-8821")
         public static string GenerateRoomId()

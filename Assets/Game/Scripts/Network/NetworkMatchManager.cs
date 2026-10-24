@@ -44,6 +44,16 @@ namespace Game.Billiards.Network
 
         public event Action<string> OnMatchDisconnected;
 
+        /// <summary>Client nhận snapshot thống kê trận từ Master.</summary>
+        public event Action<float[]> OnStatsReceived;
+
+        public void BroadcastStats(float[] data)
+        {
+            if (!isOnlineMatch || !IsMaster || data == null) return;
+            RaiseEventOptions options = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
+            PhotonNetwork.RaiseEvent(NetworkConstants.EVENT_STATS_SYNC, data, options, SendOptions.SendReliable);
+        }
+
         public override void OnEnable()
         {
             base.OnEnable();
@@ -434,6 +444,17 @@ namespace Game.Billiards.Network
                 case NetworkConstants.EVENT_CALL_SHOT:
                     HandleReceivedCallShot(photonEvent.CustomData);
                     break;
+
+                case NetworkConstants.EVENT_SURRENDER:
+                    HandleReceivedSurrender(photonEvent.CustomData);
+                    break;
+
+                case NetworkConstants.EVENT_STATS_SYNC:
+                    if (!IsMaster)
+                    {
+                        OnStatsReceived?.Invoke(photonEvent.CustomData as float[]);
+                    }
+                    break;
             }
         }
 
@@ -505,6 +526,48 @@ namespace Game.Billiards.Network
             int[] data = new int[] { ballNumber, pocketId };
             RaiseEventOptions options = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
             PhotonNetwork.RaiseEvent(NetworkConstants.EVENT_CALL_SHOT, data, options, SendOptions.SendReliable);
+        }
+
+        #endregion
+
+        #region Surrender Sync
+
+        /// <summary>Người chơi cục bộ đầu hàng ván hiện tại: thông báo cho đối thủ và ghi điểm ván cho đối thủ trên cả hai máy.</summary>
+        public void Surrender()
+        {
+            if (!isOnlineMatch || matchStateManager == null) return;
+            if (!CanApplySurrender()) return;
+
+            RaiseEventOptions options = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
+            PhotonNetwork.RaiseEvent(NetworkConstants.EVENT_SURRENDER, new int[] { localPlayerIndex }, options, SendOptions.SendReliable);
+            Debug.Log($"[NetworkMatchManager] Người chơi {localPlayerIndex} đầu hàng, đã gửi EVENT_SURRENDER.");
+
+            ApplySurrender(localPlayerIndex);
+        }
+
+        private void HandleReceivedSurrender(object rawData)
+        {
+            if (!(rawData is int[] data) || data.Length < 1) return;
+            int surrenderingIndex = data[0];
+            if (surrenderingIndex != 0 && surrenderingIndex != 1) return;
+            if (surrenderingIndex == localPlayerIndex) return; // Bỏ qua sự kiện giả mạo chỉ số của chính mình
+            if (!CanApplySurrender()) return;
+
+            Debug.Log($"[NetworkMatchManager] Đối thủ (Player {surrenderingIndex}) đã đầu hàng ván này.");
+            ApplySurrender(surrenderingIndex);
+        }
+
+        private bool CanApplySurrender()
+        {
+            if (matchStateManager == null) return false;
+            var phase = matchStateManager.CurrentPhase;
+            return phase != MatchPhase.RackResult && phase != MatchPhase.MatchResult;
+        }
+
+        private void ApplySurrender(int surrenderingIndex)
+        {
+            int winnerIndex = (surrenderingIndex == 0) ? 1 : 0;
+            matchStateManager.RecordRackWin(winnerIndex);
         }
 
         #endregion

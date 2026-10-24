@@ -104,6 +104,27 @@ namespace Game.Billiards.Network
             PhotonNetwork.CreateRoom(roomId, options, TypedLobby.Default);
         }
 
+        /// <summary>Chủ phòng đổi cấu hình trận (Race/Timer) khi phòng còn đang chờ; khách nhận qua OnRoomPropertiesChanged.</summary>
+        public bool UpdateRoomSettings(MatchSettings settings)
+        {
+            if (!PhotonNetwork.InRoom || !PhotonNetwork.IsMasterClient) return false;
+
+            var room = PhotonNetwork.CurrentRoom;
+            if (room.CustomProperties.TryGetValue(NetworkConstants.PROP_ROOM_STATE, out object state)
+                && state.ToString() != NetworkConstants.STATE_WAITING)
+            {
+                return false;
+            }
+
+            var props = new ExitGames.Client.Photon.Hashtable
+            {
+                { NetworkConstants.PROP_RACE_TARGET, (int)settings.raceTarget },
+                { NetworkConstants.PROP_SHOT_TIMER, (int)settings.shotTimer }
+            };
+            room.SetCustomProperties(props);
+            return true;
+        }
+
         public void JoinRoom(string roomId)
         {
             if (!PhotonNetwork.IsConnectedAndReady)

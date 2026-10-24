@@ -59,6 +59,11 @@ namespace Game.Billiards.Match
             {
                 stateManager.OnPhaseChanged -= HandlePhaseChanged;
                 stateManager.OnPhaseChanged += HandlePhaseChanged;
+
+                stateManager.OnRackEnded -= HandleRackOrMatchEnded;
+                stateManager.OnRackEnded += HandleRackOrMatchEnded;
+                stateManager.OnMatchWon -= HandleMatchWonCleanup;
+                stateManager.OnMatchWon += HandleMatchWonCleanup;
             }
 
             if (shotExecutor != null)
@@ -83,7 +88,11 @@ namespace Game.Billiards.Match
         private void OnDestroy()
         {
             if (stateManager != null)
+            {
                 stateManager.OnPhaseChanged -= HandlePhaseChanged;
+                stateManager.OnRackEnded -= HandleRackOrMatchEnded;
+                stateManager.OnMatchWon -= HandleMatchWonCleanup;
+            }
 
             if (shotExecutor != null)
                 shotExecutor.OnShotExecuted -= HandleShotExecuted;
@@ -93,6 +102,24 @@ namespace Game.Billiards.Match
 
             if (ballInHandController != null)
                 ballInHandController.OnBallInHandConfirmed -= HandleBallInHandConfirmed;
+        }
+
+        private void HandleMatchWonCleanup(int winnerIndex)
+        {
+            HandleRackOrMatchEnded(RackOutcome.Continue);
+        }
+
+        /// <summary>
+        /// Dọn trạng thái dở dang của ván cũ khi ván/trận kết thúc bất kể lý do (thắng, đầu hàng, mất kết nối):
+        /// dừng đồng hồ bắn, dừng theo dõi bi, hủy chế độ đặt bi (ball-in-hand) để không ẩn cây cơ ở ván sau.
+        /// </summary>
+        private void HandleRackOrMatchEnded(RackOutcome outcome)
+        {
+            StopShotTimer();
+
+            if (movementMonitor != null) movementMonitor.ResetToResting();
+            if (eventCollector != null) eventCollector.StopTracking();
+            if (ballInHandController != null) ballInHandController.CancelBallInHand();
         }
 
         private void Update()
@@ -194,6 +221,10 @@ namespace Game.Billiards.Match
         private void HandleAllBallsSettled()
         {
             if (stateManager == null || ruleEngine == null || eventCollector == null)
+                return;
+
+            // Ván/trận đã kết thúc (ví dụ đầu hàng lúc bi đang lăn): bỏ qua kết quả cú đánh cũ
+            if (stateManager.CurrentPhase == MatchPhase.RackResult || stateManager.CurrentPhase == MatchPhase.MatchResult)
                 return;
 
             eventCollector.StopTracking();

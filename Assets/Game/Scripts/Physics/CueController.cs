@@ -116,9 +116,13 @@ namespace Game.Billiards.Physics
             cueStickRoot.rotation = rotation;
         }
 
+        public bool IsStriking => isStriking;
+
         public void SetAimingState(bool aiming)
         {
             isAiming = aiming;
+            // Ẩn cơ sẽ dừng StrokeRoutine (chạy trên chính cây cơ) nên phải tự reset cờ, nếu không UpdateAim bị khóa mãi
+            if (!aiming) isStriking = false;
             if (cueStickRoot != null)
             {
                 cueStickRoot.gameObject.SetActive(aiming);

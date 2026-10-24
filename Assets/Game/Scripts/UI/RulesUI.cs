@@ -68,8 +68,21 @@ namespace Game.Billiards.UI
             }
         }
 
+        private void UpdateTabSelection(int tabIndex)
+        {
+            Button[] tabs = { breakTabButton, openTableTabButton, foulTabButton, eightBallTabButton, winLoseTabButton };
+            for (int i = 0; i < tabs.Length; i++)
+            {
+                if (tabs[i] == null) continue;
+                var fx = tabs[i].GetComponent<UIHoverEffect>();
+                if (fx == null) fx = UIHoverEffect.Attach(tabs[i].gameObject, tabs[i].targetGraphic is SkewedPanelGraphic);
+                fx.SetSelected(i == tabIndex);
+            }
+        }
+
         public void ShowTab(int tabIndex)
         {
+            UpdateTabSelection(tabIndex);
             switch (tabIndex)
             {
                 case 0:

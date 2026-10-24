@@ -50,6 +50,19 @@ namespace Game.Billiards.Physics
             isTracking = false;
         }
 
+        /// <summary>
+        /// Hủy theo dõi cú đánh đang dở (ví dụ ván kết thúc giữa chừng) và coi như bi đã dừng,
+        /// không phát OnAllBallsSettled. Nếu chỉ StopMonitoring, AreAllBallsResting có thể kẹt ở false khiến ShotExecutor từ chối mọi cú đánh sau đó.
+        /// </summary>
+        public void ResetToResting()
+        {
+            isTracking = false;
+            haveBallsMoved = false;
+            settleTimer = 0f;
+            trackingDuration = 0f;
+            AreAllBallsResting = true;
+        }
+
         private void FixedUpdate()
         {
             if (!isTracking || physicsConfig == null) return;

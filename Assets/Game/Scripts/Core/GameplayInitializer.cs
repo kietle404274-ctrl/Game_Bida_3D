@@ -135,6 +135,14 @@ namespace Game.Billiards.Core
                 yield break;
             }
 
+            // HUD trượt vào khi bắt đầu trận: đẩy ra ngoài màn hình trước, phát hiệu ứng sau khi intro (nếu có) kết thúc
+            UI.HudEntranceAnimator hudEntrance = null;
+            if (gameplayHUD != null && gameplayHUD.isActiveAndEnabled)
+            {
+                try { hudEntrance = UI.HudEntranceAnimator.Prepare(gameplayHUD); }
+                catch (System.Exception e) { Debug.LogException(e); }
+            }
+
             if (FindObjectOfType<UI.TvScoreboardDisplay>() == null)
                 gameObject.AddComponent<UI.TvScoreboardDisplay>();
 
@@ -148,16 +156,18 @@ namespace Game.Billiards.Core
 
             bool introDone = false;
             var intro = FindObjectOfType<RackIntroSequence>();
-            if (intro == null && ballManager != null)
+            if (intro == null && ballManager != null && GameSession.RackIntroEnabled)
             {
                 intro = gameObject.AddComponent<RackIntroSequence>();
             }
 
-            if (intro != null)
+            if (intro != null && GameSession.RackIntroEnabled)
             {
                 intro.Play(() => introDone = true);
                 while (!introDone) yield return null;
             }
+
+            if (hudEntrance != null) hudEntrance.Play();
 
             SetupWiring();
         }
@@ -262,6 +272,14 @@ namespace Game.Billiards.Core
                 inputController.Initialize(cameraDirector, cueController, shotExecutor, movementMonitor, ballInHandController, contactSelector, matchStateManager, turnManager);
             }
 
+            // 8b. Thước ngắm (bật/tắt theo cài đặt trước trận)
+            if (ballManager != null && cameraDirector != null && inputController != null)
+            {
+                var aimGuide = FindObjectOfType<UI.AimGuide>();
+                if (aimGuide == null) aimGuide = gameObject.AddComponent<UI.AimGuide>();
+                aimGuide.Initialize(ballManager, cameraDirector, inputController);
+            }
+
             // 9. Khởi tạo GameplayHUD
             if (gameplayHUD != null && matchStateManager != null && turnManager != null && inputController != null && ballManager != null && movementMonitor != null)
             {
@@ -305,6 +323,31 @@ namespace Game.Billiards.Core
                 {
                     aiController.SetAIEnabled(false, 1);
                 }
+            }
+
+            // 12. Hiệu ứng hover cho nút HUD và các popup (hướng dẫn, luật, cài đặt, kết quả...) sau khi mọi thứ đã khởi tạo
+            UI.UIHoverEffect.AttachToSceneButtons();
+
+            // 13. Thống kê trận đấu + màn hình thống kê (phím Tab). Tạo sau bước 12 để không bị ghi đè hiệu ứng hover của tab.
+            SetupMatchStats();
+        }
+
+        private void SetupMatchStats()
+        {
+            if (gameplayHUD == null || matchStateManager == null)
+            {
+                Debug.LogWarning("[GameplayInitializer] Bỏ qua khởi tạo thống kê: thiếu gameplayHUD hoặc matchStateManager.");
+                return;
+            }
+
+            var tracker = FindObjectOfType<MatchStatsTracker>();
+            if (tracker == null) tracker = gameObject.AddComponent<MatchStatsTracker>();
+            tracker.Initialize(matchStateManager, turnManager, shotExecutor, ruleEngine, ballManager, networkMatchManager);
+
+            if (FindObjectOfType<UI.StatsPanelUI>() == null)
+            {
+                var panel = UI.StatsPanelUI.Create(gameplayHUD, tracker, matchStateManager);
+                gameplayHUD.SetStatsPanel(panel);
             }
         }
     }

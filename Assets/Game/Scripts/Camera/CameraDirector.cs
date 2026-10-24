@@ -26,6 +26,14 @@ namespace Game.Billiards.Camera
         [Tooltip("Khoáº£ng cÃ¡ch tá»« camera Ä‘áº¿n bi cÃ¡i khi ngáº¯m")]
         [SerializeField] private float aimDistance = 1.15f;
 
+        [Tooltip("Khoảng cách camera đến bi cái khi bật chế độ ngắm gần (phím V)")]
+        [SerializeField] private float aimCloseDistance = 0.55f;
+
+        // Static: giữ trạng thái V qua các lượt/ván trong cùng phiên chơi, không lưu ra ổ đĩa. Mặc định: góc nhìn xa.
+        private static bool closeAim = false;
+        public bool IsCloseAim => closeAim;
+        public void ToggleCloseAim() { closeAim = !closeAim; }
+
         [Tooltip("Äá»™ cao bÃ¹ thÃªm so vá»›i tÃ¢m bi")]
         [SerializeField] private float aimHeightOffset = 0.08f;
 
@@ -78,10 +86,10 @@ namespace Game.Billiards.Camera
         [SerializeField] private float opponentTransitionSpeed = 3f;
 
         [Tooltip("Äá»™ lá»‡ch camera lÆ°á»£t Ä‘á»‘i thá»§ so vá»›i tÃ¢m bÃ n theo trá»¥c dÃ i X (giá»¯ camera náº±m trong phÃ²ng). Dáº¥u tá»± Ä‘á»•i theo Ä‘áº§u bÃ n")]
-        [SerializeField] private float opponentCamOffsetX = 1.45f;
+        [SerializeField] private float opponentCamOffsetX = 2.0f;
 
         [Tooltip("Äá»™ cao camera lÆ°á»£t Ä‘á»‘i thá»§ (cÃ¹ng má»©c camera gÃ³c rá»™ng Ä‘Ã£ xÃ¡c nháº­n náº±m trong phÃ²ng)")]
-        [SerializeField] private float opponentCamHeight = 2.1f;
+        [SerializeField] private float opponentCamHeight = 2.5f;
 
         [Header("Top-Down (Ball In Hand) Camera Settings")]
         [Tooltip("Äá»™ cao camera nhÃ¬n tháº³ng tá»« trÃªn xuá»‘ng so vá»›i bi cÃ¡i khi Ä‘áº·t bi")]
@@ -360,7 +368,7 @@ namespace Game.Billiards.Camera
 
             Vector3 focusPoint = cueBallTarget.position + (Vector3.up * aimHeightOffset);
             Quaternion rotation = Quaternion.Euler(currentPitch, currentYaw, 0f);
-            Vector3 desiredPosition = focusPoint - (rotation * Vector3.forward * aimDistance);
+            Vector3 desiredPosition = focusPoint - (rotation * Vector3.forward * (closeAim ? aimCloseDistance : aimDistance));
 
             // Giá»¯ camera luÃ´n á»Ÿ trÃªn máº·t ná»‰ Ã­t nháº¥t 0.15m Ä‘á»ƒ khÃ´ng bao giá» cáº¯t qua bÃ n
             if (desiredPosition.y < tableCenter.y + 0.15f)

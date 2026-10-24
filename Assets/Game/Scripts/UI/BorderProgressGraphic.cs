@@ -30,6 +30,8 @@ namespace Game.Billiards.UI
             SetVerticesDirty();
         }
 
+        public Color BaseColor => baseColor;
+
         public void SetBaseColor(Color c)
         {
             baseColor = c;

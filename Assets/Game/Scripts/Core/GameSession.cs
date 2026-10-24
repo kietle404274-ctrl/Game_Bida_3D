@@ -33,6 +33,32 @@ namespace Game.Billiards.Core
         public string PlayerBName => playerBName;
         public bool IsPlayerBAi => isPlayerBAi;
 
+        private const string AimGuidePrefKey = "AimGuide_Enabled";
+
+        /// <summary>Bật/tắt thước ngắm (lưu qua PlayerPrefs, mặc định bật).</summary>
+        public static bool AimGuideEnabled
+        {
+            get => PlayerPrefs.GetInt(AimGuidePrefKey, 1) == 1;
+            set
+            {
+                PlayerPrefs.SetInt(AimGuidePrefKey, value ? 1 : 0);
+                PlayerPrefs.Save();
+            }
+        }
+
+        private const string RackIntroPrefKey = "RackIntro_Enabled";
+
+        /// <summary>Bật/tắt đoạn intro xếp bi đầu trận (lưu qua PlayerPrefs, mặc định bật).</summary>
+        public static bool RackIntroEnabled
+        {
+            get => PlayerPrefs.GetInt(RackIntroPrefKey, 1) == 1;
+            set
+            {
+                PlayerPrefs.SetInt(RackIntroPrefKey, value ? 1 : 0);
+                PlayerPrefs.Save();
+            }
+        }
+
         private void Awake()
         {
             if (Instance != null && Instance != this)

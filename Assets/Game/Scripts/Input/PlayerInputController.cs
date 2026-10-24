@@ -303,6 +303,21 @@ namespace Game.Billiards.Input
             OnCallShotChanged?.Invoke(-1, -1, false);
         }
 
+        private void LateUpdate()
+        {
+            // Chốt chặn: lượt đối thủ nhưng chưa tới pha ngắm (đang xử lý lỗi / đối thủ đặt bi)
+            // thì cây cơ của người chơi phải ẩn hẳn. AI chỉ tự hiện cơ khi đã vào pha Aiming/BreakSetup.
+            if (cueController == null || !cueController.IsVisible || cueController.IsStriking) return;
+            if (matchStateManager == null || matchStateManager.State == null) return;
+
+            var phase = matchStateManager.CurrentPhase;
+            bool aimPhase = phase == MatchPhase.Aiming || phase == MatchPhase.BreakSetup;
+            if (!aimPhase && IsOpponentTurn())
+            {
+                cueController.SetAimingState(false);
+            }
+        }
+
         private void Update()
         {
             if (!IsAimingAllowed) return;
@@ -312,6 +327,12 @@ namespace Game.Billiards.Input
 
             // Popup Hướng dẫn / Luật / Menu đang mở: không ngắm, chỉnh lực hay bắn
             if (UI.HudModalState.IsModalOpen) return;
+
+            // Phím V: chuyển camera ngắm gần / xa (trạng thái giữ trong phiên chơi)
+            if (UnityEngine.Input.GetKeyDown(KeyCode.V) && cameraDirector != null)
+            {
+                cameraDirector.ToggleCloseAim();
+            }
 
             HandleAimRotation();
             HandlePowerAdjustment();
@@ -355,11 +376,33 @@ namespace Game.Billiards.Input
             }
         }
 
+        private static readonly System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult> uiHits = new System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>();
+
+        /// <summary>True nếu con trỏ đang nằm trên một control UI tương tác được (Button, Toggle, Dropdown...).</summary>
+        private static bool IsPointerOverInteractableUI()
+        {
+            var es = UnityEngine.EventSystems.EventSystem.current;
+            if (es == null) return false;
+
+            var data = new UnityEngine.EventSystems.PointerEventData(es) { position = UnityEngine.Input.mousePosition };
+            uiHits.Clear();
+            es.RaycastAll(data, uiHits);
+            for (int i = 0; i < uiHits.Count; i++)
+            {
+                var sel = uiHits[i].gameObject != null ? uiHits[i].gameObject.GetComponentInParent<UnityEngine.UI.Selectable>() : null;
+                if (sel != null && sel.IsInteractable()) return true;
+            }
+            return false;
+        }
+
         private void HandleShootInput()
         {
             // Click chuột trái để bắn
             if (UnityEngine.Input.GetMouseButtonDown(0) && !UI.CueBallSpinWidgetUI.IsHovered)
             {
+                // Click vào nút HUD (Hướng dẫn, Luật, Menu...) thì không bắn
+                if (IsPointerOverInteractableUI()) return;
+
                 if (shotExecutor != null && shotExecutor.CanExecuteShot() && cameraDirector != null)
                 {
                     ExecutePlayerShot();

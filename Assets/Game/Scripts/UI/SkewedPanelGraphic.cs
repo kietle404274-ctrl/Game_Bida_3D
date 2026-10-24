@@ -17,6 +17,12 @@ namespace Game.Billiards.UI
         [Tooltip("Hệ số độ sáng ở cạnh dưới so với cạnh trên (1 = không gradient, 0.5 = tối dần xuống dưới)")]
         [SerializeField] private float bottomDarken = 1f;
 
+        public void SetBottomDarken(float value)
+        {
+            bottomDarken = value;
+            SetVerticesDirty();
+        }
+
         public void SetInsets(float topLeft, float topRight, float bottomLeft, float bottomRight)
         {
             topLeftInset = topLeft;

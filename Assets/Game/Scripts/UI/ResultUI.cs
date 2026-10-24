@@ -112,6 +112,12 @@ namespace Game.Billiards.UI
 
         private void OnRematchClicked()
         {
+            Rematch();
+        }
+
+        /// <summary>Chơi lại trận mới với cùng cài đặt và cùng người chơi.</summary>
+        public void Rematch()
+        {
             Hide();
             if (ballManager != null)
             {
@@ -142,6 +148,12 @@ namespace Game.Billiards.UI
         }
 
         private void OnReturnToLobbyClicked()
+        {
+            ReturnToLobby();
+        }
+
+        /// <summary>Về sảnh chính.</summary>
+        public void ReturnToLobby()
         {
             Hide();
             if (onReturnToLobbyAction != null)

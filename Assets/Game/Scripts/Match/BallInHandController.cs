@@ -85,6 +85,9 @@ namespace Game.Billiards.Match
                     cueBall.Rigidbody.velocity = Vector3.zero;
                     cueBall.Rigidbody.angularVelocity = Vector3.zero;
                     cueBall.Rigidbody.isKinematic = true;
+                    // Tắt nội suy: nếu không, hình ảnh bi trễ so với vị trí đặt và mũi tên trông như bị rơi ra ngoài
+                    cueBall.Rigidbody.interpolation = RigidbodyInterpolation.None;
+                    cueBall.Rigidbody.position = currentPosition;
                 }
                 cueBall.transform.position = currentPosition;
             }
@@ -218,10 +221,31 @@ namespace Game.Billiards.Match
             var cueBall = ballManager != null ? ballManager.CueBall : null;
             if (cueBall != null)
             {
-                cueBall.transform.position = currentPosition;
+                MoveCueBallTo(cueBall, currentPosition);
             }
 
             return ValidatePlacement();
+        }
+
+        /// <summary>
+        /// Hủy chế độ đặt bi mà không chốt (dùng khi ván/trận kết thúc giữa chừng, ví dụ đầu hàng lúc đang ball-in-hand).
+        /// Nếu không hủy, Update() sẽ tiếp tục ẩn cây cơ ở ván sau.
+        /// </summary>
+        public void CancelBallInHand()
+        {
+            if (!isActive) return;
+
+            isActive = false;
+            SetArrowsVisible(false);
+            ApplyCueBallTint(false);
+
+            // Khôi phục vật lý bi cái (va chạm + không kinematic) giống như khi chốt vị trí
+            var cueBall = ballManager != null ? ballManager.CueBall : null;
+            if (cueBall != null)
+            {
+                cueBall.ResetTo(cueBall.transform.position, Quaternion.identity);
+                RestoreCueBallInterpolation(cueBall);
+            }
         }
 
         private void Update()
@@ -229,20 +253,38 @@ namespace Game.Billiards.Match
             // Ẩn cây cơ trong suốt quá trình đặt bi (chỉ hiện lại khi đặt xong)
             if (isActive) HideCueStick();
 
-            if (!isActive) { SetArrowsVisible(false); ApplyCueBallTint(false); return; }
-            if ((InputBlockedPredicate != null && InputBlockedPredicate()) || Game.Billiards.UI.HudModalState.IsModalOpen) { SetArrowsVisible(false); ApplyCueBallTint(false); return; }
+            if (!isActive) { arrowsWanted = false; SetArrowsVisible(false); ApplyCueBallTint(false); return; }
+            if ((InputBlockedPredicate != null && InputBlockedPredicate()) || Game.Billiards.UI.HudModalState.IsModalOpen) { arrowsWanted = false; SetArrowsVisible(false); ApplyCueBallTint(false); return; }
 
-            // Xoay chuột để nhìn qua lại khi đặt bi
-            float mouseX = UnityEngine.Input.GetAxis("Mouse X");
-            if (cameraDirector != null && Mathf.Abs(mouseX) > 0.001f)
-            {
-                cameraDirector.RotateTopDown(mouseX);
-            }
+            // Lưu ý: không xoay góc nhìn bằng chuột khi đặt bi — camera top-down giữ nguyên hướng
 
             HandleKeyboardMovement();
             HandleConfirmationInput();
-            UpdateArrows();
+            arrowsWanted = isActive;
             ApplyCueBallTint(!isPlacementValid);
+        }
+
+        // Mũi tên cập nhật sau cùng trong frame, bám theo vị trí hiển thị thật của bi cái
+        private void LateUpdate()
+        {
+            if (isActive && arrowsWanted) UpdateArrows();
+        }
+
+        private bool arrowsWanted = false;
+
+        /// <summary>Di chuyển bi cái (kinematic) tới vị trí mới, đồng bộ cả Rigidbody lẫn Transform.</summary>
+        private void MoveCueBallTo(BallController cueBall, Vector3 pos)
+        {
+            if (cueBall.Rigidbody != null) cueBall.Rigidbody.position = pos;
+            cueBall.transform.position = pos;
+        }
+
+        private void RestoreCueBallInterpolation(BallController cueBall)
+        {
+            if (cueBall != null && cueBall.Rigidbody != null)
+            {
+                cueBall.Rigidbody.interpolation = RigidbodyInterpolation.Interpolate;
+            }
         }
 
         private void HideCueStick()
@@ -280,7 +322,7 @@ namespace Game.Billiards.Match
                 var cueBall = ballManager != null ? ballManager.CueBall : null;
                 if (cueBall != null)
                 {
-                    cueBall.transform.position = currentPosition;
+                    MoveCueBallTo(cueBall, currentPosition);
                 }
 
                 ValidatePlacement();
@@ -315,6 +357,7 @@ namespace Game.Billiards.Match
             if (cueBall != null)
             {
                 cueBall.ResetTo(currentPosition, Quaternion.identity);
+                RestoreCueBallInterpolation(cueBall);
             }
 
             if (cameraDirector != null)
@@ -484,8 +527,10 @@ namespace Game.Billiards.Match
             EnsureArrows();
             SetArrowsVisible(true);
 
-            float y = (tableWrapper != null ? tableWrapper.ClothSurfaceY : currentPosition.y) + 0.004f;
-            arrowRoot.transform.position = new Vector3(currentPosition.x, y, currentPosition.z);
+            var arrowCueBall = ballManager != null ? ballManager.CueBall : null;
+            Vector3 center = arrowCueBall != null ? arrowCueBall.transform.position : currentPosition;
+            float y = (tableWrapper != null ? tableWrapper.ClothSurfaceY : center.y) + 0.004f;
+            arrowRoot.transform.position = new Vector3(center.x, y, center.z);
 
             GetCameraPlanarAxes(out Vector3 camRight, out Vector3 camForward);
             Vector3[] dirs = { camForward, camRight, -camForward, -camRight };

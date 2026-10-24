@@ -52,6 +52,23 @@ namespace Game.Billiards.UI
         public RulesUI Rules => rulesUI;
         public SettingsUI Settings => settingsUI;
         public ResultUI Result => resultUI;
+        public Button RulesButton => rulesButton;
+
+        /// <summary>Các nút HUD (Hướng dẫn / Luật / Menu) cho hiệu ứng trượt vào khi bắt đầu trận.</summary>
+        public System.Collections.Generic.IEnumerable<Button> EntranceButtons()
+        {
+            yield return helpButton;
+            yield return rulesButton;
+            yield return settingsButton;
+        }
+
+        private StatsPanelUI statsPanel;
+
+        /// <summary>Gắn màn hình thống kê (tạo lúc runtime) để phím Tab / Esc điều khiển.</summary>
+        public void SetStatsPanel(StatsPanelUI panel)
+        {
+            statsPanel = panel;
+        }
 
         private void Awake()
         {
@@ -277,6 +294,7 @@ namespace Game.Billiards.UI
                     case "rules": if (rulesUI != null) rulesUI.Hide(); break;
                     case "settings": if (settingsUI != null) settingsUI.Hide(); break;
                     case "spin": if (contactSelector != null) contactSelector.SetOpen(false); break;
+                    case "stats": if (statsPanel != null) statsPanel.Hide(); break;
                     default: if (settingsUI != null) settingsUI.Toggle(); break;
                 }
             }
@@ -284,6 +302,11 @@ namespace Game.Billiards.UI
             if (UnityEngine.Input.GetKeyDown(KeyCode.H) || UnityEngine.Input.GetKeyDown(KeyCode.F1))
             {
                 if (helpUI != null) helpUI.Toggle();
+            }
+
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Tab))
+            {
+                if (statsPanel != null) statsPanel.Toggle();
             }
 
             if (UnityEngine.Input.GetKeyDown(KeyCode.R))
@@ -421,6 +444,7 @@ namespace Game.Billiards.UI
         private void HandleRackStarted()
         {
             RefreshAllUI();
+            HudEntranceAnimator.Replay(this);
         }
 
         private void HandleMatchWon(int winnerIndex)
@@ -435,7 +459,15 @@ namespace Game.Billiards.UI
                 eventToast.ShowWinToast(winnerName, "VÔ ĐỊCH TOÀN BỘ TRẬN ĐẤU!");
             }
 
-            if (resultUI != null)
+            // Màn hình kết thúc trận mới (thống kê + nút Chơi lại / Về sảnh); dùng popup cũ nếu chưa có màn hình thống kê
+            if (statsPanel != null && resultUI != null)
+            {
+                statsPanel.ShowMatchResult(
+                    winnerIndex,
+                    () => { statsPanel.CloseResult(); resultUI.Rematch(); },
+                    () => { statsPanel.CloseResult(); resultUI.ReturnToLobby(); });
+            }
+            else if (resultUI != null)
             {
                 resultUI.ShowMatchResult(winnerIndex, state.playerARackWins, state.playerBRackWins);
             }

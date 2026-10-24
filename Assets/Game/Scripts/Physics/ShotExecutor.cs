@@ -41,7 +41,10 @@ namespace Game.Billiards.Physics
         {
             if (!CanExecuteShot())
             {
-                Debug.LogWarning("[ShotExecutor] Không thể thực hiện cú đánh vì điều kiện chưa thỏa mãn (bi đang di chuyển hoặc thiếu bi cái).");
+                var cb = ballManager != null ? ballManager.CueBall : null;
+                Debug.LogWarning($"[ShotExecutor] Không thể thực hiện cú đánh vì điều kiện chưa thỏa mãn (bi đang di chuyển hoặc thiếu bi cái). " +
+                                 $"cueBall={(cb != null ? "ok" : "null")}, cuePocketed={(cb != null && cb.IsPocketed)}, " +
+                                 $"allResting={(movementMonitor != null && movementMonitor.AreAllBallsResting)}");
                 return false;
             }
 
