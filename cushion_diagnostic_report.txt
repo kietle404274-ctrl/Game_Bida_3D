@@ -1,0 +1,124 @@
+================ CUSHION & GAMEPLAY COLLISION DIAGNOSTIC ================
+Scene loaded: Assets/Game/Scenes/Gameplay.unity
+TableWrapper position=(0.00, 0.00, 0.00), rotation=(0.00, 0.00, 0.00)
+ClothSurfaceY=0.835, HalfLength=1.066, HalfWidth=0.5023
+
+--- Visual Mesh Renderers Bounds ---
+  Renderer 'Line': bounds.min=(0.55, 0.84, -0.52), bounds.max=(0.55, 0.84, 0.52), size=(0.00, 0.00, 1.04), center=(0.55, 0.84, 0.00)
+  Renderer 'Arc': bounds.min=(0.55, 0.84, -0.14), bounds.max=(0.69, 0.84, 0.14), size=(0.14, 0.00, 0.29), center=(0.62, 0.84, 0.00)
+  Renderer 'Cabinet': bounds.min=(-1.21, 0.00, -0.64), bounds.max=(1.20, 0.82, 0.64), size=(2.40, 0.82, 1.28), center=(-0.01, 0.41, 0.00)
+  Renderer 'Corner Pockets': bounds.min=(-1.18, 0.82, -0.62), bounds.max=(1.17, 0.87, 0.62), size=(2.34, 0.05, 1.24), center=(-0.01, 0.85, 0.00)
+  Renderer 'Cushions': bounds.min=(-1.13, 0.83, -0.56), bounds.max=(1.12, 0.86, 0.56), size=(2.25, 0.03, 1.12), center=(-0.01, 0.85, 0.00)
+  Renderer 'Holes': bounds.min=(-1.18, 0.75, -0.61), bounds.max=(1.17, 0.83, 0.61), size=(2.35, 0.07, 1.22), center=(-0.01, 0.79, 0.00)
+  Renderer 'Play Field': bounds.min=(-1.13, 0.82, -0.56), bounds.max=(1.13, 0.83, 0.56), size=(2.25, 0.01, 1.12), center=(0.00, 0.83, 0.00)
+  Renderer 'Upper part': bounds.min=(-1.24, 0.81, -0.67), bounds.max=(1.23, 0.87, 0.67), size=(2.47, 0.06, 1.34), center=(-0.01, 0.84, 0.00)
+
+--- Cushions Mesh Vertex Analysis (408 vertices) ---
+Cushions transform: localPos=(-0.01, 0.85, 0.00), localScale=(1.00, 1.00, 1.00), rot=(0.00, 0.00, 0.00)
+World bounds of vertices: X=[-1.1316, 1.1195], Y=[0.8330, 0.8622], Z=[-0.5615, 0.5615]
+Foot rail (X < -0.95m) vertex samples count: 136
+  Foot vert [0]: X=-1.0140, Y=0.8607, Z=-0.5023
+  Foot vert [1]: X=-1.0140, Y=0.8607, Z=0.5023
+  Foot vert [2]: X=-1.0140, Y=0.8345, Z=-0.5158
+  Foot vert [3]: X=-1.0140, Y=0.8607, Z=0.5023
+  Foot vert [4]: X=-1.0140, Y=0.8345, Z=0.5158
+  Foot vert [5]: X=-1.0140, Y=0.8607, Z=-0.5023
+  Foot vert [6]: X=-1.0140, Y=0.8345, Z=-0.5158
+  Foot vert [7]: X=-1.0140, Y=0.8345, Z=-0.5158
+  Foot vert [8]: X=-1.0140, Y=0.8607, Z=0.5023
+  Foot vert [9]: X=-1.0140, Y=0.8607, Z=-0.5023
+  Foot vert [10]: X=-1.0140, Y=0.8345, Z=0.5158
+  Foot vert [11]: X=-1.0140, Y=0.8607, Z=0.5023
+  Foot vert [12]: X=-1.0140, Y=0.8345, Z=-0.5158
+  Foot vert [13]: X=-1.0140, Y=0.8607, Z=-0.5023
+  Foot vert [14]: X=-1.0140, Y=0.8345, Z=0.5158
+  Foot vert [15]: X=-1.0140, Y=0.8345, Z=0.5158
+  Foot vert [16]: X=-1.0154, Y=0.8622, Z=0.5037
+  Foot vert [17]: X=-1.0154, Y=0.8622, Z=-0.5037
+  Foot vert [18]: X=-1.0154, Y=0.8622, Z=0.5037
+  Foot vert [19]: X=-1.0154, Y=0.8622, Z=-0.5037
+
+--- Pockets Positions ---
+  Pocket 0 (Pocket_0_FootLeft): pos=(-1.11, 0.84, 0.55), localPos=(-1.11, 0.84, 0.55)
+  Pocket 1 (Pocket_1_FootRight): pos=(-1.11, 0.84, -0.55), localPos=(-1.11, 0.84, -0.55)
+  Pocket 2 (Pocket_2_SideLeft): pos=(0.00, 0.84, 0.58), localPos=(0.00, 0.84, 0.58)
+  Pocket 3 (Pocket_3_SideRight): pos=(0.00, 0.84, -0.58), localPos=(0.00, 0.84, -0.58)
+  Pocket 4 (Pocket_4_HeadLeft): pos=(1.11, 0.84, 0.55), localPos=(1.11, 0.84, 0.55)
+  Pocket 5 (Pocket_5_HeadRight): pos=(1.11, 0.84, -0.55), localPos=(1.11, 0.84, -0.55)
+CushionsColliders child count: 32
+  [0] Cushion_Foot: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-1.22, 0.86, 0.00), size=(0.30, 0.12, 0.89), worldBounds.min=(-1.37, 0.80, -0.45), worldBounds.max=(-1.07, 0.92, 0.45)
+  [1] Cushion_Head: enabled=True, isTrigger=False, layer=0 (Default), localPos=(1.21, 0.86, 0.00), size=(0.30, 0.12, 0.89), worldBounds.min=(1.06, 0.80, -0.45), worldBounds.max=(1.36, 0.92, 0.45)
+  [2] Cushion_SidePos_Foot: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-0.49, 0.86, 0.65), size=(0.84, 0.12, 0.30), worldBounds.min=(-0.91, 0.80, 0.50), worldBounds.max=(-0.07, 0.92, 0.80)
+  [3] Cushion_SidePos_Head: enabled=True, isTrigger=False, layer=0 (Default), localPos=(0.49, 0.86, 0.65), size=(0.84, 0.12, 0.30), worldBounds.min=(0.07, 0.80, 0.50), worldBounds.max=(0.91, 0.92, 0.80)
+  [4] Cushion_SideNeg_Foot: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-0.49, 0.86, -0.65), size=(0.84, 0.12, 0.30), worldBounds.min=(-0.91, 0.80, -0.80), worldBounds.max=(-0.07, 0.92, -0.50)
+  [5] Cushion_SideNeg_Head: enabled=True, isTrigger=False, layer=0 (Default), localPos=(0.49, 0.86, -0.65), size=(0.84, 0.12, 0.30), worldBounds.min=(0.07, 0.80, -0.80), worldBounds.max=(0.91, 0.92, -0.50)
+  [6] Jaw_FootLeft_Foot: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-1.09, 0.86, 0.47), size=(0.06, 0.12, 0.08), worldBounds.min=(-1.14, 0.80, 0.42), worldBounds.max=(-1.04, 0.92, 0.52)
+  [7] Jaw_FootLeft_Side: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-0.94, 0.86, 0.53), size=(0.08, 0.12, 0.06), worldBounds.min=(-0.98, 0.80, 0.48), worldBounds.max=(-0.89, 0.92, 0.57)
+  [8] Jaw_FootRight_Foot: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-1.09, 0.86, -0.47), size=(0.06, 0.12, 0.08), worldBounds.min=(-1.14, 0.80, -0.52), worldBounds.max=(-1.04, 0.92, -0.42)
+  [9] Jaw_FootRight_Side: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-0.94, 0.86, -0.53), size=(0.08, 0.12, 0.06), worldBounds.min=(-0.98, 0.80, -0.57), worldBounds.max=(-0.89, 0.92, -0.48)
+  [10] Jaw_HeadLeft_Head: enabled=True, isTrigger=False, layer=0 (Default), localPos=(1.08, 0.86, 0.47), size=(0.06, 0.12, 0.08), worldBounds.min=(1.03, 0.80, 0.42), worldBounds.max=(1.13, 0.92, 0.52)
+  [11] Jaw_HeadLeft_Side: enabled=True, isTrigger=False, layer=0 (Default), localPos=(0.94, 0.86, 0.53), size=(0.08, 0.12, 0.06), worldBounds.min=(0.89, 0.80, 0.48), worldBounds.max=(0.98, 0.92, 0.57)
+  [12] Jaw_HeadRight_Head: enabled=True, isTrigger=False, layer=0 (Default), localPos=(1.08, 0.86, -0.47), size=(0.06, 0.12, 0.08), worldBounds.min=(1.03, 0.80, -0.52), worldBounds.max=(1.13, 0.92, -0.42)
+  [13] Jaw_HeadRight_Side: enabled=True, isTrigger=False, layer=0 (Default), localPos=(0.94, 0.86, -0.53), size=(0.08, 0.12, 0.06), worldBounds.min=(0.89, 0.80, -0.57), worldBounds.max=(0.98, 0.92, -0.48)
+  [14] Jaw_SideLeft_L: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-0.08, 0.86, 0.53), size=(0.04, 0.12, 0.08), worldBounds.min=(-0.10, 0.80, 0.48), worldBounds.max=(-0.05, 0.92, 0.57)
+  [15] Jaw_SideLeft_R: enabled=True, isTrigger=False, layer=0 (Default), localPos=(0.08, 0.86, 0.53), size=(0.04, 0.12, 0.08), worldBounds.min=(0.05, 0.80, 0.48), worldBounds.max=(0.10, 0.92, 0.57)
+  [16] Jaw_SideRight_L: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-0.08, 0.86, -0.53), size=(0.04, 0.12, 0.08), worldBounds.min=(-0.10, 0.80, -0.57), worldBounds.max=(-0.05, 0.92, -0.48)
+  [17] Jaw_SideRight_R: enabled=True, isTrigger=False, layer=0 (Default), localPos=(0.08, 0.86, -0.53), size=(0.04, 0.12, 0.08), worldBounds.min=(0.05, 0.80, -0.57), worldBounds.max=(0.10, 0.92, -0.48)
+  [18] Backstop_Pocket0_X: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-1.18, 0.86, 0.56), size=(0.12, 0.12, 0.20), worldBounds.min=(-1.24, 0.80, 0.46), worldBounds.max=(-1.12, 0.92, 0.66)
+  [19] Backstop_Pocket0_Z: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-1.06, 0.86, 0.63), size=(0.20, 0.12, 0.12), worldBounds.min=(-1.16, 0.80, 0.57), worldBounds.max=(-0.96, 0.92, 0.69)
+  [20] Backstop_Pocket1_X: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-1.18, 0.86, -0.56), size=(0.12, 0.12, 0.20), worldBounds.min=(-1.24, 0.80, -0.66), worldBounds.max=(-1.12, 0.92, -0.46)
+  [21] Backstop_Pocket1_Z: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-1.06, 0.86, -0.63), size=(0.20, 0.12, 0.12), worldBounds.min=(-1.16, 0.80, -0.69), worldBounds.max=(-0.96, 0.92, -0.57)
+  [22] Backstop_Pocket4_X: enabled=True, isTrigger=False, layer=0 (Default), localPos=(1.18, 0.86, 0.56), size=(0.12, 0.12, 0.20), worldBounds.min=(1.12, 0.80, 0.46), worldBounds.max=(1.24, 0.92, 0.66)
+  [23] Backstop_Pocket4_Z: enabled=True, isTrigger=False, layer=0 (Default), localPos=(1.06, 0.86, 0.63), size=(0.20, 0.12, 0.12), worldBounds.min=(0.96, 0.80, 0.57), worldBounds.max=(1.16, 0.92, 0.69)
+  [24] Backstop_Pocket5_X: enabled=True, isTrigger=False, layer=0 (Default), localPos=(1.18, 0.86, -0.56), size=(0.12, 0.12, 0.20), worldBounds.min=(1.12, 0.80, -0.66), worldBounds.max=(1.24, 0.92, -0.46)
+  [25] Backstop_Pocket5_Z: enabled=True, isTrigger=False, layer=0 (Default), localPos=(1.06, 0.86, -0.63), size=(0.20, 0.12, 0.12), worldBounds.min=(0.96, 0.80, -0.69), worldBounds.max=(1.16, 0.92, -0.57)
+  [26] Backstop_Pocket2_Z: enabled=True, isTrigger=False, layer=0 (Default), localPos=(0.00, 0.86, 0.65), size=(0.22, 0.12, 0.12), worldBounds.min=(-0.11, 0.80, 0.59), worldBounds.max=(0.11, 0.92, 0.71)
+  [27] Backstop_Pocket3_Z: enabled=True, isTrigger=False, layer=0 (Default), localPos=(0.00, 0.86, -0.65), size=(0.22, 0.12, 0.12), worldBounds.min=(-0.11, 0.80, -0.71), worldBounds.max=(0.11, 0.92, -0.59)
+  [28] Table_OuterBoundary_North: enabled=True, isTrigger=False, layer=0 (Default), localPos=(1.35, 0.86, 0.00), size=(0.16, 0.30, 2.00), worldBounds.min=(1.27, 0.71, -1.00), worldBounds.max=(1.43, 1.01, 1.00)
+  [29] Table_OuterBoundary_South: enabled=True, isTrigger=False, layer=0 (Default), localPos=(-1.35, 0.86, 0.00), size=(0.16, 0.30, 2.00), worldBounds.min=(-1.43, 0.71, -1.00), worldBounds.max=(-1.27, 1.01, 1.00)
+  [30] Table_OuterBoundary_East: enabled=True, isTrigger=False, layer=0 (Default), localPos=(0.00, 0.86, 0.85), size=(3.00, 0.30, 0.16), worldBounds.min=(-1.50, 0.71, 0.77), worldBounds.max=(1.50, 1.01, 0.93)
+  [31] Table_OuterBoundary_West: enabled=True, isTrigger=False, layer=0 (Default), localPos=(0.00, 0.86, -0.85), size=(3.00, 0.30, 0.16), worldBounds.min=(-1.50, 0.71, -0.93), worldBounds.max=(1.50, 1.01, -0.77)
+
+--- All other Colliders under TableWrapper ---
+  Collider 'Cabinet' (BoxCollider): enabled=False, isTrigger=False, layer=0, bounds.min=(0.00, 0.00, 0.00), bounds.max=(0.00, 0.00, 0.00)
+  Collider 'Cabinet' (BoxCollider): enabled=False, isTrigger=False, layer=0, bounds.min=(0.00, 0.00, 0.00), bounds.max=(0.00, 0.00, 0.00)
+  Collider 'Cabinet' (BoxCollider): enabled=False, isTrigger=False, layer=0, bounds.min=(0.00, 0.00, 0.00), bounds.max=(0.00, 0.00, 0.00)
+  Collider 'Corner Pockets' (MeshCollider): enabled=False, isTrigger=False, layer=0, bounds.min=(-0.01, 0.85, 0.00), bounds.max=(-0.01, 0.85, 0.00)
+  Collider 'Cushions' (MeshCollider): enabled=False, isTrigger=False, layer=0, bounds.min=(-0.01, 0.85, 0.00), bounds.max=(-0.01, 0.85, 0.00)
+  Collider 'Holes' (MeshCollider): enabled=False, isTrigger=False, layer=0, bounds.min=(-0.01, 0.79, 0.00), bounds.max=(-0.01, 0.79, 0.00)
+  Collider 'Play Field' (MeshCollider): enabled=True, isTrigger=False, layer=0, bounds.min=(-1.13, 0.82, -0.56), bounds.max=(1.13, 0.83, 0.56)
+  Collider 'Upper part' (MeshCollider): enabled=False, isTrigger=False, layer=0, bounds.min=(-0.01, 0.84, 0.00), bounds.max=(-0.01, 0.84, 0.00)
+  Collider 'Pocket_0_FootLeft' (SphereCollider): enabled=True, isTrigger=True, layer=0, bounds.min=(-1.17, 0.78, 0.50), bounds.max=(-1.06, 0.89, 0.61)
+  Collider 'Pocket_1_FootRight' (SphereCollider): enabled=True, isTrigger=True, layer=0, bounds.min=(-1.17, 0.78, -0.61), bounds.max=(-1.06, 0.89, -0.50)
+  Collider 'Pocket_2_SideLeft' (SphereCollider): enabled=True, isTrigger=True, layer=0, bounds.min=(-0.06, 0.78, 0.53), bounds.max=(0.06, 0.89, 0.64)
+  Collider 'Pocket_3_SideRight' (SphereCollider): enabled=True, isTrigger=True, layer=0, bounds.min=(-0.06, 0.78, -0.64), bounds.max=(0.06, 0.89, -0.53)
+  Collider 'Pocket_4_HeadLeft' (SphereCollider): enabled=True, isTrigger=True, layer=0, bounds.min=(1.06, 0.78, 0.50), bounds.max=(1.17, 0.89, 0.61)
+  Collider 'Pocket_5_HeadRight' (SphereCollider): enabled=True, isTrigger=True, layer=0, bounds.min=(1.06, 0.78, -0.61), bounds.max=(1.17, 0.89, -0.50)
+  Collider 'ClothBedCollider' (BoxCollider): enabled=True, isTrigger=False, layer=0, bounds.min=(-1.17, 0.82, -0.61), bounds.max=(1.17, 0.84, 0.61)
+
+Total BallControllers found in scene: 16
+Testing with ball 'GameBall_00': layer=0 (Default), radius=0.02855, mass=0.17, freezePosY=True, isKinematic=False
+
+--- TEST 1: Shoot Ball toward +Z (Left Side Rail at X=0.5m, v=3m/s) ---
+[+Z] Bounced=True, Pocketed=False, Contained=True, PosX Range=[0.500, 0.500], PosZ Range=[-0.491, 0.498], FinalVel=(0.00, 0.00, 1.75)
+
+--- TEST 2: Shoot Ball toward -Z (Right Side Rail at X=0.5m, v=3m/s) ---
+[-Z] Bounced=True, Pocketed=False, Contained=True, PosX Range=[0.500, 0.500], PosZ Range=[-0.498, 0.491], FinalVel=(0.00, 0.00, -1.75)
+
+--- TEST 3: Shoot Ball toward +X (Head Rail at Z=0m, v=3m/s) ---
+[+X] Bounced=True, Pocketed=False, Contained=True, PosX Range=[-0.503, 1.043], PosZ Range=[-0.004, 0.000], FinalVel=(1.16, 0.00, -0.01)
+
+--- TEST 4: Shoot Ball toward -X (Foot Rail at Z=0m, v=3m/s) ---
+[-X] Bounced=True, Pocketed=False, Contained=True, PosX Range=[-0.703, 0.753], PosZ Range=[-0.166, 0.000], FinalVel=(0.83, 0.00, -0.10)
+
+--- TEST 5: Maximum Impulse Shot (v=10.6m/s, max break speed) toward +Z rail ---
+[MaxPowerSide] Bounced=True, Pocketed=False, Contained=True, PosX Range=[0.331, 1.030], PosZ Range=[-0.474, 0.474], FinalVel=(-0.46, 0.00, 0.26)
+
+--- TEST 6: Shoot toward Corner Pocket 4 (HeadLeft) ---
+[CornerPocket4] Bounced=True, Pocketed=False, Contained=True, PosX Range=[-0.897, 1.007], PosZ Range=[-0.458, 0.458], FinalVel=(0.10, 0.00, -0.01)
+
+--- TEST 7: Shoot toward Side Pocket 2 (SideLeft) ---
+[SidePocket2] Bounced=True, Pocketed=False, Contained=True, PosX Range=[0.000, 1.038], PosZ Range=[-0.492, 0.476], FinalVel=(-0.10, 0.00, 1.24)
+
+--- TEST 8: Angled Shot into Corner Jaw (X=0.92, Z=0.48) ---
+[CornerJaw] Bounced=True, Pocketed=False, Contained=True, PosX Range=[0.400, 1.028], PosZ Range=[-0.500, 0.474], FinalVel=(-0.21, 0.00, 0.03)

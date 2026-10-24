@@ -18,6 +18,7 @@ namespace Game.Billiards.Rules
         private List<int> ballsThatHitRail = new List<int>();
         private bool cueBallScratch = false;
         private bool anyBallOffTable = false;
+        private List<int> ballsDrivenOffTable = new List<int>();
         private bool isTracking = false;
 
         public int FirstContactBall => firstContactBall;
@@ -25,6 +26,7 @@ namespace Game.Billiards.Rules
         public IReadOnlyList<int> BallsThatHitRail => ballsThatHitRail;
         public bool CueBallScratch => cueBallScratch;
         public bool AnyBallOffTable => anyBallOffTable;
+        public IReadOnlyList<int> BallsDrivenOffTable => ballsDrivenOffTable;
 
         public event Action<int> OnFirstContactOccurred;
         public event Action<BallController, int> OnBallPocketDetected;
@@ -87,6 +89,7 @@ namespace Game.Billiards.Rules
             ballsThatHitRail.Clear();
             cueBallScratch = false;
             anyBallOffTable = false;
+            ballsDrivenOffTable.Clear();
         }
 
         private void HandleBallCollision(BallController ball, Collision collision)
@@ -149,8 +152,38 @@ namespace Game.Billiards.Rules
             }
         }
 
+        public void RecordBallOffTable(int ballNum)
+        {
+            if (!ballsDrivenOffTable.Contains(ballNum))
+            {
+                ballsDrivenOffTable.Add(ballNum);
+                anyBallOffTable = true;
+            }
+        }
+
         public ShotResult BuildShotResult()
         {
+            // Kiểm tra các bi văng khỏi bàn dựa trên tọa độ Y và ranh giới bàn
+            if (ballManager != null && tableWrapper != null)
+            {
+                var allBalls = ballManager.AllBalls;
+                for (int i = 0; i < allBalls.Length; i++)
+                {
+                    var ball = allBalls[i];
+                    if (ball == null || !ball.gameObject.activeInHierarchy || ball.IsPocketed) continue;
+
+                    Vector3 pos = ball.transform.position;
+                    // Nếu bi rơi thấp hơn mặt nỉ hoặc văng ra ngoài bàn mà chưa vào lỗ
+                    bool belowTable = pos.y < (tableWrapper.ClothSurfaceY - 0.08f);
+                    bool outsideBounds = !tableWrapper.IsInsidePlayArea(pos, margin: -0.15f);
+
+                    if (belowTable || outsideBounds)
+                    {
+                        RecordBallOffTable(ball.BallNumber);
+                    }
+                }
+            }
+
             ShotResult result = new ShotResult
             {
                 firstContactBall = this.firstContactBall,
@@ -158,6 +191,7 @@ namespace Game.Billiards.Rules
                 anyBallOffTable = this.anyBallOffTable
             };
 
+            result.ballsDrivenOffTable.AddRange(this.ballsDrivenOffTable);
             result.pocketedBalls.AddRange(this.pocketedBalls);
             foreach (var kvp in this.pocketedBallPockets)
             {

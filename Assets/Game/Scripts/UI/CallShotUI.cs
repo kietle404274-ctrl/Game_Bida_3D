@@ -81,6 +81,13 @@ namespace Game.Billiards.UI
 
         public void RefreshCallShotOptions()
         {
+            // Luật gọi bi/gọi lỗ đã được bỏ: luôn ẩn bảng Call Shot và xóa mọi lựa chọn đang có
+            if (panelRoot != null) panelRoot.SetActive(false);
+            if (inputController != null) inputController.ClearCallShot();
+        }
+
+        private void RefreshCallShotOptionsLegacy()
+        {
             if (matchStateManager == null || matchStateManager.State == null) return;
 
             MatchState state = matchStateManager.State;

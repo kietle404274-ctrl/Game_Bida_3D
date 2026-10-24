@@ -19,6 +19,14 @@ namespace Game.Billiards.Match
         public event Action<RackOutcome> OnRackEnded;
         public event Action<int> OnMatchWon;
 
+        /// <summary>Phát sau khi một ván mới đã sẵn sàng (bảng điểm, nhóm bi, lượt đã reset) để UI / điều khiển đồng bộ lại.</summary>
+        public event Action OnRackStarted;
+
+        public void RaiseRackStarted()
+        {
+            OnRackStarted?.Invoke();
+        }
+
         public void Initialize(MatchSettings settings, string playerAName = "Player 1", string playerBName = "AI / Player 2", bool playerBIsAi = false)
         {
             matchState = new MatchState
@@ -42,8 +50,11 @@ namespace Game.Billiards.Match
             }
         }
 
+        private int lastRackWinnerIndex = -1;
+
         public void RecordRackWin(int winnerIndex)
         {
+            lastRackWinnerIndex = winnerIndex;
             if (winnerIndex == 0)
             {
                 matchState.playerARackWins++;
@@ -71,8 +82,12 @@ namespace Game.Billiards.Match
         public void StartNextRack()
         {
             matchState.rackNumber++;
-            matchState.ResetForNewRack();
-            SetPhase(MatchPhase.BreakSetup);
+            int nextBreaker = (lastRackWinnerIndex >= 0) ? lastRackWinnerIndex : 0;
+            matchState.ResetForNewRack(nextBreaker);
+            // ResetForNewRack đã gán phase = BreakSetup trực tiếp nên SetPhase sẽ không phát sự kiện (phase không đổi).
+            // Phát thủ công để AI / TurnManager / HUD nhận biết ván mới (nếu không AI sẽ đứng yên, không phá bi).
+            OnPhaseChanged?.Invoke(MatchPhase.BreakSetup);
+            OnRackStarted?.Invoke();
         }
     }
 }

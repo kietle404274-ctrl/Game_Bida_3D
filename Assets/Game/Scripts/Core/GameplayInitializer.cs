@@ -36,17 +36,130 @@ namespace Game.Billiards.Core
 
         private void Awake()
         {
+            ApplyGlobalPhysicsSettings();
+            RemoveRedundantCueSticks();
             FindReferencesIfMissing();
+
+            if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Lobby")
+            {
+                isLobbyDisplayMode = true;
+                DisableGameplayForLobby();
+            }
         }
 
-        private void Start()
+        /// <summary>
+        /// Scene Lobby chỉ là bối cảnh trưng bày: tắt toàn bộ điều khiển gameplay (chuột điều khiển cơ/camera/AI/HUD)
+        /// để chuột dành riêng cho các nút sảnh. Camera do LobbyCameraOrbit điều khiển.
+        /// </summary>
+        private void DisableGameplayForLobby()
         {
-            SetupWiring();
+            if (inputController != null) inputController.enabled = false;
+            if (ballInHandController != null) ballInHandController.enabled = false;
+            if (contactSelector != null) contactSelector.enabled = false;
+            if (aiController != null) aiController.enabled = false;
+            if (gameplayHUD != null) gameplayHUD.enabled = false;
+            if (turnManager != null) turnManager.enabled = false;
+            if (shotExecutor != null) shotExecutor.enabled = false;
+            if (eventCollector != null) eventCollector.enabled = false;
+            if (matchStateManager != null) matchStateManager.enabled = false;
+            if (cameraDirector != null) cameraDirector.enabled = false;
+        }
+
+        private bool isLobbyDisplayMode;
+
+        private System.Collections.IEnumerator LobbyDisplayRoutine()
+        {
+            if (ballManager != null) ballManager.ResetRack();
+
+            // Chờ 1 frame để CueController.Start() chạy xong rồi mới đặt cơ cố định
+            yield return null;
+
+            var cueBall = ballManager != null ? ballManager.CueBall : null;
+            if (cueBall != null && cueController != null && tableWrapper != null)
+            {
+                Vector3 head = tableWrapper.HeadSpot;
+                Vector3 foot = tableWrapper.FootSpot;
+                Vector3 center = (head + foot) * 0.5f;
+
+                // u: trục dọc bàn (hướng về phía bi cái), v: trục ngang bàn
+                Vector3 u = head - foot; u.y = 0f;
+                if (u.sqrMagnitude < 0.0001f) u = Vector3.right;
+                u.Normalize();
+                Vector3 v = Vector3.Cross(Vector3.up, u).normalized;
+
+                // Cơ nằm trên mặt nỉ, chéo ~22° so với trục bàn, lệch về một bên cho cân đối với dàn bi
+                float yaw = 22f * Mathf.Deg2Rad;
+                Vector3 forward = (-u * Mathf.Cos(yaw) + v * Mathf.Sin(yaw)).normalized;
+                Vector3 target = center + u * -0.08f + v * 0.16f;
+
+                float radius = (ballManager != null && ballManager.PhysicsConfig != null) ? ballManager.PhysicsConfig.BallRadius : 0.0286f;
+                float clothY = head.y - radius;
+
+                cueController.SetCueBallTarget(cueBall.transform);
+                cueController.PlaceAtRest(new Vector3(target.x, clothY + 0.02f, target.z), Quaternion.LookRotation(forward, Vector3.up));
+
+                // Căn lại theo bounds thật của cây cơ: tâm cơ về điểm đặt, đáy cơ chạm mặt nỉ
+                Transform stick = cueController.StickRoot;
+                var rends = stick.GetComponentsInChildren<Renderer>();
+                if (rends.Length > 0)
+                {
+                    Bounds b = rends[0].bounds;
+                    for (int i = 1; i < rends.Length; i++) b.Encapsulate(rends[i].bounds);
+                    Vector3 shift = new Vector3(target.x - b.center.x, clothY - b.min.y, target.z - b.center.z);
+                    stick.position += shift;
+                }
+            }
+        }
+
+        private void ApplyGlobalPhysicsSettings()
+        {
+            UnityEngine.Physics.bounceThreshold = 0.05f;
+            UnityEngine.Physics.defaultSolverIterations = 12;
+            UnityEngine.Physics.defaultSolverVelocityIterations = 4;
+            UnityEngine.Physics.defaultMaxAngularSpeed = 100f;
+        }
+
+        private void RemoveRedundantCueSticks()
+        {
+            var oldCue1 = GameObject.Find("Cue Stick (1)");
+            if (oldCue1 != null) oldCue1.SetActive(false);
+            var oldCue2 = GameObject.Find("Cue Stick (2)");
+            if (oldCue2 != null) oldCue2.SetActive(false);
+        }
+
+        private System.Collections.IEnumerator Start()
+        {
+            if (isLobbyDisplayMode)
+            {
+                yield return LobbyDisplayRoutine();
+                yield break;
+            }
+
+            if (FindObjectOfType<UI.TvScoreboardDisplay>() == null)
+                gameObject.AddComponent<UI.TvScoreboardDisplay>();
 
             if (autoResetRackOnStart && ballManager != null)
             {
                 ballManager.ResetRack();
             }
+
+            // Chờ 1 frame để các script khác (CameraDirector, ...) hoàn tất Start()
+            yield return null;
+
+            bool introDone = false;
+            var intro = FindObjectOfType<RackIntroSequence>();
+            if (intro == null && ballManager != null)
+            {
+                intro = gameObject.AddComponent<RackIntroSequence>();
+            }
+
+            if (intro != null)
+            {
+                intro.Play(() => introDone = true);
+                while (!introDone) yield return null;
+            }
+
+            SetupWiring();
         }
 
         private void FindReferencesIfMissing()
@@ -86,11 +199,13 @@ namespace Game.Billiards.Core
                 if (cameraDirector != null)
                 {
                     cameraDirector.SetCueBallTarget(cueBall.transform);
+                    cameraDirector.SwitchToAimCamera();
                 }
 
                 if (cueController != null)
                 {
                     cueController.SetCueBallTarget(cueBall.transform);
+                    cueController.SetAimingState(true);
                     if (cameraDirector != null)
                     {
                         cueController.UpdateAim(cameraDirector.AimDirection, 0.35f);
@@ -113,7 +228,7 @@ namespace Game.Billiards.Core
             // 5. Khởi tạo MatchStateManager
             if (matchStateManager != null)
             {
-                var session = GameSession.Instance;
+                var session = GameSession.GetOrCreateInstance();
                 if (session != null)
                 {
                     matchStateManager.Initialize(
@@ -144,7 +259,7 @@ namespace Game.Billiards.Core
             // 8. Khởi tạo PlayerInputController
             if (inputController != null && cameraDirector != null && cueController != null && shotExecutor != null && movementMonitor != null)
             {
-                inputController.Initialize(cameraDirector, cueController, shotExecutor, movementMonitor, ballInHandController, contactSelector);
+                inputController.Initialize(cameraDirector, cueController, shotExecutor, movementMonitor, ballInHandController, contactSelector, matchStateManager, turnManager);
             }
 
             // 9. Khởi tạo GameplayHUD
@@ -158,7 +273,7 @@ namespace Game.Billiards.Core
             {
                 aiController.Initialize(matchStateManager, turnManager, ballManager, tableWrapper, shotExecutor, cueController, cameraDirector, ballInHandController);
 
-                var session = GameSession.Instance;
+                var session = GameSession.GetOrCreateInstance();
                 if (session != null)
                 {
                     aiController.SetAIEnabled(session.IsPlayerBAi, 1);

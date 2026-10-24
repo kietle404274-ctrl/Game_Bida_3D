@@ -13,14 +13,25 @@ namespace Game.Billiards.UI
         [SerializeField] private Text scoreText;
         [SerializeField] private Image avatarImage;
         [SerializeField] private GameObject turnHighlightObject;
-        [SerializeField] private Image panelBackgroundImage;
+        [SerializeField] private Graphic panelBackgroundImage;
         [SerializeField] private BallTrackerUI ballTracker;
+        [SerializeField] private TurnTimerUI turnTimer;
 
         [Header("Colors")]
-        [SerializeField] private Color activeTurnColor = new Color(0.2f, 0.8f, 0.4f, 1f);
-        [SerializeField] private Color inactiveTurnColor = new Color(0.25f, 0.25f, 0.25f, 0.8f);
+        [SerializeField] private Color activeTurnColor = new Color(0.22f, 0.40f, 0.62f, 0.98f);
+        [SerializeField] private Color inactiveTurnColor = new Color(0.13f, 0.21f, 0.35f, 0.96f);
 
         public BallTrackerUI BallTracker => ballTracker;
+
+        public void SetTimer(float remaining, float total)
+        {
+            if (turnTimer != null) turnTimer.SetTime(remaining, total);
+        }
+
+        public void ClearTimer()
+        {
+            if (turnTimer != null) turnTimer.Hide();
+        }
 
         public void SetPlayerInfo(string playerName, Sprite avatar = null)
         {

@@ -1,0 +1,113 @@
+================ TEST CORNER POCKET SHOT ================
+
+--- TESTING POCKET 0 (Pocket_0_FootLeft) ---
+Pocket position: (-1.11, 0.84, 0.55), Trigger radius=0.055, captureDist=0.068
+StartPos: (-0.80, 0.86, 0.23), Velocity: (-1.41, 0.00, 1.41)
+  Step 000: Pos=(-0.824, 0.864, 0.255), Vel=(-1.41, 1.41), DistToPocket=0.411, BallPocketed=False
+  Step 001: Pos=(-0.852, 0.864, 0.283), Vel=(-1.40, 1.40), DistToPocket=0.371, BallPocketed=False
+  Step 002: Pos=(-0.880, 0.864, 0.311), Vel=(-1.39, 1.39), DistToPocket=0.332, BallPocketed=False
+  Step 003: Pos=(-0.908, 0.864, 0.339), Vel=(-1.39, 1.39), DistToPocket=0.293, BallPocketed=False
+  Step 004: Pos=(-0.935, 0.864, 0.366), Vel=(-1.38, 1.38), DistToPocket=0.253, BallPocketed=False
+  Step 005: Pos=(-0.963, 0.864, 0.394), Vel=(-1.37, 1.37), DistToPocket=0.215, BallPocketed=False
+  Step 006: Pos=(-0.990, 0.864, 0.421), Vel=(-1.37, 1.37), DistToPocket=0.176, BallPocketed=False
+  Step 007: Pos=(-1.017, 0.864, 0.449), Vel=(-1.36, 1.36), DistToPocket=0.137, BallPocketed=False
+  Step 008: Pos=(-1.044, 0.864, 0.476), Vel=(-1.36, 1.36), DistToPocket=0.099, BallPocketed=False
+  Step 009: Pos=(-1.071, 0.864, 0.503), Vel=(-1.35, 1.35), DistToPocket=0.061, BallPocketed=False
+  >>> SUCCESS: POCKETED at step 9! Final pos=(-1.071, 0.503), dist=0.061
+Result for Pocket 0: Pocketed=True (step 9)
+
+--- TESTING POCKET 1 (Pocket_1_FootRight) ---
+Pocket position: (-1.11, 0.84, -0.55), Trigger radius=0.055, captureDist=0.068
+StartPos: (-0.80, 0.86, -0.23), Velocity: (-1.41, 0.00, -1.41)
+  Step 000: Pos=(-0.824, 0.864, -0.255), Vel=(-1.41, -1.41), DistToPocket=0.411, BallPocketed=False
+  Step 001: Pos=(-0.852, 0.864, -0.283), Vel=(-1.40, -1.40), DistToPocket=0.371, BallPocketed=False
+  Step 002: Pos=(-0.880, 0.864, -0.311), Vel=(-1.39, -1.39), DistToPocket=0.332, BallPocketed=False
+  Step 003: Pos=(-0.908, 0.864, -0.339), Vel=(-1.39, -1.39), DistToPocket=0.293, BallPocketed=False
+  Step 004: Pos=(-0.935, 0.864, -0.366), Vel=(-1.38, -1.38), DistToPocket=0.253, BallPocketed=False
+  Step 005: Pos=(-0.963, 0.864, -0.394), Vel=(-1.37, -1.37), DistToPocket=0.215, BallPocketed=False
+  Step 006: Pos=(-0.990, 0.864, -0.421), Vel=(-1.37, -1.37), DistToPocket=0.176, BallPocketed=False
+  Step 007: Pos=(-1.017, 0.864, -0.449), Vel=(-1.36, -1.36), DistToPocket=0.137, BallPocketed=False
+  Step 008: Pos=(-1.044, 0.864, -0.476), Vel=(-1.36, -1.36), DistToPocket=0.099, BallPocketed=False
+  Step 009: Pos=(-1.071, 0.864, -0.503), Vel=(-1.35, -1.35), DistToPocket=0.061, BallPocketed=False
+  >>> SUCCESS: POCKETED at step 9! Final pos=(-1.071, -0.503), dist=0.061
+Result for Pocket 1: Pocketed=True (step 9)
+
+--- TESTING POCKET 2 (Pocket_2_SideLeft) ---
+Pocket position: (0.00, 0.84, 0.58), Trigger radius=0.055, captureDist=0.068
+StartPos: (0.00, 0.86, 0.15), Velocity: (0.00, 0.00, 2.00)
+  Step 000: Pos=(0.000, 0.864, 0.192), Vel=(0.00, 1.99), DistToPocket=0.388, BallPocketed=False
+  Step 001: Pos=(0.000, 0.864, 0.232), Vel=(0.00, 1.98), DistToPocket=0.348, BallPocketed=False
+  Step 002: Pos=(0.000, 0.864, 0.271), Vel=(0.00, 1.97), DistToPocket=0.309, BallPocketed=False
+  Step 003: Pos=(0.000, 0.864, 0.310), Vel=(0.00, 1.96), DistToPocket=0.270, BallPocketed=False
+  Step 004: Pos=(0.000, 0.864, 0.350), Vel=(0.00, 1.95), DistToPocket=0.230, BallPocketed=False
+  Step 005: Pos=(0.000, 0.864, 0.388), Vel=(0.00, 1.94), DistToPocket=0.192, BallPocketed=False
+  Step 006: Pos=(0.000, 0.864, 0.427), Vel=(0.00, 1.94), DistToPocket=0.153, BallPocketed=False
+  Step 007: Pos=(0.000, 0.864, 0.466), Vel=(0.00, 1.93), DistToPocket=0.114, BallPocketed=False
+  Step 008: Pos=(0.000, 0.864, 0.504), Vel=(0.00, 1.92), DistToPocket=0.076, BallPocketed=False
+  >>> SUCCESS: POCKETED at step 8! Final pos=(0.000, 0.504), dist=0.076
+Result for Pocket 2: Pocketed=True (step 8)
+
+--- TESTING POCKET 3 (Pocket_3_SideRight) ---
+Pocket position: (0.00, 0.84, -0.58), Trigger radius=0.055, captureDist=0.068
+StartPos: (0.00, 0.86, -0.15), Velocity: (0.00, 0.00, -2.00)
+  Step 000: Pos=(0.000, 0.864, -0.192), Vel=(0.00, -1.99), DistToPocket=0.388, BallPocketed=False
+  Step 001: Pos=(0.000, 0.864, -0.232), Vel=(0.00, -1.98), DistToPocket=0.348, BallPocketed=False
+  Step 002: Pos=(0.000, 0.864, -0.271), Vel=(0.00, -1.97), DistToPocket=0.309, BallPocketed=False
+  Step 003: Pos=(0.000, 0.864, -0.310), Vel=(0.00, -1.96), DistToPocket=0.270, BallPocketed=False
+  Step 004: Pos=(0.000, 0.864, -0.350), Vel=(0.00, -1.95), DistToPocket=0.230, BallPocketed=False
+  Step 005: Pos=(0.000, 0.864, -0.388), Vel=(0.00, -1.94), DistToPocket=0.192, BallPocketed=False
+  Step 006: Pos=(0.000, 0.864, -0.427), Vel=(0.00, -1.94), DistToPocket=0.153, BallPocketed=False
+  Step 007: Pos=(0.000, 0.864, -0.466), Vel=(0.00, -1.93), DistToPocket=0.114, BallPocketed=False
+  Step 008: Pos=(0.000, 0.864, -0.504), Vel=(0.00, -1.92), DistToPocket=0.076, BallPocketed=False
+  >>> SUCCESS: POCKETED at step 8! Final pos=(0.000, -0.504), dist=0.076
+Result for Pocket 3: Pocketed=True (step 8)
+
+--- TESTING POCKET 4 (Pocket_4_HeadLeft) ---
+Pocket position: (1.11, 0.84, 0.55), Trigger radius=0.055, captureDist=0.068
+StartPos: (0.78, 0.86, 0.23), Velocity: (1.41, 0.00, 1.41)
+  Step 000: Pos=(0.812, 0.864, 0.255), Vel=(1.41, 1.41), DistToPocket=0.419, BallPocketed=False
+  Step 001: Pos=(0.840, 0.864, 0.283), Vel=(1.40, 1.40), DistToPocket=0.380, BallPocketed=False
+  Step 002: Pos=(0.868, 0.864, 0.311), Vel=(1.39, 1.39), DistToPocket=0.340, BallPocketed=False
+  Step 003: Pos=(0.895, 0.864, 0.339), Vel=(1.39, 1.39), DistToPocket=0.301, BallPocketed=False
+  Step 004: Pos=(0.923, 0.864, 0.366), Vel=(1.38, 1.38), DistToPocket=0.262, BallPocketed=False
+  Step 005: Pos=(0.951, 0.864, 0.394), Vel=(1.37, 1.37), DistToPocket=0.223, BallPocketed=False
+  Step 006: Pos=(0.978, 0.864, 0.421), Vel=(1.37, 1.37), DistToPocket=0.184, BallPocketed=False
+  Step 007: Pos=(1.005, 0.864, 0.449), Vel=(1.36, 1.36), DistToPocket=0.146, BallPocketed=False
+  Step 008: Pos=(1.032, 0.864, 0.476), Vel=(1.36, 1.36), DistToPocket=0.108, BallPocketed=False
+  Step 009: Pos=(1.059, 0.864, 0.503), Vel=(1.35, 1.35), DistToPocket=0.069, BallPocketed=False
+  >>> SUCCESS: POCKETED at step 9! Final pos=(1.059, 0.503), dist=0.069
+Result for Pocket 4: Pocketed=True (step 9)
+
+--- TESTING POCKET 5 (Pocket_5_HeadRight) ---
+Pocket position: (1.11, 0.84, -0.55), Trigger radius=0.055, captureDist=0.068
+StartPos: (0.78, 0.86, -0.23), Velocity: (1.41, 0.00, -1.41)
+  Step 000: Pos=(0.812, 0.864, -0.255), Vel=(1.41, -1.41), DistToPocket=0.419, BallPocketed=False
+  Step 001: Pos=(0.840, 0.864, -0.283), Vel=(1.40, -1.40), DistToPocket=0.380, BallPocketed=False
+  Step 002: Pos=(0.868, 0.864, -0.311), Vel=(1.39, -1.39), DistToPocket=0.340, BallPocketed=False
+  Step 003: Pos=(0.895, 0.864, -0.339), Vel=(1.39, -1.39), DistToPocket=0.301, BallPocketed=False
+  Step 004: Pos=(0.923, 0.864, -0.366), Vel=(1.38, -1.38), DistToPocket=0.262, BallPocketed=False
+  Step 005: Pos=(0.951, 0.864, -0.394), Vel=(1.37, -1.37), DistToPocket=0.223, BallPocketed=False
+  Step 006: Pos=(0.978, 0.864, -0.421), Vel=(1.37, -1.37), DistToPocket=0.184, BallPocketed=False
+  Step 007: Pos=(1.005, 0.864, -0.449), Vel=(1.36, -1.36), DistToPocket=0.146, BallPocketed=False
+  Step 008: Pos=(1.032, 0.864, -0.476), Vel=(1.36, -1.36), DistToPocket=0.108, BallPocketed=False
+  Step 009: Pos=(1.059, 0.864, -0.503), Vel=(1.35, -1.35), DistToPocket=0.069, BallPocketed=False
+  >>> SUCCESS: POCKETED at step 9! Final pos=(1.059, -0.503), dist=0.069
+Result for Pocket 5: Pocketed=True (step 9)
+
+================ TEST FACING COLLISION SOLIDITY ================
+
+--- TESTING FACING IMPACT: Pocket0_FootFacing ---
+  >>> REFLECTED at step 1: Pos=(-1.044, 0.864, 0.444), ReflectedVel=(2.56, 1.26)
+Result for Pocket0_FootFacing: CollidedAndReflected=True, Penetrated=False
+
+--- TESTING FACING IMPACT: Pocket0_SideFacing ---
+  >>> REFLECTED at step 1: Pos=(-1.000, 0.864, 0.474), ReflectedVel=(-1.67, -2.34)
+Result for Pocket0_SideFacing: CollidedAndReflected=True, Penetrated=False
+
+--- TESTING FACING IMPACT: Pocket1_FootFacing ---
+  >>> REFLECTED at step 1: Pos=(-1.044, 0.864, -0.444), ReflectedVel=(2.56, -1.26)
+Result for Pocket1_FootFacing: CollidedAndReflected=True, Penetrated=False
+
+--- TESTING FACING IMPACT: Pocket1_SideFacing ---
+  >>> REFLECTED at step 1: Pos=(-1.000, 0.864, -0.474), ReflectedVel=(-1.67, 2.34)
+Result for Pocket1_SideFacing: CollidedAndReflected=True, Penetrated=False

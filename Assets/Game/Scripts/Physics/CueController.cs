@@ -30,19 +30,90 @@ namespace Game.Billiards.Physics
         private bool isStriking = false;
         private float currentPower01 = 0f;
         private Vector3 currentAimDirection = Vector3.forward;
+        private Transform collidersStrippedFor;
+
+        /// <summary>
+        /// Cây cơ chỉ là hình ảnh minh họa: lực đánh được áp qua ShotExecutor. Tắt toàn bộ collider/rigidbody để cơ xoay chạm bi mục tiêu cũng không thể hất bi.
+        /// </summary>
+        private void StripCuePhysics()
+        {
+            if (cueStickRoot == null || collidersStrippedFor == cueStickRoot) return;
+            collidersStrippedFor = cueStickRoot;
+
+            foreach (var rbody in cueStickRoot.GetComponentsInChildren<Rigidbody>(true))
+            {
+                rbody.isKinematic = true;
+                rbody.detectCollisions = false;
+            }
+            foreach (var col in cueStickRoot.GetComponentsInChildren<Collider>(true))
+            {
+                col.enabled = false;
+            }
+        }
 
         public bool IsVisible => cueStickRoot != null && cueStickRoot.gameObject.activeSelf;
+        public Transform StickRoot => cueStickRoot != null ? cueStickRoot : transform;
+
+        private void Start()
+        {
+            if (cueStickRoot == null) cueStickRoot = transform;
+            AutoFindCueBallTargetIfMissing();
+
+            var camDir = FindObjectOfType<Camera.CameraDirector>();
+            Vector3 initialDir = camDir != null ? camDir.AimDirection : Vector3.forward;
+            UpdateAim(initialDir, 0.35f);
+        }
+
+        private void AutoFindCueBallTargetIfMissing()
+        {
+            if (cueBallTarget == null)
+            {
+                var ballMgr = FindObjectOfType<Match.BallManager>();
+                if (ballMgr != null && ballMgr.CueBall != null)
+                {
+                    cueBallTarget = ballMgr.CueBall.transform;
+                }
+                else
+                {
+                    var whiteBall = GameObject.Find("GameBall_00");
+                    if (whiteBall != null) cueBallTarget = whiteBall.transform;
+                }
+            }
+        }
 
         public void Initialize(Transform cueStick, Transform cueBall)
         {
-            cueStickRoot = cueStick;
+            cueStickRoot = cueStick != null ? cueStick : transform;
             cueBallTarget = cueBall;
             SetAimingState(true);
+            if (cueBallTarget != null)
+            {
+                UpdateAim(Vector3.forward, 0.35f);
+            }
         }
 
         public void SetCueBallTarget(Transform target)
         {
             cueBallTarget = target;
+            if (cueBallTarget != null)
+            {
+                var camDir = FindObjectOfType<Camera.CameraDirector>();
+                Vector3 aimDir = camDir != null ? camDir.AimDirection : Vector3.forward;
+                UpdateAim(aimDir, currentPower01 > 0 ? currentPower01 : 0.35f);
+            }
+        }
+
+        /// <summary>
+        /// Đặt cây cơ nằm yên tại một vị trí/góc cố định (dùng cho cảnh trưng bày ở sảnh). Hướng forward của cơ là hướng đầu cơ.
+        /// </summary>
+        public void PlaceAtRest(Vector3 position, Quaternion rotation)
+        {
+            if (cueStickRoot == null) cueStickRoot = transform;
+            StripCuePhysics();
+            isStriking = false;
+            SetAimingState(true);
+            cueStickRoot.position = position;
+            cueStickRoot.rotation = rotation;
         }
 
         public void SetAimingState(bool aiming)
@@ -56,6 +127,10 @@ namespace Game.Billiards.Physics
 
         public void UpdateAim(Vector3 aimDirection, float power01)
         {
+            if (cueStickRoot == null) cueStickRoot = transform;
+            StripCuePhysics();
+            AutoFindCueBallTargetIfMissing();
+
             if (!isAiming || isStriking || cueStickRoot == null || cueBallTarget == null)
                 return;
 

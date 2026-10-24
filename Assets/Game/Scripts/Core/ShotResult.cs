@@ -12,6 +12,7 @@ namespace Game.Billiards.Core
         public List<int> ballsThatHitRail = new List<int>();
         public bool cueBallScratch = false;
         public bool anyBallOffTable = false;
+        public List<int> ballsDrivenOffTable = new List<int>();
         public FoulType foul = FoulType.None;
         public bool calledShotMade = false;
         public bool rackEnded = false;
@@ -24,6 +25,7 @@ namespace Game.Billiards.Core
             pocketedBalls = new List<int>();
             pocketedBallPockets = new Dictionary<int, int>();
             ballsThatHitRail = new List<int>();
+            ballsDrivenOffTable = new List<int>();
         }
     }
 }

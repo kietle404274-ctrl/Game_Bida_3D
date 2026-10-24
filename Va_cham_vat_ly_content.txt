@@ -1,0 +1,346 @@
+ĐẶC TẢ XÂY DỰNG HỆ THỐNG VẬT LÝ BIDA 3D
+Dành cho Antigravity Coding Agent
+Project: Game Bida 3D thông minh ứng dụng AIUnity 2022.3.62f3 LTS • HDRP • The Billiards RoomPhiên bản tài liệu: 1.0
+Mục tiêu tài liệu: Hướng dẫn Antigravity xây dựng hệ thống vật lý có hành vi gần thực tế, ổn định, dễ kiểm thử và phù hợp phạm vi đồ án. Tài liệu ưu tiên tính đúng vật lý và khả năng hiệu chỉnh hơn việc dùng các giá trị mặc định của Unity.
+
+
+1. Phạm vi và mục tiêu chất lượng
+Hệ thống phải mô phỏng hợp lý: chuyển động bi, va chạm bi-bi, va chạm bi-băng, ma sát vải, lăn/trượt, xoáy, cu-lê/trô, bi rơi lỗ và trạng thái dừng.
+Unity PhysX được dùng làm nền tảng phát hiện/giải va chạm cơ bản; các hành vi đặc thù của bida phải được bổ sung bằng code riêng.
+Mục tiêu là physically plausible/high-fidelity cho game và đồ án, không tuyên bố là mô phỏng khoa học tuyệt đối.
+Mọi thông số vật lý phải tập trung trong ScriptableObject để hiệu chỉnh bằng thực nghiệm, không hard-code rải rác.
+Nguyên tắc quan trọng: Không dùng chỉ Rigidbody.drag, Angular Drag và Bounciness mặc định để đại diện toàn bộ vật lý bida. Sliding friction, rolling resistance, spin decay và cushion response phải có logic riêng.
+
+2. Quy tắc bắt buộc cho Antigravity
+Không sửa trực tiếp asset/prefab gốc của The Billiards Room. Tạo Prefab Variant hoặc wrapper prefab và code trong Assets/Game/.
+Không tự thay đổi Unity version, HDRP, Photon package hoặc package bên thứ ba.
+Không thay scale/model/collider gốc hàng loạt trước khi đo và xác nhận ảnh hưởng.
+Nếu có điểm chưa rõ, xung đột hoặc thiếu dữ liệu: PHẢI dừng và hỏi người dùng trước khi làm. Không tự đoán. Có thể đưa 2–4 phương án kèm ưu/nhược điểm để người dùng chọn.
+Mỗi module/nhóm thay đổi hoàn chỉnh phải tạo một Git commit riêng, nội dung commit rõ ràng.
+Không commit Library/, Temp/, Logs/, Obj/, Build cache.
+Phải tạo scene/prefab test riêng trước khi áp dụng vào scene chính.
+Không dùng magic number trong script. Tất cả hệ số vật lý phải đặt trong BilliardsPhysicsConfig.asset hoặc cấu hình tương đương.
+Mọi logic physics phải chạy trong FixedUpdate hoặc bước physics cố định, không phụ thuộc FPS.
+Không giải va chạm hai lần: nếu một loại va chạm dùng custom resolver thì không đồng thời để Physic Material tạo bounce không kiểm soát.
+3. Chuẩn đơn vị, kích thước và tọa độ
+Hạng mục
+Yêu cầu
+Unity scale
+1 Unity unit = 1 mét.
+Bi pool chuẩn
+Đường kính mục tiêu 57.15 mm; bán kính 0.028575 m. Khối lượng dùng 0.17 kg nếu asset hiện tại đang ở 0.17 kg; cho phép hiệu chỉnh trong dải chuẩn 0.156–0.170 kg.
+Bàn hiện tại
+Antigravity phải đo kích thước vùng chơi thực tế của asset. Nếu không khớp chuẩn mục tiêu, phải hỏi người dùng trước khi scale wrapper; không sửa mesh gốc.
+Mặt phẳng gameplay
+X-Z là mặt bàn, Y là phương thẳng đứng. Gravity theo -Y.
+Tâm bi
+Tâm SphereCollider phải trùng tâm mesh; radius collider phải khớp kích thước bi sau scale.
+
+Nguồn tham khảo: WPA công bố bi đường kính 57.15 mm và khối lượng 156–170 g trong đặc tả thiết bị; các giá trị này dùng làm mốc scale/khối lượng ban đầu.
+
+4. Kiến trúc Prefab và Collider
+4.1. Ball wrapper prefab
+BallRoot (Prefab Variant / Wrapper)├── Visual (mesh/material từ asset gốc)├── SphereCollider├── Rigidbody├── BallPhysicsController├── BallStateTracker├── BallAudioEmitter└── BallDebugView (Editor/Development only)
+
+SphereCollider ưu tiên tuyệt đối cho bi. Không dùng MeshCollider cho bi.
+Visual child có thể giữ scale/rotation riêng; collider/physics root phải chuẩn hóa transform.
+Rigidbody Interpolation = Interpolate để hình ảnh mượt; physics vẫn tính fixed-step.
+4.2. Bàn và băng
+TablePhysicsRoot├── PlayFieldCollider├── Cushion_North├── Cushion_South├── Cushion_East├── Cushion_West├── PocketJaw_*└── PocketTrigger_*
+
+Không dùng một MeshCollider phức tạp duy nhất cho toàn bộ bàn nếu có thể tách thành collider đơn giản/convex ở vùng vật lý quan trọng.
+Băng phải có collider riêng và tag/layer Cushion để custom cushion response nhận diện chính xác.
+Miệng lỗ (pocket jaw) phải có geometry/collider riêng; đây là vùng cần hiệu chỉnh kỹ vì quyết định cảm giác pocket thật hay giả.
+5. Thiết lập Unity Physics nền tảng
+Thiết lập
+Giá trị khởi đầu
+Ghi chú
+Fixed Timestep
+0.01 s
+100 Hz; nếu CPU đủ và break shot vẫn thiếu ổn định có thể thử 0.008333 s (120 Hz).
+Maximum Allowed Timestep
+0.05–0.1 s
+Tránh physics catch-up quá lớn khi frame drop.
+Collision Detection
+Continuous Dynamic cho bi đang chuyển động nhanh
+Unity khuyến nghị dùng CCD cho vật thể nhanh; CCD không thay thế timestep đủ nhỏ.
+Interpolate
+Interpolate
+Chỉ làm mượt render, không thay đổi kết quả vật lý.
+Use Gravity
+On
+Cần cho pocket drop; trên play field phản lực collider giữ bi trên mặt bàn.
+Solver Iterations
+Tăng vừa phải nếu stack/contact rung
+Không tăng vô hạn; đo profiler trước.
+Sleep Threshold
+Thấp và có custom stop threshold
+Dùng để tránh bi rung mãi nhưng không làm bi dừng giả quá sớm.
+
+Unity 2022.3: Continuous Dynamic giúp giảm tunneling ở Rigidbody nhanh nhưng tốn chi phí và không bảo đảm kết quả va chạm hoàn toàn chính xác; vì vậy vẫn cần timestep nhỏ và collider đơn giản.
+
+6. Physic Material: chỉ dùng làm nền, không thay thế mô hình bida
+Collider
+Friction khởi đầu
+Bounciness khởi đầu
+Combine
+Ball
+0.03–0.06
+0.92–0.96
+Friction: Minimum; Bounce: Maximum hoặc theo test
+Cloth/Play field
+rất thấp trong Physic Material
+0
+Friction: Minimum
+Cushion
+thấp
+0 hoặc rất thấp nếu custom cushion resolver hoạt động
+Custom resolver quyết định rebound
+Pocket/Jaw
+hiệu chỉnh riêng
+thấp
+Theo test
+
+Khi custom cloth friction hoạt động, Physic Material của mặt bàn phải đủ thấp để không cộng thêm lực cản ngoài ý muốn.
+Khi custom cushion response hoạt động, tránh để Bounciness lớn gây double-bounce.
+7. Mô hình ma sát vải: Sliding → Rolling → Rest
+Mấu chốt của độ thật: Bi bida không giảm tốc theo một hệ số drag cố định. Sau cú đánh, bi có thể trượt trên vải; ma sát trượt vừa giảm vận tốc tịnh tiến vừa thay đổi tốc độ quay. Khi điều kiện lăn thuần đạt được, chuyển sang rolling resistance nhỏ hơn.
+
+Trạng thái
+Điều kiện phát hiện
+Xử lý
+Sliding
+|v_contact| > slidingThreshold
+Tính vận tốc tương đối tại điểm tiếp xúc với vải; áp lực ma sát ngược hướng trượt, tạo cả lực và torque.
+Rolling
+|v_contact| ≤ threshold và |v| > stopThreshold
+Giảm tốc bằng rolling resistance nhỏ; duy trì quan hệ lăn gần v ≈ ω×R trên mặt phẳng.
+Spinning in place
+|v| nhỏ nhưng |ω_y| đáng kể
+Giảm sidespin bằng spin deceleration riêng.
+Rest
+|v| và |ω| dưới ngưỡng trong một khoảng thời gian
+Đặt velocity/angularVelocity = 0 một lần để loại jitter, sau đó sleep.
+
+contactVelocity = linearVelocity + cross(angularVelocity, -up * radius)if |contactVelocity| > slideThreshold -> Slidingelse if |linearVelocity| > stopThreshold -> Rollingelse -> Spin/Rest evaluation
+
+Hệ số khởi đầu để tune: sliding friction μ ≈ 0.15–0.25; rolling resistance tương đương μ_r ≈ 0.005–0.015; spin deceleration 5–15 rad/s². Đây là dải tham khảo, không phải giá trị bắt buộc.
+Không dùng Rigidbody.drag để mô phỏng rolling resistance chính. drag có thể để 0 hoặc rất thấp.
+8. Va chạm bi–bi
+Bi có cùng kích thước và gần cùng khối lượng. Với va chạm không spin/không ma sát, thành phần vận tốc dọc đường nối tâm truyền chủ yếu giữa hai bi; thành phần tiếp tuyến gần giữ nguyên.
+Mục tiêu baseline: hệ số restitution e_ball ≈ 0.92–0.98 và ma sát tiếp xúc rất nhỏ μ_ball ≈ 0.03–0.08.
+Giai đoạn đầu cho PhysX giải xung pháp tuyến bằng SphereCollider; tune restitution bằng Physic Material. Không can thiệp velocity trong OnCollisionEnter nếu chưa tắt/kiểm soát bounce mặc định.
+Giai đoạn nâng cao: bổ sung throw/spin-transfer có giới hạn bằng tangential impulse nhỏ. Phải có flag EnableAdvancedBallBallFriction và test riêng; không bật mặc định trước khi baseline ổn định.
+n = normalize(p2 - p1)relativeNormalSpeed = dot(v1 - v2, n)Target restitution range: 0.92 <= e <= 0.98Advanced tangential impulse must be clamped by Coulomb friction: |J_t| <= μ * |J_n|
+
+Không được: Tự đặt góc tách sau va chạm bằng mẹo hình học cứng. Góc phải là kết quả của vận tốc, động lượng và tiếp xúc vật lý; AI có thể dùng hình học để dự đoán, nhưng physics engine không được “ép” quỹ đạo để khớp AI.
+
+9. Va chạm bi–băng (cushion response)
+Đây là module custom bắt buộc nếu muốn cảm giác thật. Băng không chỉ phản xạ vận tốc theo pháp tuyến; spin và ma sát băng làm thay đổi góc bật và angular velocity.
+Thành phần
+Xử lý đề xuất
+Normal velocity
+v_n_out = -e_cushion * v_n_in
+Tangential velocity
+Giảm/đổi nhẹ dựa trên ma sát cushion và sidespin; không giữ 100%.
+Sidespin
+Trao đổi xung tiếp tuyến giữa bi và băng; spin có thể “take” làm góc bật ngắn/dài.
+Top/back spin
+Ảnh hưởng vận tốc sau rebound và diễn tiến trên cloth sau khi rời băng.
+Vertical hop
+Không cần mô phỏng mạnh ở bản đầu; cho phép rất nhỏ nếu geometry cushion tạo ra, nhưng tránh bi bay phi thực tế.
+
+Dải tham khảo: coefficient of restitution ball–rail 0.6–0.9. Nghiên cứu 3D cushion impact của Mathavan et al. báo cáo một trường hợp e≈0.98 và sliding friction≈0.14; không lấy 0.98 làm hằng số toàn cục vì thực tế phụ thuộc băng, góc, tốc độ và mô hình.
+Tạo CushionPhysicsConfig gồm restitutionCurve(speed, angle), friction, spinInfluence. Bắt đầu bằng hằng số đơn giản, sau đó mới nâng lên AnimationCurve.
+Custom resolver phải dùng contact normal từ collider, không giả định băng luôn song song trục world.
+10. Cú đánh, cu-lê, trô và side spin
+UI chọn điểm chạm trên bi cái phải ánh xạ thành offset chuẩn hóa (x,y) trong đĩa bi: x ∈ [-1,1] cho trái/phải; y ∈ [-1,1] cho dưới/trên.
+Giới hạn offset thực tế để tránh miscue; không cho chọn sát mép tuyệt đối nếu không mô phỏng miscue.
+Lực đánh tạo linear impulse theo hướng cơ; offset tạo angular impulse/torque tương ứng.
+shotImpulse = aimDirection * PowerToImpulse(power01)contactOffsetWorld = cueRight*(offsetX*R) + cueUp*(offsetY*R)angularImpulse ≈ cross(contactOffsetWorld, shotImpulse)Apply linear impulse + angular impulse to cue ball
+
+PowerToImpulse không nên tuyến tính bắt buộc; dùng AnimationCurve để tune cảm giác chuột/lực.
+Topspin: offsetY > 0; backspin/draw: offsetY < 0; side spin: offsetX ≠ 0. Sau cú đánh, cloth model quyết định spin chuyển thành roll/draw theo thời gian.
+Không giả lập cu-lê/trô bằng cách cộng vận tốc sau khi bi cái đụng bi mục tiêu; spin phải tồn tại trước va chạm và tương tác tự nhiên với cloth/collision.
+11. Pocket và pocket jaws
+Không Destroy bi ngay khi chạm Trigger. Trigger chỉ xác nhận bi đã vượt ngưỡng “đã vào lỗ”.
+Bi tương tác với pocket jaws/collider như vật lý bình thường.
+Khi tâm bi vượt pocket capture plane hoặc đi vào PocketTrigger với điều kiện vận tốc/hướng hợp lệ, chuyển trạng thái Potted.
+Cho Rigidbody tiếp tục chịu gravity và rơi xuống pocket chute trong thời gian ngắn.
+Phát âm thanh/hiệu ứng và báo BallManager/RuleManager.
+Sau khi rơi khỏi tầm nhìn, disable physics hoặc đưa về rack/pool tùy logic trận đấu.
+Phải test tình huống “rattle”: bi chạm hai mép lỗ rồi bật ra; trigger không được bắt bi quá sớm.
+12. Ổn định, dừng bi và chống lỗi số
+Vấn đề
+Yêu cầu xử lý
+Bi rung mãi
+Custom settle timer: chỉ snap về 0 khi cả |v| và |ω| dưới ngưỡng liên tục trong 0.15–0.30 s.
+Tunneling khi break
+Continuous Dynamic + fixed timestep nhỏ + SphereCollider đúng scale.
+Năng lượng tăng sau va chạm
+Kiểm tra restitution/solver; clamp chỉ như safety net, không che lỗi logic.
+Bi chồng lên nhau
+Không teleport sửa trực tiếp trong gameplay trừ recovery mode; log lỗi và có deterministic separation fallback.
+Frame rate khác nhau
+Không dùng Time.deltaTime trong logic physics fixed-step; dùng Time.fixedDeltaTime.
+TimeScale
+Không thay Time.fixedDeltaTime theo Time.timeScale một cách ngẫu nhiên; pause phải dừng simulation có kiểm soát.
+
+13. BilliardsPhysicsConfig (ScriptableObject)
+BilliardsPhysicsConfig- ballRadius- ballMass- ballRestitution- ballBallFriction- clothSlidingFriction- clothRollingResistance- spinDeceleration- cushionRestitution- cushionFriction- cushionSpinInfluence- stopLinearThreshold- stopAngularThreshold- settleTime- slideToRollThreshold- powerToImpulseCurve- maxCueContactOffset- fixedStepTarget (documentation only)- debugLogging
+
+Mọi giá trị phải có Tooltip và phạm vi hợp lý trong Inspector.
+Tạo preset: Physics_Default, Physics_FastCloth, Physics_SlowCloth (chỉ khi baseline đã được xác nhận).
+14. Kiến trúc code yêu cầu
+Assets/Game/├── Physics/│   ├── Core/│   │   ├── BallPhysicsController.cs│   │   ├── BallStateTracker.cs│   │   ├── BilliardsPhysicsConfig.cs│   │   └── PhysicsBootstrap.cs│   ├── Collisions/│   │   ├── CushionCollisionResolver.cs│   │   ├── PocketDetector.cs│   │   └── BallCollisionObserver.cs│   ├── Cue/│   │   ├── CueShotPhysics.cs│   │   └── CueContactMapper.cs│   ├── Debug/│   │   ├── PhysicsDebugOverlay.cs│   │   └── TrajectoryRecorder.cs│   └── Tests/│       ├── PhysicsTestScene.unity│       └── PlayModeTests/└── Prefabs/PhysicsVariants/
+
+Class
+Trách nhiệm
+BallPhysicsController
+Sliding/rolling/spin decay, stop/sleep, expose current physics state.
+CushionCollisionResolver
+Điều chỉnh rebound + spin khi va cushion.
+CueShotPhysics
+Chuyển aim/power/contact-point thành impulse/angular impulse.
+PocketDetector
+Phát hiện pocket capture đúng thời điểm, không destroy ngay.
+BallCollisionObserver
+Thu thập telemetry ball-ball, không tự sửa velocity ở baseline.
+PhysicsDebugOverlay
+Hiển thị speed, angular speed, state, contact velocity, last collision.
+TrajectoryRecorder
+Ghi CSV/JSON dữ liệu test để so sánh giữa các lần tune.
+
+15. Công cụ debug bắt buộc
+Toggle hiển thị vector velocity, angular velocity, contact normal, cushion normal.
+HUD debug cho từng bi: speed (m/s), spin (rad/s), state Sliding/Rolling/Rest, time since last collision.
+Nút reset test scene về trạng thái ban đầu để test lặp lại.
+Trajectory recorder xuất dữ liệu theo fixed-step để so sánh trước/sau khi chỉnh thông số.
+Development build có thể bật log; Release build tắt debug không cần thiết.
+16. Bộ kiểm thử và hiệu chỉnh vật lý
+ID
+Bài test
+Tiêu chí
+P01
+Straight roll
+Đánh bi thẳng trên bàn, kiểm tra quãng đường giảm đều; không dừng đột ngột, không trôi vô hạn.
+P02
+Slide → roll
+Đánh bi cái không top/back spin; xác nhận ban đầu trượt rồi chuyển sang rolling.
+P03
+Draw shot
+Backspin đủ mạnh: bi cái tiến tới object ball, sau va chạm quay ngược; độ draw giảm khi khoảng cách tăng.
+P04
+Follow shot
+Topspin: sau va chạm gần thẳng, bi cái tiếp tục tiến về trước.
+P05
+Stun shot
+Điều chỉnh sao cho tại thời điểm va chạm cue ball gần không có top/back spin; quỹ đạo sau va chạm phù hợp.
+P06
+Ball-ball head-on
+Hai bi cùng mass; cú đâm gần trực diện truyền phần lớn vận tốc sang object ball, cue ball giảm mạnh.
+P07
+Ball-ball cut
+Kiểm tra quỹ đạo tách không có teleport/năng lượng tăng bất thường.
+P08
+Cushion 90°
+Bắn vuông góc băng ở nhiều tốc độ; đo tỷ lệ tốc độ sau/trước.
+P09
+Cushion with sidespin
+Trái/phải spin phải làm thay đổi góc bật theo hai hướng ngược nhau.
+P10
+Pocket center
+Bi vào tâm lỗ phải rơi ổn định.
+P11
+Pocket rattle
+Cú vào sát jaw có thể bật ra; trigger không bắt sớm.
+P12
+Break shot
+15 bi không xuyên nhau; không nổ năng lượng; mô phỏng ổn định lặp lại.
+P13
+Long settle
+Sau khi tất cả bi gần dừng, hệ thống chuyển về rest trong thời gian hợp lý, không jitter.
+P14
+FPS independence
+Chạy 30/60/120 FPS; kết quả vật lý không thay đổi đáng kể khi fixed timestep giữ nguyên.
+P15
+Regression
+Các test P01–P14 được chạy lại sau mọi thay đổi physics.
+
+17. Dải thông số khởi đầu để Antigravity tune
+Thông số
+Dải tham khảo
+Giá trị khởi đầu gợi ý
+Ball mass
+0.156–0.170 kg
+0.170 kg nếu khớp asset hiện tại
+Ball radius
+0.028575 m
+0.028575 m sau khi scale chuẩn
+Ball-ball restitution
+0.92–0.98
+0.95
+Ball-ball friction
+0.03–0.08
+0.05
+Cloth sliding friction
+0.15–0.40
+0.20
+Rolling resistance equivalent
+0.005–0.015
+0.010
+Spin deceleration
+5–15 rad/s²
+8 rad/s²
+Ball-rail restitution
+0.60–0.90
+0.80
+Cushion sliding friction
+theo test / nghiên cứu ~0.14 ở một mô hình
+0.12–0.14 để bắt đầu test
+Fixed timestep
+0.00833–0.01 s
+0.01 s
+
+Cảnh báo: Các con số trên là seed values để bắt đầu calibration, không phải “đáp án”. Antigravity phải giữ chúng trong config và kiểm thử bằng các bài test ở Mục 16 trước khi chốt.
+
+18. Thứ tự triển khai bắt buộc
+Đo/chuẩn hóa scale bi và bàn trong wrapper, tạo PhysicsTestScene.
+Tạo Ball prefab variant + Rigidbody/SphereCollider chuẩn; test P01/P06.
+Tạo BilliardsPhysicsConfig và cloth state machine Sliding/Rolling/Rest; test P01–P05.
+Tune ball-ball Physic Material; test P06/P07/P12.
+Tạo cushion colliders/resolver; test P08/P09.
+Tạo pocket jaw/trigger flow; test P10/P11.
+Tích hợp cue power + contact point + spin; test draw/follow/side-spin.
+Thêm debug overlay + trajectory recorder; lưu baseline test results.
+Tích hợp vào scene gameplay qua Prefab Variant/wrapper, không sửa asset gốc.
+Chạy regression P01–P15, tối ưu performance, sau đó mới tích hợp sâu với AI/online.
+Git: Mỗi milestone phải là commit riêng. Ví dụ: physics/ball-wrapper, physics/cloth-state-machine, physics/cushion-response, physics/pockets, physics/cue-spin, physics/regression-tests.
+
+19. Yêu cầu để tương thích multiplayer Photon
+Physics trước hết phải ổn định offline. Không cố giải desync mạng đồng thời với việc tune physics cơ bản.
+Trong online, ưu tiên một authority (Master Client/shot authority theo kiến trúc project) quyết định kết quả chính thức của cú đánh và snapshot trạng thái sau khi bi dừng.
+Client khác có thể mô phỏng để hiển thị, nhưng khi kết thúc cú đánh phải reconcile với authoritative snapshot nếu lệch.
+Không giả định PhysX deterministic tuyệt đối giữa hai máy.
+20. Điều kiện nghiệm thu module physics
+Không có tunneling rõ ràng trong break shot ở cấu hình test chuẩn.
+Bi chuyển từ sliding sang rolling tự nhiên; không chỉ giảm tốc kiểu drag tuyến tính đơn giản.
+Cu-lê, trô và side spin thể hiện đúng xu hướng vật lý và phụ thuộc vị trí chạm cơ.
+Va chạm bi-bi giữ năng lượng hợp lý, không sinh năng lượng bất thường.
+Băng phản xạ ổn định; side spin thay đổi góc rebound theo hướng hợp lý.
+Bi có thể rattle ở pocket jaw; không biến mất ngay khi chạm lỗ.
+Khi bi dừng, không jitter kéo dài; turn system có thể tin cậy sự kiện AllBallsStopped.
+Kết quả không phụ thuộc đáng kể FPS khi fixed timestep không đổi.
+Mọi hệ số chỉnh được từ ScriptableObject; không có magic number rải rác.
+Không có sửa đổi trực tiếp asset gốc; toàn bộ code/prefab custom nằm dưới Assets/Game/.
+Có scene test + debug overlay + regression checklist.
+Nếu Antigravity gặp thông tin chưa rõ trong quá trình triển khai, nó đã hỏi người dùng và chờ xác nhận thay vì tự quyết.
+21. Tài liệu tham khảo kỹ thuật
+[U1] Unity Manual 2022.3 – Physic Material: friction, bounciness và combine modes. https://docs.unity3d.com/2022.3/Documentation/Manual/class-PhysicMaterial.html
+[U2] Unity Scripting API 2022.3 – CollisionDetectionMode.ContinuousDynamic. https://docs.unity3d.com/2022.3/Documentation/ScriptReference/CollisionDetectionMode.ContinuousDynamic.html
+[B1] Dr. Dave Pool Info – Pool Physics Property Constants: ball mass/diameter, friction, restitution, rolling resistance, spin decay. https://drdavepoolinfo.com/faq/physics/physical-properties/
+[B2] S. Mathavan, M.R. Jackson, R.M. Parkin – Application of high-speed imaging to determine the dynamics of billiards (2009).
+[B3] S. Mathavan, M.R. Jackson, R.M. Parkin – A theoretical analysis of billiard ball dynamics under cushion impacts (2010): 3D cushion impact, restitution/friction modeling.
+[W1] World Pool-Billiard Association – Equipment specifications/rules references for standard pool-ball diameter and mass.
+22. Prompt khởi động đề xuất cho Antigravity
+Read this physics specification completely before modifying the project. Inspect the current Unity project structure, existing prefabs, table scale, ball scale, colliders, Rigidbody settings, and the The Billiards Room asset usage. Do not modify original Asset Store files. Implement only under Assets/Game/ using Prefab Variants/wrappers.Before starting any implementation, report: (1) what you found, (2) any mismatch with this specification, (3) the exact first milestone you propose. If any requirement or project detail is unclear, stop and ask me. Do not guess. When useful, give me 2–4 options with trade-offs and wait for my choice.Implement one milestone at a time, test it in a dedicated PhysicsTestScene, and commit each completed module separately. Do not proceed to the next milestone until the current one passes its acceptance tests.

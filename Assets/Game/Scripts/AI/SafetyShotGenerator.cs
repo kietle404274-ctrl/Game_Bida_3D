@@ -46,8 +46,8 @@ namespace Game.Billiards.AI
                 float halfW = (tableWrapper != null) ? tableWrapper.PlayableHalfWidth : 0.56f;
                 float halfL = (tableWrapper != null) ? tableWrapper.PlayableHalfLength : 1.12f;
 
-                float distToRailX = halfW - Mathf.Abs(targetPos.x);
-                float distToRailZ = halfL - Mathf.Abs(targetPos.z);
+                float distToRailX = halfL - Mathf.Abs(targetPos.x);
+                float distToRailZ = halfW - Mathf.Abs(targetPos.z);
                 float minDistToRail = Mathf.Min(distToRailX, distToRailZ);
 
                 // Lực vừa đủ để chạm bi mục tiêu và lăn tới băng (0.18 - 0.35)

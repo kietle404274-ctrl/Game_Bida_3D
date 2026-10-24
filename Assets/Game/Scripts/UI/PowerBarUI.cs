@@ -17,6 +17,18 @@ namespace Game.Billiards.UI
         [SerializeField] private Color midPowerColor = new Color(1f, 0.85f, 0.2f, 1f);
         [SerializeField] private Color highPowerColor = new Color(0.95f, 0.2f, 0.2f, 1f);
 
+        [Header("Pro HUD")]
+        [SerializeField] private RectTransform trackRect;
+        [SerializeField] private SlantedBarGraphic slantedBar;
+        [SerializeField] private RectTransform peakMarker;
+        [SerializeField] private BorderProgressGraphic frameBorder;
+        [SerializeField] private Color frameBaseColor = new Color(0.30f, 0.78f, 0.95f, 0.55f);
+        [SerializeField] private float dangerThreshold = 0.9f;
+
+        private float currentPower;
+        private float peakPower;
+        private bool frameDanger;
+
         private PlayerInputController inputController;
 
         public void Initialize(PlayerInputController input)
@@ -38,9 +50,45 @@ namespace Game.Billiards.UI
             }
         }
 
+        private void Awake()
+        {
+            if (slantedBar != null) slantedBar.SetPalette(lowPowerColor, midPowerColor, highPowerColor);
+        }
+
+        private void Update()
+        {
+            // Vạch đỉnh giữ mức lực cao nhất rồi từ từ trượt xuống theo lực hiện tại
+            peakPower = Mathf.Max(currentPower, peakPower - Time.unscaledDeltaTime * 0.35f);
+            if (peakMarker != null && trackRect != null)
+            {
+                peakMarker.gameObject.SetActive(peakPower > 0.02f);
+                // Thanh nghiêng: tâm tại độ cao f lệch slant * (0.5 - f) so với tâm hình chữ nhật
+                float slant = slantedBar != null ? slantedBar.Slant : 0f;
+                peakMarker.anchoredPosition = new Vector2(slant * (0.5f - peakPower), peakPower * trackRect.rect.height);
+            }
+
+            if (frameBorder != null)
+            {
+                if (currentPower >= dangerThreshold)
+                {
+                    float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 14f);
+                    Color c = Color.Lerp(frameBaseColor, new Color(1f, 0.2f, 0.18f, 1f), 0.5f + 0.5f * pulse);
+                    frameBorder.SetBaseColor(c);
+                    frameDanger = true;
+                }
+                else if (frameDanger)
+                {
+                    frameBorder.SetBaseColor(frameBaseColor);
+                    frameDanger = false;
+                }
+            }
+        }
+
         public void UpdatePower(float power01)
         {
             float clamped = Mathf.Clamp01(power01);
+            currentPower = clamped;
+            if (slantedBar != null) slantedBar.SetFill(clamped);
 
             if (powerSlider != null)
             {

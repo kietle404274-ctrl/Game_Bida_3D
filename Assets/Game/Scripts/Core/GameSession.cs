@@ -106,12 +106,18 @@ namespace Game.Billiards.Core
 
         public void LoadLobbyScene()
         {
-            SceneManager.LoadScene("Lobby");
+            if (Application.isPlaying)
+            {
+                SceneManager.LoadScene("Lobby");
+            }
         }
 
         public void LoadGameplayScene()
         {
-            SceneManager.LoadScene("Gameplay");
+            if (Application.isPlaying)
+            {
+                SceneManager.LoadScene("Gameplay");
+            }
         }
 
         public void QuitGame()

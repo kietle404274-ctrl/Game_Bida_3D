@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cueHitClip: {fileID: 8300000, guid: a5fdc631478943a28fd9807815da885d, type: 3}
   ballHitClip: {fileID: 8300000, guid: da43915c9bef47eba0b521e26531eca2, type: 3}
+  breakShotClip: {fileID: 8300000, guid: b7e3c1a95d2f4e6a8c0d1f3b5a7e9c24, type: 3}
   cushionHitClip: {fileID: 8300000, guid: 68ead8b57b95415aad0c0f412022a772, type: 3}
   pocketDropClip: {fileID: 8300000, guid: 1ae6f9f8e7e84acea57d95909793d122, type: 3}
   foulClip: {fileID: 8300000, guid: 827fa0742bb4456c877cea1d3dbb1f81, type: 3}

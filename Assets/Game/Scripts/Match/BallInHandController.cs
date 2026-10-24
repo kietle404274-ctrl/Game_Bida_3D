@@ -12,6 +12,7 @@ namespace Game.Billiards.Match
         [SerializeField] private BallManager ballManager;
         [SerializeField] private TableWrapper tableWrapper;
         [SerializeField] private CameraDirector cameraDirector;
+        private CueController cueController;
 
         [Header("Movement & Tuning")]
         [Tooltip("Tốc độ di chuyển bi cái khi dùng phím W/A/S/D (m/s)")]
@@ -34,6 +35,20 @@ namespace Game.Billiards.Match
         public bool IsPlacementValid => isPlacementValid;
         public Vector3 CurrentPosition => currentPosition;
 
+        /// <summary>
+        /// Do PlayerInputController gán: trả về true khi đang là lượt đối thủ (khóa phím/chuột đặt bi của người chơi).
+        /// AI vẫn đặt bi qua TryPlaceBallAt/ConfirmPlacement nên không bị ảnh hưởng.
+        /// </summary>
+        public Func<bool> InputBlockedPredicate;
+
+        // Chỉ báo 4 mũi tên xanh quanh bi cái khi đang đặt bi
+        private GameObject arrowRoot;
+        private Transform[] arrowTransforms;
+        private Material arrowMaterial;
+        private Mesh arrowMesh;
+        private MaterialPropertyBlock tintBlock;
+        private bool tintApplied = false;
+
         public event Action<Vector3> OnBallInHandConfirmed;
         public event Action<bool> OnValidityChanged;
 
@@ -54,26 +69,39 @@ namespace Game.Billiards.Match
             var cueBall = ballManager.CueBall;
             if (cueBall != null)
             {
-                cueBall.gameObject.SetActive(true);
-                if (cueBall.Rigidbody != null)
-                {
-                    cueBall.Rigidbody.isKinematic = true;
-                    cueBall.Rigidbody.velocity = Vector3.zero;
-                    cueBall.Rigidbody.angularVelocity = Vector3.zero;
-                }
-
                 // Vị trí mặc định: Head Spot nếu chỉ trong vùng đầu bàn, hoặc giữa bàn
                 currentPosition = headStringOnly ? tableWrapper.HeadSpot : new Vector3(0f, tableWrapper.ClothSurfaceY + 0.02855f, 0f);
 
                 // Nếu vị trí ban đầu bị đè bi, tìm vị trí trống lân cận
                 currentPosition = FindSafePlacementNear(currentPosition);
+
+                // Hủy hoạt ảnh rơi lỗ còn dang dở (bi cái vừa bị ăn có thể đang rơi xuống sàn) và khôi phục bi về mặt bàn
+                cueBall.ResetTo(currentPosition, Quaternion.identity);
+
+                // Tắt va chạm của bi cái trong lúc đặt để nó không thể đẩy các bi khác (ResetTo sẽ bật lại khi chốt)
+                if (cueBall.SphereCollider != null) cueBall.SphereCollider.enabled = false;
+                if (cueBall.Rigidbody != null)
+                {
+                    cueBall.Rigidbody.velocity = Vector3.zero;
+                    cueBall.Rigidbody.angularVelocity = Vector3.zero;
+                    cueBall.Rigidbody.isKinematic = true;
+                }
                 cueBall.transform.position = currentPosition;
             }
 
             if (cameraDirector != null)
             {
-                // Chuyển sang góc nhìn rộng bao quát để đặt bi thuận tiện
-                cameraDirector.SwitchToShotCamera();
+                if (InputBlockedPredicate != null && InputBlockedPredicate())
+                {
+                    // Đối thủ đặt bi: camera cuối bàn, thấy trọn mặt bàn
+                    cameraDirector.SwitchToOpponentCamera();
+                }
+                else
+                {
+                    // Camera nhìn thẳng từ trên xuống, bám theo bi cái để đặt bi chính xác
+                    if (cueBall != null) cameraDirector.SetCueBallTarget(cueBall.transform);
+                    cameraDirector.SwitchToTopDownCamera();
+                }
             }
 
             ValidatePlacement();
@@ -198,10 +226,29 @@ namespace Game.Billiards.Match
 
         private void Update()
         {
-            if (!isActive) return;
+            // Ẩn cây cơ trong suốt quá trình đặt bi (chỉ hiện lại khi đặt xong)
+            if (isActive) HideCueStick();
+
+            if (!isActive) { SetArrowsVisible(false); ApplyCueBallTint(false); return; }
+            if ((InputBlockedPredicate != null && InputBlockedPredicate()) || Game.Billiards.UI.HudModalState.IsModalOpen) { SetArrowsVisible(false); ApplyCueBallTint(false); return; }
+
+            // Xoay chuột để nhìn qua lại khi đặt bi
+            float mouseX = UnityEngine.Input.GetAxis("Mouse X");
+            if (cameraDirector != null && Mathf.Abs(mouseX) > 0.001f)
+            {
+                cameraDirector.RotateTopDown(mouseX);
+            }
 
             HandleKeyboardMovement();
             HandleConfirmationInput();
+            UpdateArrows();
+            ApplyCueBallTint(!isPlacementValid);
+        }
+
+        private void HideCueStick()
+        {
+            if (cueController == null) cueController = FindObjectOfType<CueController>();
+            if (cueController != null) cueController.SetAimingState(false);
         }
 
         private void HandleKeyboardMovement()
@@ -216,14 +263,19 @@ namespace Game.Billiards.Match
 
             if (Mathf.Abs(h) > 0.01f || Mathf.Abs(v) > 0.01f)
             {
-                Vector3 moveDelta = new Vector3(h, 0f, v).normalized * (moveSpeed * Time.deltaTime);
+                GetCameraPlanarAxes(out Vector3 camRight, out Vector3 camForward);
+                Vector3 moveDelta = (camRight * h + camForward * v).normalized * (moveSpeed * Time.deltaTime);
                 currentPosition += moveDelta;
+
+                // Bi cái không được xuyên qua các bi khác: đẩy ngược ra và trượt dọc theo bề mặt bi
+                currentPosition = ResolveBallPenetration(currentPosition);
 
                 // Giới hạn trong mặt bàn
                 if (tableWrapper != null)
                 {
                     currentPosition = tableWrapper.ClampToPlayArea(currentPosition, 0.035f);
                 }
+                currentPosition = ResolveBallPenetration(currentPosition);
 
                 var cueBall = ballManager != null ? ballManager.CueBall : null;
                 if (cueBall != null)
@@ -237,8 +289,8 @@ namespace Game.Billiards.Match
 
         private void HandleConfirmationInput()
         {
-            // Enter hoặc Chuột trái để chốt vị trí bi cái
-            if (UnityEngine.Input.GetKeyDown(KeyCode.Return) || UnityEngine.Input.GetKeyDown(KeyCode.KeypadEnter) || UnityEngine.Input.GetMouseButtonDown(0))
+            // Chỉ dùng Enter để chốt vị trí bi cái, sau đó chuyển sang ngắm bắn
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Return) || UnityEngine.Input.GetKeyDown(KeyCode.KeypadEnter))
             {
                 if (isPlacementValid)
                 {
@@ -256,6 +308,8 @@ namespace Game.Billiards.Match
             if (!isPlacementValid) return;
 
             isActive = false;
+            SetArrowsVisible(false);
+            ApplyCueBallTint(false);
 
             var cueBall = ballManager != null ? ballManager.CueBall : null;
             if (cueBall != null)
@@ -266,10 +320,193 @@ namespace Game.Billiards.Match
             if (cameraDirector != null)
             {
                 cameraDirector.SetCueBallTarget(cueBall != null ? cueBall.transform : null);
-                cameraDirector.SwitchToAimCamera();
+                if (InputBlockedPredicate != null && InputBlockedPredicate())
+                {
+                    // Lượt đối thủ vẫn giữ camera cuối bàn
+                    cameraDirector.SwitchToOpponentCamera();
+                }
+                else
+                {
+                    cameraDirector.SwitchToAimCamera();
+                }
             }
 
             OnBallInHandConfirmed?.Invoke(currentPosition);
+        }
+
+        private float GetBallRadius()
+        {
+            return (ballManager != null && ballManager.PhysicsConfig != null) ? ballManager.PhysicsConfig.BallRadius : 0.02855f;
+        }
+
+        /// <summary>
+        /// Đẩy bi cái ra khỏi mọi bi khác (khoảng cách tâm tối thiểu = 2R) để không thể xuyên qua bi khi đặt.
+        /// </summary>
+        private Vector3 ResolveBallPenetration(Vector3 pos)
+        {
+            if (ballManager == null) return pos;
+
+            float minDist = GetBallRadius() * 2f;
+            var balls = ballManager.GetActiveObjectBalls();
+
+            for (int iter = 0; iter < 3; iter++)
+            {
+                bool moved = false;
+                for (int i = 0; i < balls.Count; i++)
+                {
+                    var ball = balls[i];
+                    if (ball == null || ball.IsPocketed || !ball.gameObject.activeInHierarchy) continue;
+
+                    Vector3 diff = new Vector3(pos.x - ball.transform.position.x, 0f, pos.z - ball.transform.position.z);
+                    float dist = diff.magnitude;
+                    if (dist < minDist)
+                    {
+                        Vector3 dir = dist > 0.0001f ? diff / dist : Vector3.right;
+                        pos.x = ball.transform.position.x + dir.x * minDist;
+                        pos.z = ball.transform.position.z + dir.z * minDist;
+                        moved = true;
+                    }
+                }
+                if (!moved) break;
+            }
+
+            return pos;
+        }
+
+        /// <summary>
+        /// Bi cái chuyển đỏ nhạt khi vị trí đặt không hợp lệ (chạm bi khác, gần lỗ, ngoài vùng cho phép).
+        /// </summary>
+        private void ApplyCueBallTint(bool invalid)
+        {
+            if (tintApplied == invalid) return;
+
+            var cueBall = ballManager != null ? ballManager.CueBall : null;
+            if (cueBall == null) return;
+
+            var renderers = cueBall.GetComponentsInChildren<Renderer>(true);
+            if (invalid)
+            {
+                if (tintBlock == null) tintBlock = new MaterialPropertyBlock();
+                Color lightRed = new Color(1f, 0.5f, 0.5f, 1f);
+                for (int i = 0; i < renderers.Length; i++)
+                {
+                    renderers[i].GetPropertyBlock(tintBlock);
+                    tintBlock.SetColor("_BaseColor", lightRed);
+                    tintBlock.SetColor("_Color", lightRed);
+                    renderers[i].SetPropertyBlock(tintBlock);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < renderers.Length; i++) renderers[i].SetPropertyBlock(null);
+            }
+
+            tintApplied = invalid;
+        }
+
+        /// <summary>
+        /// Trục phẳng (XZ) theo hướng nhìn thực tế của camera: W = hướng lên màn hình, D = sang phải màn hình.
+        /// </summary>
+        private void GetCameraPlanarAxes(out Vector3 right, out Vector3 forward)
+        {
+            forward = Vector3.forward;
+            Transform camT = (cameraDirector != null && cameraDirector.MainCamera != null) ? cameraDirector.MainCamera.transform : null;
+            if (camT != null)
+            {
+                Vector3 f = camT.forward;
+                f.y = 0f;
+                if (f.sqrMagnitude < 0.01f)
+                {
+                    f = camT.up;
+                    f.y = 0f;
+                }
+                if (f.sqrMagnitude > 0.0001f) forward = f.normalized;
+            }
+            right = Vector3.Cross(Vector3.up, forward).normalized;
+        }
+
+        private void EnsureArrows()
+        {
+            if (arrowRoot != null) return;
+
+            arrowRoot = new GameObject("BallInHandArrows");
+            arrowRoot.hideFlags = HideFlags.DontSave;
+
+            // Mũi tên phẳng chỉ về +Z: đầu tam giác + thân chữ nhật
+            arrowMesh = new Mesh { name = "BallInHandArrowMesh" };
+            arrowMesh.vertices = new[]
+            {
+                new Vector3(-0.020f, 0f, 0f), new Vector3(0f, 0f, 0.036f), new Vector3(0.020f, 0f, 0f),
+                new Vector3(-0.007f, 0f, -0.026f), new Vector3(-0.007f, 0f, 0f), new Vector3(0.007f, 0f, 0f), new Vector3(0.007f, 0f, -0.026f)
+            };
+            arrowMesh.triangles = new[] { 0, 1, 2, 3, 4, 5, 3, 5, 6 };
+            arrowMesh.normals = new[] { Vector3.up, Vector3.up, Vector3.up, Vector3.up, Vector3.up, Vector3.up, Vector3.up };
+            arrowMesh.RecalculateBounds();
+
+            Shader shader = Shader.Find("HDRP/Unlit");
+            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = Shader.Find("Unlit/Color");
+            arrowMaterial = new Material(shader);
+            Color blue = new Color(0.12f, 0.62f, 1f, 1f);
+            if (arrowMaterial.HasProperty("_UnlitColor")) arrowMaterial.SetColor("_UnlitColor", blue);
+            if (arrowMaterial.HasProperty("_BaseColor")) arrowMaterial.SetColor("_BaseColor", blue);
+            if (arrowMaterial.HasProperty("_Color")) arrowMaterial.SetColor("_Color", blue);
+            if (arrowMaterial.HasProperty("_CullMode")) arrowMaterial.SetFloat("_CullMode", 0f);
+            if (arrowMaterial.HasProperty("_Cull")) arrowMaterial.SetFloat("_Cull", 0f);
+            if (arrowMaterial.HasProperty("_EmissiveColor")) arrowMaterial.SetColor("_EmissiveColor", blue * 2f);
+
+            arrowTransforms = new Transform[4];
+            for (int i = 0; i < 4; i++)
+            {
+                var go = new GameObject("Arrow_" + i);
+                go.hideFlags = HideFlags.DontSave;
+                go.transform.SetParent(arrowRoot.transform, false);
+                go.AddComponent<MeshFilter>().sharedMesh = arrowMesh;
+                var mr = go.AddComponent<MeshRenderer>();
+                mr.sharedMaterial = arrowMaterial;
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                mr.receiveShadows = false;
+                arrowTransforms[i] = go.transform;
+            }
+        }
+
+        private void SetArrowsVisible(bool visible)
+        {
+            if (arrowRoot != null && arrowRoot.activeSelf != visible) arrowRoot.SetActive(visible);
+        }
+
+        /// <summary>
+        /// 4 mũi tên xanh dưới chân bi cái, chuyển động ra/vào liên tục để báo hiệu đang được đặt bi.
+        /// Hướng mũi tên khớp với hướng W/A/S/D theo camera.
+        /// </summary>
+        private void UpdateArrows()
+        {
+            EnsureArrows();
+            SetArrowsVisible(true);
+
+            float y = (tableWrapper != null ? tableWrapper.ClothSurfaceY : currentPosition.y) + 0.004f;
+            arrowRoot.transform.position = new Vector3(currentPosition.x, y, currentPosition.z);
+
+            GetCameraPlanarAxes(out Vector3 camRight, out Vector3 camForward);
+            Vector3[] dirs = { camForward, camRight, -camForward, -camRight };
+
+            float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 6f);
+            float radius = 0.065f + 0.03f * pulse;
+            float scale = 1f + 0.2f * pulse;
+
+            for (int i = 0; i < 4; i++)
+            {
+                arrowTransforms[i].localPosition = dirs[i] * radius;
+                arrowTransforms[i].rotation = Quaternion.LookRotation(dirs[i], Vector3.up);
+                arrowTransforms[i].localScale = Vector3.one * scale;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (arrowRoot != null) Destroy(arrowRoot);
+            if (arrowMaterial != null) Destroy(arrowMaterial);
+            if (arrowMesh != null) Destroy(arrowMesh);
         }
 
         private void OnDrawGizmos()

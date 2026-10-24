@@ -31,15 +31,16 @@ namespace Game.Billiards.UI
                     "• <b>Xoay hướng ngắm:</b> Di chuyển chuột để xoay camera 360 độ quanh bi cái.\n" +
                     "• <b>Chỉnh lực đánh:</b> Lăn con lăn chuột (Mouse ScrollWheel) từ 5% đến 100%.\n" +
                     "• <b>Bắn bi:</b> Nhấp chuột trái (Left Mouse Button).\n" +
-                    "• <b>Chỉnh Áp-phê (Spin):</b> Nhấn phím [C] hoặc bấm vào biểu tượng bi cái góc màn hình để mở bảng tiếp xúc (Cu-lê / Trô / Ép-phê trái-phải).\n" +
-                    "• <b>Đặt bi tự do (Ball-in-Hand):</b> Sử dụng các phím [W, A, S, D] để di chuyển bi cái trên mặt bàn, nhấn [Enter] hoặc [Click Trái] để xác nhận vị trí hợp lệ.\n" +
-                    "• <b>Cú đánh gọi (Call Shot):</b> Chọn số bi và lỗ mục tiêu tại bảng Call Shot trước khi bắn (hoặc chọn Đánh An Toàn - Safety).\n" +
+                    "• <b>Chọn điểm đánh trên bi cái (Spin):</b> Nhấn phím [J] để mở bảng chọn, click/kéo hoặc dùng mũi tên để chọn điểm, [R] về giữa, [Enter] để xác nhận.\n" +
+                    "• <b>Đặt bi tự do (Ball-in-Hand):</b> Di chuột để xoay góc nhìn, dùng [W, A, S, D] để di chuyển bi cái, nhấn [Enter] để xác nhận vị trí hợp lệ.\n" +
+                    "• <b>Ăn bi:</b> Không cần gọi bi hay gọi lỗ. Đưa bi hợp lệ vào bất kỳ lỗ nào để được đánh tiếp.\n" +
                     "• <b>Phím tắt:</b> [Esc] Cài đặt, [R] Luật thi đấu WPA, [H] Hướng dẫn điều khiển.";
             }
         }
 
         public void Show()
         {
+            if (!HudModalState.TryOpen("help")) return;
             if (modalRoot != null)
             {
                 modalRoot.SetActive(true);
@@ -48,17 +49,24 @@ namespace Game.Billiards.UI
 
         public void Hide()
         {
+            HudModalState.Release("help");
             if (modalRoot != null)
             {
                 modalRoot.SetActive(false);
             }
         }
 
+        private void OnDestroy()
+        {
+            HudModalState.Release("help");
+        }
+
         public void Toggle()
         {
             if (modalRoot != null)
             {
-                modalRoot.SetActive(!modalRoot.activeSelf);
+                if (modalRoot.activeSelf) Hide();
+                else Show();
             }
         }
     }

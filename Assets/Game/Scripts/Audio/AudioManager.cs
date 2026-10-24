@@ -126,38 +126,55 @@ namespace Game.Billiards.Audio
             return src;
         }
 
-        public void PlayCueHit(float power01)
+        public void PlayCueHit(float power01, bool isBreak = false)
         {
-            if (audioLibrary == null || audioLibrary.CueHitClip == null) return;
+            if (audioLibrary == null) return;
+
+            // Cú phá bi dùng tiếng riêng (nếu có), không biến thiên pitch để giữ âm "chát" đặc trưng
+            if (isBreak && audioLibrary.BreakShotClip != null)
+            {
+                var breakSrc = GetNextSfxSource();
+                breakSrc.pitch = UnityEngine.Random.Range(0.99f, 1.01f);
+                breakSrc.PlayOneShot(audioLibrary.BreakShotClip, Mathf.Lerp(0.6f, 1.0f, Mathf.Clamp01(power01)) * sfxVolume);
+                return;
+            }
+
+            if (audioLibrary.CueHitClip == null) return;
 
             var src = GetNextSfxSource();
-            float vol = Mathf.Lerp(0.35f, 1.0f, Mathf.Clamp01(power01)) * sfxVolume;
-            src.pitch = audioLibrary.GetRandomPitch();
+            float p = Mathf.Clamp01(power01);
+            // Đánh càng mạnh tiếng càng to; pitch hơi cao hơn khi đánh mạnh (đầu cơ nén cứng hơn)
+            float vol = Mathf.Lerp(0.30f, 1.0f, Mathf.Pow(p, 0.8f)) * sfxVolume;
+            src.pitch = UnityEngine.Random.Range(0.97f, 1.03f) * Mathf.Lerp(0.96f, 1.04f, p);
             src.PlayOneShot(audioLibrary.CueHitClip, vol);
         }
 
-        public void PlayBallHit(float impulse)
+        public void PlayBallHit(float relativeSpeed)
         {
             if (audioLibrary == null || audioLibrary.BallHitClip == null) return;
+            if (relativeSpeed < 0.05f) return;
 
-            // Xung lực va chạm càng mạnh, âm lượng càng lớn (chuẩn hóa trong khoảng 0.2f - 1.0f)
-            float normImpulse = Mathf.Clamp01(impulse / 5.0f);
-            float vol = Mathf.Lerp(0.25f, 1.0f, normImpulse) * sfxVolume;
+            // Tốc độ va chạm tương đối (m/s) -> âm lượng. Chạm nhẹ vẫn nghe rõ tiếng "tách" nhỏ,
+            // va chạm mạnh (phá bi) lên tới 1.0
+            float norm = Mathf.Clamp01(relativeSpeed / 6.0f);
+            float vol = Mathf.Lerp(0.12f, 1.0f, Mathf.Pow(norm, 0.7f)) * sfxVolume;
 
             var src = GetNextSfxSource();
-            src.pitch = audioLibrary.GetRandomPitch();
+            src.pitch = UnityEngine.Random.Range(0.97f, 1.03f);
             src.PlayOneShot(audioLibrary.BallHitClip, vol);
         }
 
         public void PlayCushionHit(float speed)
         {
             if (audioLibrary == null || audioLibrary.CushionHitClip == null) return;
+            if (speed < 0.15f) return;
 
-            float normSpeed = Mathf.Clamp01(speed / 4.0f);
-            float vol = Mathf.Lerp(0.2f, 0.9f, normSpeed) * sfxVolume;
+            float norm = Mathf.Clamp01(speed / 5.0f);
+            float vol = Mathf.Lerp(0.10f, 0.85f, Mathf.Pow(norm, 0.8f)) * sfxVolume;
 
             var src = GetNextSfxSource();
-            src.pitch = audioLibrary.GetRandomPitch();
+            // Băng bị nén mạnh thì tiếng trầm và nặng hơn
+            src.pitch = UnityEngine.Random.Range(0.96f, 1.04f) * Mathf.Lerp(1.04f, 0.96f, norm);
             src.PlayOneShot(audioLibrary.CushionHitClip, vol);
         }
 
@@ -201,6 +218,37 @@ namespace Game.Billiards.Audio
                 uiSource.pitch = UnityEngine.Random.Range(0.98f, 1.02f);
                 uiSource.PlayOneShot(audioLibrary.ButtonClickClip, sfxVolume);
             }
+        }
+
+        private AudioClip tickClip;
+        private bool tickToggle;
+
+        /// <summary>Tiếng tích-tắc đếm giờ (5 giây cuối). Tạo clip bằng code nên không cần thêm file âm thanh.</summary>
+        public void PlayTimerTick()
+        {
+            if (tickClip == null) tickClip = BuildTickClip();
+
+            tickToggle = !tickToggle;
+            var src = uiSource != null ? uiSource : GetNextSfxSource();
+            if (src == null) return;
+            src.pitch = tickToggle ? 1.0f : 0.78f; // tích cao, tắc trầm
+            src.PlayOneShot(tickClip, 0.8f * sfxVolume);
+        }
+
+        private static AudioClip BuildTickClip()
+        {
+            const int sampleRate = 44100;
+            int samples = (int)(sampleRate * 0.06f);
+            float[] data = new float[samples];
+            for (int i = 0; i < samples; i++)
+            {
+                float t = i / (float)sampleRate;
+                float env = Mathf.Exp(-t * 90f);
+                data[i] = (Mathf.Sin(2f * Mathf.PI * 1800f * t) * 0.7f + Mathf.Sin(2f * Mathf.PI * 3600f * t) * 0.3f) * env;
+            }
+            var clip = AudioClip.Create("TimerTick", samples, 1, sampleRate, false);
+            clip.SetData(data, 0);
+            return clip;
         }
     }
 }

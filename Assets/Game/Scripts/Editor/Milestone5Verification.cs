@@ -138,7 +138,7 @@ namespace Game.Billiards.Editor
 
                 // Test cập nhật tỉ số
                 header.UpdateRackAndScore(3, 2, 1, RaceTarget.RaceTo5);
-                if (txtRack.text != "VÁN 3" || !txtScore.text.Contains("2 - 1 (Race to 5)"))
+                if (txtRack.text != "RACE TO 5  •  VÁN 3" || txtScore.text != "2 - 1")
                 {
                     Debug.LogError($"[Test 2 FAILED] MatchHeader hiển thị sai rack hoặc score! Rack: {txtRack.text}, Score: {txtScore.text}");
                     return false;
@@ -278,6 +278,7 @@ namespace Game.Billiards.Editor
 
                 // 2. Lượt sau break: Bàn mở -> Bật Call shot
                 stateMgr.State.turnSequence = 1;
+                stateMgr.State.phase = MatchPhase.Aiming;
                 callShot.RefreshCallShotOptions();
                 if (!panelRoot.activeSelf)
                 {

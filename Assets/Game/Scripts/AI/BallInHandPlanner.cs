@@ -24,10 +24,10 @@ namespace Game.Billiards.AI
             if (profile == null) profile = AIDifficultyProfile.NormalProfile;
 
             float margin = 0.05f;
-            float minX = -tableWrapper.PlayableHalfWidth + margin;
-            float maxX = tableWrapper.PlayableHalfWidth - margin;
-            float minZ = -tableWrapper.PlayableHalfLength + margin;
-            float maxZ = headStringOnly ? (tableWrapper.HeadStringZ - margin) : (tableWrapper.PlayableHalfLength - margin);
+            float minX = headStringOnly ? (tableWrapper.HeadStringX + margin) : (-tableWrapper.PlayableHalfLength + margin);
+            float maxX = tableWrapper.PlayableHalfLength - margin;
+            float minZ = -tableWrapper.PlayableHalfWidth + margin;
+            float maxZ = tableWrapper.PlayableHalfWidth - margin;
             float y = tableWrapper.ClothSurfaceY + PathClearanceChecker.BALL_RADIUS;
 
             int sampleCount = profile.ballInHandSampleCount;

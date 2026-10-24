@@ -474,7 +474,14 @@ namespace Game.Billiards.Network
                     {
                         if (cameraDirector != null)
                         {
-                            cameraDirector.SwitchToShotCamera();
+                            if (matchStateManager != null && matchStateManager.CurrentPlayerIndex == localPlayerIndex)
+                            {
+                                cameraDirector.SwitchToShotFollowCamera(cmd.direction);
+                            }
+                            else
+                            {
+                                cameraDirector.SwitchToOpponentCamera();
+                            }
                         }
                     });
                 }

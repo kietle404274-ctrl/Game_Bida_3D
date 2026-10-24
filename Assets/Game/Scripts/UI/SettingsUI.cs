@@ -57,14 +57,37 @@ namespace Game.Billiards.UI
 
         public void Show()
         {
+            if (!HudModalState.TryOpen("settings")) return;
             if (confirmDialogRoot != null) confirmDialogRoot.SetActive(false);
             if (modalRoot != null) modalRoot.SetActive(true);
+
+            // Tạm dừng hoàn toàn mô phỏng khi ở chế độ Offline theo đặc tả Mục 5
+            bool isOnline = (Game.Billiards.Core.GameSession.Instance != null && 
+                             Game.Billiards.Core.GameSession.Instance.CurrentGameMode == Game.Billiards.Core.GameMode.OnlinePvP);
+            if (!isOnline)
+            {
+                Time.timeScale = 0f;
+            }
         }
 
         public void Hide()
         {
+            HudModalState.Release("settings");
             if (confirmDialogRoot != null) confirmDialogRoot.SetActive(false);
             if (modalRoot != null) modalRoot.SetActive(false);
+
+            Time.timeScale = 1f;
+        }
+
+        private void OnDisable()
+        {
+            Time.timeScale = 1f;
+        }
+
+        private void OnDestroy()
+        {
+            HudModalState.Release("settings");
+            Time.timeScale = 1f;
         }
 
         public void Toggle()

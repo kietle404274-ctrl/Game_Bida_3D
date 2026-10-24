@@ -28,6 +28,13 @@ namespace Game.Billiards.AI
 
         [Header("Pacing")]
         [SerializeField] private float thinkDurationSeconds = 1.0f;
+        [Tooltip("Thời gian AI loay hoay ngắm (ngẫu nhiên trong khoảng này) trước khi đánh")]
+        [SerializeField] private float aimWanderMinSeconds = 2.0f;
+        [SerializeField] private float aimWanderMaxSeconds = 3.0f;
+
+        [Header("Debug")]
+        [Tooltip("Bật để AI cố tình đánh bi cái xuống lỗ (scratch) mỗi lượt — dùng test đặt bi. Trong lúc chơi bấm F9 để bật/tắt.")]
+        [SerializeField] private bool debugForceFoul = false;
 
         private AIDifficultyProfile currentProfile;
         private Coroutine activeAIRoutine;
@@ -41,6 +48,15 @@ namespace Game.Billiards.AI
         private void Awake()
         {
             ApplyDifficultyProfile();
+        }
+
+        private void Update()
+        {
+            if (UnityEngine.Input.GetKeyDown(KeyCode.F9))
+            {
+                debugForceFoul = !debugForceFoul;
+                Debug.Log($"[AIController] DEBUG ep AI danh loi (scratch): {(debugForceFoul ? "BAT" : "TAT")}");
+            }
         }
 
         public void Initialize(
@@ -127,6 +143,7 @@ namespace Game.Billiards.AI
 
         private void HandleTurnChanged(int newPlayerIndex)
         {
+            Debug.Log($"[AIController] TurnChanged -> {newPlayerIndex} (aiIndex={aiPlayerIndex}, enabled={isAIEnabled})");
             if (newPlayerIndex == aiPlayerIndex && isAIEnabled)
             {
                 EvaluateCurrentStateAndAct();
@@ -151,6 +168,7 @@ namespace Game.Billiards.AI
             }
 
             MatchPhase phase = matchStateManager.CurrentPhase;
+            Debug.Log($"[AIController] Evaluate: phase={phase}");
 
             if (phase == MatchPhase.BallInHand)
             {
@@ -164,6 +182,8 @@ namespace Game.Billiards.AI
 
         private IEnumerator AIBallInHandRoutine()
         {
+            if (cameraDirector != null) cameraDirector.SwitchToOpponentCamera();
+
             // Khoảng nghỉ tạo nhịp điệu tự nhiên như cơ thủ đang suy nghĩ
             yield return new WaitForSeconds(thinkDurationSeconds * 0.7f);
 
@@ -194,6 +214,14 @@ namespace Game.Billiards.AI
 
         private IEnumerator AIAimingAndShotRoutine()
         {
+            bool isBreakNow = matchStateManager.State.turnSequence == 0 || matchStateManager.CurrentPhase == MatchPhase.BreakSetup;
+            if (cameraDirector != null)
+            {
+                // Cú phá bi: giữ camera đầu bàn nhìn vào dàn bi; các lượt thường: camera cuối bàn thấy toàn bàn
+                if (isBreakNow) cameraDirector.SwitchToAimCamera();
+                else cameraDirector.SwitchToOpponentCamera();
+            }
+
             // Suy nghĩ trước khi ra quyết định
             yield return new WaitForSeconds(thinkDurationSeconds);
 
@@ -258,6 +286,26 @@ namespace Game.Billiards.AI
             // 3. Chuyển candidate thành ShotCommand có thêm sai số theo cấp độ khó
             ShotCommand finalCommand = chosenCandidate.ToShotCommand(aiPlayerIndex, currentProfile);
 
+            // DEBUG: ép AI đánh bi cái thẳng xuống lỗ gần nhất để test nhanh đặt bi
+            if (debugForceFoul && tableWrapper != null && tableWrapper.Pockets != null)
+            {
+                float bestDist = float.MaxValue;
+                Vector3 bestDir = finalCommand.direction;
+                foreach (var pocket in tableWrapper.Pockets)
+                {
+                    if (pocket == null) continue;
+                    Vector3 to = pocket.PocketPosition - cuePos;
+                    to.y = 0f;
+                    if (to.sqrMagnitude > 0.01f && to.sqrMagnitude < bestDist)
+                    {
+                        bestDist = to.sqrMagnitude;
+                        bestDir = to.normalized;
+                    }
+                }
+                finalCommand.direction = bestDir;
+                finalCommand.power01 = 0.6f;
+            }
+
             // 4. Đồng bộ hướng ngắm hiển thị gậy cơ và camera
             if (cameraDirector != null)
             {
@@ -270,8 +318,41 @@ namespace Game.Billiards.AI
                 cueController.UpdateAim(finalCommand.direction, finalCommand.power01);
             }
 
-            // Chờ ngắm bắn trong 0.5s để người chơi kịp quan sát hướng cơ của AI
-            yield return new WaitForSeconds(0.6f);
+            // Loay hoay ngắm 2-3 giây cho giống người thật: cơ lắc qua lại quanh hướng đã chọn rồi thu hẹp dần về đúng hướng
+            float wanderDuration = UnityEngine.Random.Range(aimWanderMinSeconds, aimWanderMaxSeconds);
+            float wanderTimer = 0f;
+            float phaseA = UnityEngine.Random.Range(0f, 6.28f);
+            float phaseB = UnityEngine.Random.Range(0f, 6.28f);
+            float startOffset = UnityEngine.Random.Range(8f, 16f) * (UnityEngine.Random.value < 0.5f ? -1f : 1f);
+
+            while (wanderTimer < wanderDuration)
+            {
+                if (!IsMyTurn()) { activeAIRoutine = null; yield break; }
+
+                float t = wanderTimer / wanderDuration;
+                float damping = 1f - Mathf.SmoothStep(0f, 1f, t); // 1 -> 0
+                float wobbleDeg = (startOffset * Mathf.Cos(t * 3.2f) + 3.5f * Mathf.Sin(wanderTimer * 5.1f + phaseA)) * damping;
+                float powerWobble = 0.07f * Mathf.Sin(wanderTimer * 3.7f + phaseB) * damping;
+
+                Vector3 wobbleDir = Quaternion.Euler(0f, wobbleDeg, 0f) * finalCommand.direction;
+                if (cueController != null)
+                {
+                    cueController.UpdateAim(wobbleDir, Mathf.Clamp01(finalCommand.power01 + powerWobble));
+                }
+
+                wanderTimer += Time.deltaTime;
+                yield return null;
+            }
+
+            if (!IsMyTurn()) { activeAIRoutine = null; yield break; }
+
+            if (cueController != null)
+            {
+                cueController.UpdateAim(finalCommand.direction, finalCommand.power01);
+            }
+
+            // Dừng ngắn trước khi hạ cơ đánh
+            yield return new WaitForSeconds(0.25f);
 
             // 5. Thực thi cú đánh qua ShotExecutor (dùng chung pipeline với người chơi theo Rule A09)
             if (cueController != null)
@@ -284,7 +365,7 @@ namespace Game.Billiards.AI
                     }
                     if (cameraDirector != null)
                     {
-                        cameraDirector.SwitchToShotCamera();
+                        cameraDirector.SwitchToOpponentCamera();
                     }
                 });
             }
@@ -293,7 +374,7 @@ namespace Game.Billiards.AI
                 shotExecutor.ExecuteShot(finalCommand);
                 if (cameraDirector != null)
                 {
-                    cameraDirector.SwitchToShotCamera();
+                    cameraDirector.SwitchToOpponentCamera();
                 }
             }
 
@@ -302,7 +383,7 @@ namespace Game.Billiards.AI
 
         private ShotCandidate GenerateBreakCandidate(Vector3 cuePos)
         {
-            Vector3 targetApex = (tableWrapper != null) ? tableWrapper.FootSpot : new Vector3(0f, 0.8635f, 0.56f);
+            Vector3 targetApex = (tableWrapper != null) ? tableWrapper.FootSpot : new Vector3(-0.56f, 0.8635f, 0f);
             Vector3 breakDir = (targetApex - cuePos);
             breakDir.y = 0f;
             breakDir = breakDir.normalized;

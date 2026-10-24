@@ -35,6 +35,12 @@ namespace Game.Billiards.UI
         [SerializeField] private Button rulesButton;
         [SerializeField] private Button settingsButton;
         [SerializeField] private Button cueContactButton;
+        [Header("Match Start Intro Overlay")]
+        [SerializeField] private GameObject matchStartIntroRoot;
+        [SerializeField] private Text matchStartTitleText;
+        [SerializeField] private Text matchStartVersusText;
+        [SerializeField] private Text matchStartDetailsText;
+        [SerializeField] private Button matchStartReadyButton;
 
         public PlayerPanelUI PlayerLeftPanel => playerLeftPanel;
         public PlayerPanelUI PlayerRightPanel => playerRightPanel;
@@ -49,6 +55,11 @@ namespace Game.Billiards.UI
 
         private void Awake()
         {
+            var canvas = FindObjectOfType<Canvas>();
+            if (canvas != null && canvas.transform.localScale == Vector3.zero)
+            {
+                canvas.transform.localScale = Vector3.one;
+            }
             FindSubPanelsIfMissing();
         }
 
@@ -112,6 +123,48 @@ namespace Game.Billiards.UI
             SetupButtons();
             SubscribeEvents();
             RefreshAllUI();
+
+            if (matchStartIntroRoot != null)
+            {
+                matchStartIntroRoot.SetActive(false);
+            }
+
+            var rootCanvas = GetComponentInParent<Canvas>() ?? FindObjectOfType<Canvas>();
+            if (rootCanvas != null && rootCanvas.transform.localScale == Vector3.zero)
+            {
+                rootCanvas.transform.localScale = Vector3.one;
+            }
+
+            EnsureGameplayCanvasVisible();
+
+            if (eventToast != null && matchStateManager != null && matchStateManager.State != null)
+            {
+                int cur = matchStateManager.State.currentPlayerIndex;
+                string pName = matchStateManager.State.players[cur].displayName;
+                eventToast.ShowToast("TRẬN ĐẤU BẮT ĐẦU!", $"LƯỢT BẮN: {pName} KHAI CUỘC (BREAK SHOT)!", new Color(0.06f, 0.73f, 0.51f, 0.95f), 3.0f);
+            }
+        }
+
+        private void EnsureGameplayCanvasVisible()
+        {
+            var canvases = FindObjectsOfType<Canvas>(true);
+            foreach (var c in canvases)
+            {
+                if (c == null || c.name != "GameplayCanvas") continue;
+
+                c.gameObject.SetActive(true);
+                c.enabled = true;
+                c.renderMode = RenderMode.ScreenSpaceOverlay;
+                c.sortingOrder = 50;
+                if (c.transform.localScale == Vector3.zero) c.transform.localScale = Vector3.one;
+
+                var rt = (RectTransform)c.transform;
+                Debug.Log($"[GameplayHUD] GameplayCanvas OK: mode={c.renderMode} rect={rt.rect.width}x{rt.rect.height} " +
+                          $"scale={c.transform.localScale} children={rt.childCount} screen={Screen.width}x{Screen.height}");
+                return;
+            }
+
+            Debug.LogWarning("[GameplayHUD] Không tìm thấy GameplayCanvas trong scene đang chạy!");
         }
 
         private void SetupButtons()
@@ -154,6 +207,9 @@ namespace Game.Billiards.UI
                 matchStateManager.OnRackEnded -= HandleRackEnded;
                 matchStateManager.OnRackEnded += HandleRackEnded;
 
+                matchStateManager.OnRackStarted -= HandleRackStarted;
+                matchStateManager.OnRackStarted += HandleRackStarted;
+
                 matchStateManager.OnMatchWon -= HandleMatchWon;
                 matchStateManager.OnMatchWon += HandleMatchWon;
             }
@@ -187,6 +243,7 @@ namespace Game.Billiards.UI
                 matchStateManager.OnPhaseChanged -= HandlePhaseChanged;
                 matchStateManager.OnRackScoreChanged -= HandleRackScoreChanged;
                 matchStateManager.OnRackEnded -= HandleRackEnded;
+                matchStateManager.OnRackStarted -= HandleRackStarted;
                 matchStateManager.OnMatchWon -= HandleMatchWon;
             }
 
@@ -213,7 +270,15 @@ namespace Game.Billiards.UI
         {
             if (UnityEngine.Input.GetKeyDown(KeyCode.Escape))
             {
-                if (settingsUI != null) settingsUI.Toggle();
+                // Esc đóng popup đang mở trước; nếu không có popup nào thì mở Menu
+                switch (HudModalState.Current)
+                {
+                    case "help": if (helpUI != null) helpUI.Hide(); break;
+                    case "rules": if (rulesUI != null) rulesUI.Hide(); break;
+                    case "settings": if (settingsUI != null) settingsUI.Hide(); break;
+                    case "spin": if (contactSelector != null) contactSelector.SetOpen(false); break;
+                    default: if (settingsUI != null) settingsUI.Toggle(); break;
+                }
             }
 
             if (UnityEngine.Input.GetKeyDown(KeyCode.H) || UnityEngine.Input.GetKeyDown(KeyCode.F1))
@@ -224,11 +289,6 @@ namespace Game.Billiards.UI
             if (UnityEngine.Input.GetKeyDown(KeyCode.R))
             {
                 if (rulesUI != null) rulesUI.Toggle();
-            }
-
-            if (UnityEngine.Input.GetKeyDown(KeyCode.C))
-            {
-                if (contactSelector != null) contactSelector.ToggleSelector();
             }
         }
 
@@ -268,8 +328,7 @@ namespace Game.Billiards.UI
             if (matchHeader != null)
             {
                 matchHeader.UpdateRackAndScore(state.rackNumber, state.playerARackWins, state.playerBRackWins, state.settings.raceTarget);
-                bool timerActive = (state.settings.shotTimer != ShotTimerOption.Unlimited) && (state.phase == MatchPhase.Aiming);
-                matchHeader.SetTimerVisible(timerActive);
+
             }
 
             // 4. Cập nhật Call Shot
@@ -302,11 +361,10 @@ namespace Game.Billiards.UI
 
         private void HandlePhaseChanged(MatchPhase phase)
         {
-            if (matchHeader != null && matchStateManager != null)
+            if (phase != MatchPhase.Aiming)
             {
-                bool isAiming = (phase == MatchPhase.Aiming);
-                bool timerEnabled = (matchStateManager.State.settings.shotTimer != ShotTimerOption.Unlimited);
-                matchHeader.SetTimerVisible(isAiming && timerEnabled);
+                if (playerLeftPanel != null) playerLeftPanel.ClearTimer();
+                if (playerRightPanel != null) playerRightPanel.ClearTimer();
             }
 
             if (phase == MatchPhase.Aiming && callShotUI != null)
@@ -337,15 +395,32 @@ namespace Game.Billiards.UI
             int winner = (outcome == RackOutcome.PlayerAWins) ? 0 : 1;
             string winnerName = state.players[winner].displayName;
 
-            if (eventToast != null)
-            {
-                eventToast.ShowWinToast(winnerName, $"Chiến thắng ván đấu {state.rackNumber}!");
-            }
+            // Banner thắng ván nhanh rồi tự chuyển sang ván mới (không cần bấm nút)
+            FoulPopupUI.ShowWin($"{winnerName.ToUpper()}   {state.playerARackWins} - {state.playerBRackWins}", 2.0f);
+            HudModalState.ForceOpen("result");
+            if (autoNextRackRoutine != null) StopCoroutine(autoNextRackRoutine);
+            autoNextRackRoutine = StartCoroutine(AutoNextRackRoutine());
+        }
 
+        private Coroutine autoNextRackRoutine;
+
+        private System.Collections.IEnumerator AutoNextRackRoutine()
+        {
+            yield return new WaitForSeconds(2.6f);
+            autoNextRackRoutine = null;
             if (resultUI != null)
             {
-                resultUI.ShowRackResult(winner, state.playerARackWins, state.playerBRackWins, state.settings.raceTarget);
+                resultUI.AdvanceToNextRack();
             }
+            else
+            {
+                HudModalState.Release("result");
+            }
+        }
+
+        private void HandleRackStarted()
+        {
+            RefreshAllUI();
         }
 
         private void HandleMatchWon(int winnerIndex)
@@ -386,10 +461,9 @@ namespace Game.Billiards.UI
             }
 
             // Thông báo lỗi nếu có
-            if (result.HasFoul && eventToast != null)
+            if (result.HasFoul)
             {
-                string desc = GetFoulDescription(result.foul);
-                eventToast.ShowFoulToast(result.foul.ToString(), desc);
+                FoulPopupUI.Show(result.foul);
             }
         }
 
@@ -408,18 +482,16 @@ namespace Game.Billiards.UI
 
         private void HandleShotTimerTick(float remaining, float total)
         {
-            if (matchHeader != null)
-            {
-                matchHeader.UpdateTimer(remaining, total);
-            }
+            int cur = matchStateManager != null ? matchStateManager.CurrentPlayerIndex : 0;
+            PlayerPanelUI active = cur == 0 ? playerLeftPanel : playerRightPanel;
+            PlayerPanelUI other = cur == 0 ? playerRightPanel : playerLeftPanel;
+            if (active != null) active.SetTimer(remaining, total);
+            if (other != null) other.ClearTimer();
         }
 
         private void HandleShotClockExpired()
         {
-            if (eventToast != null)
-            {
-                eventToast.ShowFoulToast("Hết Giờ (Shot Clock Expired)", "Người chơi không kịp ra cơ trong thời gian quy định.");
-            }
+            FoulPopupUI.Show(FoulType.ShotClockExpired);
         }
 
         private string GetFoulDescription(FoulType foul)
@@ -440,6 +512,62 @@ namespace Game.Billiards.UI
                     return "Hết thời gian đánh cho phép.";
                 default:
                     return "Phạm quy theo luật WPA 8-Ball.";
+            }
+        }
+
+        public void ShowMatchStartIntro()
+        {
+            if (matchStartIntroRoot != null)
+            {
+                matchStartIntroRoot.SetActive(true);
+
+                if (inputController != null)
+                {
+                    inputController.SetTurnActive(false);
+                }
+
+                if (matchStateManager != null && matchStateManager.State != null)
+                {
+                    var s = matchStateManager.State;
+                    string p1 = s.players.Length > 0 ? s.players[0].displayName : "CƠ THỦ 1 (BẠN)";
+                    string p2 = s.players.Length > 1 ? s.players[1].displayName : "CƠ THỦ 2 (AI)";
+                    string breaker = s.currentPlayerIndex == 0 ? p1 : p2;
+
+                    if (matchStartVersusText != null)
+                    {
+                        matchStartVersusText.text = $"{p1}  ⚔️  {p2}";
+                    }
+                    if (matchStartDetailsText != null)
+                    {
+                        matchStartDetailsText.text = $"THỂ THỨC: RACE TO {(int)s.settings.raceTarget} (CHẠM {(int)s.settings.raceTarget})\nLUẬT THI ĐẤU: WPA 8-BALL QUỐC TẾ\nQUYỀN KHAI CUỘC: <b>{breaker.ToUpper()}</b>";
+                    }
+                }
+            }
+        }
+
+        public void DismissMatchStartIntro()
+        {
+            if (matchStartIntroRoot != null)
+            {
+                matchStartIntroRoot.SetActive(false);
+            }
+
+            if (inputController != null && matchStateManager != null && matchStateManager.State != null)
+            {
+                int cur = matchStateManager.State.currentPlayerIndex;
+                bool isAI = matchStateManager.State.players[cur].isAI;
+                inputController.SetTurnActive(!isAI);
+            }
+            else if (inputController != null)
+            {
+                inputController.SetTurnActive(true);
+            }
+
+            if (eventToast != null && matchStateManager != null && matchStateManager.State != null)
+            {
+                int cur = matchStateManager.State.currentPlayerIndex;
+                string pName = matchStateManager.State.players[cur].displayName;
+                eventToast.ShowToast("TRẬN ĐẤU BẮT ĐẦU!", $"LƯỢT BẮN: {pName} KHAI CUỘC (BREAK SHOT)!", new Color(0.06f, 0.73f, 0.51f, 0.95f), 3.0f);
             }
         }
     }

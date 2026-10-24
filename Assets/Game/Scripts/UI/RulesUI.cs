@@ -43,13 +43,20 @@ namespace Game.Billiards.UI
 
         public void Show()
         {
+            if (!HudModalState.TryOpen("rules")) return;
             if (modalRoot != null) modalRoot.SetActive(true);
             ShowTab(0);
         }
 
         public void Hide()
         {
+            HudModalState.Release("rules");
             if (modalRoot != null) modalRoot.SetActive(false);
+        }
+
+        private void OnDestroy()
+        {
+            HudModalState.Release("rules");
         }
 
         public void Toggle()
@@ -80,7 +87,7 @@ namespace Game.Billiards.UI
                     SetContent(
                         "2. BÀN MỞ & CHỌN NHÓM (OPEN TABLE & GROUPS)",
                         "• Khi bàn còn MỞ (Open Table), người chơi có quyền chạm bất kỳ bi nào (trơn 1-7 hoặc sọc 9-15, ngoại trừ bi 8 đen) đầu tiên.\n" +
-                        "• Nhóm bi chỉ được xác định khi một cơ thủ thực hiện thành công một cú đánh gọi hợp lệ (Legal Called Shot) đưa bi gọi vào đúng lỗ đã chỉ định sau khai cuộc.\n" +
+                        "• Nhóm bi được xác định bởi quả bi trơn/sọc đầu tiên vào lỗ (bất kỳ lỗ nào) sau khai cuộc, không cần gọi bi hay gọi lỗ.\n" +
                         "• Cơ thủ đưa bi trơn hợp lệ vào lỗ sẽ được gán nhóm Bi Trơn (Solids 1-7); đối thủ sẽ nhận nhóm Bi Sọc (Stripes 9-15)."
                     );
                     break;
@@ -99,10 +106,10 @@ namespace Game.Billiards.UI
                     SetContent(
                         "4. QUY TẮC VỀ BI SỐ 8 (THE 8-BALL)",
                         "• Chỉ khi cơ thủ đã dọn sạch toàn bộ 7 bi thuộc nhóm của mình thì bi số 8 mới trở thành bi mục tiêu hợp lệ.\n" +
-                        "• Cú đánh bi số 8 BẮT BUỘC phải gọi trước lỗ dự định đưa bi vào.\n" +
+                        "• Không cần gọi lỗ: đưa bi số 8 vào bất kỳ lỗ nào (sau khi đã ăn hết nhóm, không phạm lỗi) là thắng ván.\n" +
                         "• <b>Xử THUA VÁN NGAY LẬP TỨC (Loss of Game) nếu:</b>\n" +
                         "  1. Đưa bi 8 vào lỗ khi chưa ăn hết bi nhóm mình.\n" +
-                        "  2. Đưa bi 8 vào lỗ khác với lỗ đã gọi.\n" +
+                        "  2. Đưa bi 8 vào lỗ khi bàn còn mở (chưa chia nhóm).\n" +
                         "  3. Rơi bi cái (Scratch) trong cú đánh đưa bi số 8 vào lỗ.\n" +
                         "  4. Làm bi số 8 bay văng ra khỏi bàn."
                     );
@@ -111,7 +118,7 @@ namespace Game.Billiards.UI
                 case 4:
                     SetContent(
                         "5. ĐIỀU KIỆN THẮNG TRẬN (WIN CONDITIONS)",
-                        "• Cơ thủ dọn sạch nhóm bi của mình và đưa bi số 8 vào đúng lỗ đã gọi một cách hợp lệ (không phạm lỗi) sẽ GIÀNH CHIẾN THẮNG VÁN ĐẤU (Rack Win).\n" +
+                        "• Cơ thủ dọn sạch nhóm bi của mình và đưa bi số 8 vào lỗ một cách hợp lệ (không phạm lỗi) sẽ GIÀNH CHIẾN THẮNG VÁN ĐẤU (Rack Win).\n" +
                         "• Trận đấu diễn ra theo thể thức Race-to (chạm đích):\n" +
                         "  Cơ thủ đầu tiên đạt đủ số ván thắng theo quy định (Race to 3, 5, 7, hoặc 9) sẽ trở thành NGƯỜI CHIẾN THẮNG CHUNG CUỘC TRẬN ĐẤU."
                     );

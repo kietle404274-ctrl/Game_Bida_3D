@@ -1,0 +1,66 @@
+=== TABLE ACTIVE COLLIDERS ===
+Cabinet: enabled=False, isTrigger=False, type=BoxCollider, bounds=Center: (0.00, 0.00, 0.00), Extents: (0.00, 0.00, 0.00)
+Cabinet: enabled=False, isTrigger=False, type=BoxCollider, bounds=Center: (0.00, 0.00, 0.00), Extents: (0.00, 0.00, 0.00)
+Cabinet: enabled=False, isTrigger=False, type=BoxCollider, bounds=Center: (0.00, 0.00, 0.00), Extents: (0.00, 0.00, 0.00)
+Corner Pockets: enabled=False, isTrigger=False, type=MeshCollider, bounds=Center: (-0.01, 0.85, 0.00), Extents: (0.00, 0.00, 0.00)
+Cushions: enabled=False, isTrigger=False, type=MeshCollider, bounds=Center: (-0.01, 0.85, 0.00), Extents: (0.00, 0.00, 0.00)
+Holes: enabled=False, isTrigger=False, type=MeshCollider, bounds=Center: (-0.01, 0.79, 0.00), Extents: (0.00, 0.00, 0.00)
+Play Field: enabled=False, isTrigger=False, type=MeshCollider, bounds=Center: (0.00, 0.83, 0.00), Extents: (0.00, 0.00, 0.00)
+Upper part: enabled=False, isTrigger=False, type=MeshCollider, bounds=Center: (-0.01, 0.84, 0.00), Extents: (0.00, 0.00, 0.00)
+Pocket_0_FootLeft: enabled=True, isTrigger=True, type=SphereCollider, bounds=Center: (-1.11, 0.84, 0.55), Extents: (0.05, 0.06, 0.06)
+Pocket_1_FootRight: enabled=True, isTrigger=True, type=SphereCollider, bounds=Center: (-1.11, 0.84, -0.55), Extents: (0.05, 0.06, 0.06)
+Pocket_2_SideLeft: enabled=True, isTrigger=True, type=SphereCollider, bounds=Center: (0.00, 0.84, 0.58), Extents: (0.06, 0.06, 0.06)
+Pocket_3_SideRight: enabled=True, isTrigger=True, type=SphereCollider, bounds=Center: (0.00, 0.84, -0.58), Extents: (0.06, 0.06, 0.06)
+Pocket_4_HeadLeft: enabled=True, isTrigger=True, type=SphereCollider, bounds=Center: (1.11, 0.84, 0.55), Extents: (0.05, 0.06, 0.06)
+Pocket_5_HeadRight: enabled=True, isTrigger=True, type=SphereCollider, bounds=Center: (1.11, 0.84, -0.55), Extents: (0.05, 0.06, 0.06)
+ClothBedCollider: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (0.00, 0.83, 0.00), Extents: (1.17, 0.01, 0.61)
+Cushion_Foot: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-1.10, 0.86, 0.00), Extents: (0.03, 0.06, 0.45)
+Cushion_Head: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (1.09, 0.86, 0.00), Extents: (0.03, 0.06, 0.45)
+Cushion_SidePos_Foot: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-0.55, 0.86, 0.53), Extents: (0.47, 0.06, 0.03)
+Cushion_SidePos_Head: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (0.53, 0.86, 0.53), Extents: (0.47, 0.06, 0.03)
+Cushion_SideNeg_Foot: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-0.55, 0.86, -0.53), Extents: (0.47, 0.06, 0.03)
+Cushion_SideNeg_Head: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (0.53, 0.86, -0.53), Extents: (0.47, 0.06, 0.03)
+Facing_Pocket0_Foot: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-1.11, 0.86, 0.46), Extents: (0.04, 0.06, 0.04)
+Facing_Pocket0_Side: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-1.03, 0.86, 0.54), Extents: (0.04, 0.06, 0.04)
+Facing_Pocket1_Foot: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-1.11, 0.86, -0.46), Extents: (0.04, 0.06, 0.04)
+Facing_Pocket1_Side: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-1.03, 0.86, -0.54), Extents: (0.04, 0.06, 0.04)
+Facing_Pocket4_Head: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (1.10, 0.86, 0.46), Extents: (0.04, 0.06, 0.04)
+Facing_Pocket4_Side: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (1.02, 0.86, 0.54), Extents: (0.04, 0.06, 0.04)
+Facing_Pocket5_Head: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (1.10, 0.86, -0.46), Extents: (0.04, 0.06, 0.04)
+Facing_Pocket5_Side: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (1.02, 0.86, -0.54), Extents: (0.04, 0.06, 0.04)
+Jaw_SideLeft_Foot: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-0.07, 0.86, 0.53), Extents: (0.03, 0.06, 0.04)
+Jaw_SideLeft_Head: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (0.06, 0.86, 0.53), Extents: (0.03, 0.06, 0.04)
+Jaw_SideRight_Foot: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-0.07, 0.86, -0.53), Extents: (0.03, 0.06, 0.04)
+Jaw_SideRight_Head: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (0.06, 0.86, -0.53), Extents: (0.03, 0.06, 0.04)
+Backstop_Pocket0_X: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-1.18, 0.86, 0.56), Extents: (0.06, 0.06, 0.10)
+Backstop_Pocket0_Z: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-1.06, 0.86, 0.63), Extents: (0.10, 0.06, 0.06)
+Backstop_Pocket1_X: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-1.18, 0.86, -0.56), Extents: (0.06, 0.06, 0.10)
+Backstop_Pocket1_Z: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-1.06, 0.86, -0.63), Extents: (0.10, 0.06, 0.06)
+Backstop_Pocket4_X: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (1.18, 0.86, 0.56), Extents: (0.06, 0.06, 0.10)
+Backstop_Pocket4_Z: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (1.06, 0.86, 0.63), Extents: (0.10, 0.06, 0.06)
+Backstop_Pocket5_X: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (1.18, 0.86, -0.56), Extents: (0.06, 0.06, 0.10)
+Backstop_Pocket5_Z: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (1.06, 0.86, -0.63), Extents: (0.10, 0.06, 0.06)
+Backstop_Pocket2_Z: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (0.00, 0.86, 0.65), Extents: (0.11, 0.06, 0.06)
+Backstop_Pocket3_Z: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (0.00, 0.86, -0.65), Extents: (0.11, 0.06, 0.06)
+Table_OuterBoundary_North: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (1.35, 0.86, 0.00), Extents: (0.08, 0.15, 1.00)
+Table_OuterBoundary_South: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (-1.35, 0.86, 0.00), Extents: (0.08, 0.15, 1.00)
+Table_OuterBoundary_East: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (0.00, 0.86, 0.85), Extents: (1.50, 0.15, 0.08)
+Table_OuterBoundary_West: enabled=True, isTrigger=False, type=BoxCollider, bounds=Center: (0.00, 0.86, -0.85), Extents: (1.50, 0.15, 0.08)
+
+=== POCKET DETECTOR LOCATIONS ===
+Pocket 0 (Pocket_0_FootLeft): pos=(-1.11, 0.84, 0.55), radius=0.055
+Pocket 1 (Pocket_1_FootRight): pos=(-1.11, 0.84, -0.55), radius=0.055
+Pocket 2 (Pocket_2_SideLeft): pos=(0.00, 0.84, 0.58), radius=0.055
+Pocket 3 (Pocket_3_SideRight): pos=(0.00, 0.84, -0.58), radius=0.055
+Pocket 4 (Pocket_4_HeadLeft): pos=(1.11, 0.84, 0.55), radius=0.055
+Pocket 5 (Pocket_5_HeadRight): pos=(1.11, 0.84, -0.55), radius=0.055
+
+=== TABLE VISUAL CHILDREN ===
+Child: Line, Mesh=Line, Vertices=4, Col_enabled=False
+Child: Arc, Mesh=Arc, Vertices=66, Col_enabled=False
+Child: Cabinet, Mesh=Cabinet, Vertices=2434, Col_enabled=False
+Child: Corner Pockets, Mesh=Corner_Pockets, Vertices=1520, Col_enabled=False
+Child: Cushions, Mesh=Cushions, Vertices=408, Col_enabled=False
+Child: Holes, Mesh=Holes, Vertices=306, Col_enabled=False
+Child: Play Field, Mesh=Play_Field, Vertices=433, Col_enabled=False
+Child: Upper part, Mesh=Upper_part, Vertices=2776, Col_enabled=False

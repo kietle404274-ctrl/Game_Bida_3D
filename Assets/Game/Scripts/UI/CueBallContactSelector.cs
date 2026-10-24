@@ -28,8 +28,22 @@ namespace Game.Billiards.UI
 
         public void SetOpen(bool open)
         {
+            if (open)
+            {
+                // Chỉ mở được khi không có popup khác (Hướng dẫn / Luật / Menu) đang mở
+                if (!HudModalState.TryOpen("spin")) return;
+            }
+            else
+            {
+                HudModalState.Release("spin");
+            }
             isOpen = open;
             OnSelectorToggled?.Invoke(isOpen);
+        }
+
+        private void OnDestroy()
+        {
+            HudModalState.Release("spin");
         }
 
         public void SetContact(Vector2 contact)
@@ -43,73 +57,46 @@ namespace Game.Billiards.UI
             SetContact(Vector2.zero);
         }
 
+        private Input.PlayerInputController inputController;
+
         private void Update()
         {
-            // Phím tắt C để bật/tắt bộ chọn điểm chạm
-            if (UnityEngine.Input.GetKeyDown(KeyCode.C))
+            if (!isOpen)
             {
-                ToggleSelector();
+                // Phím J mở popup chọn điểm chạm (chỉ khi đang được phép ngắm)
+                if (UnityEngine.Input.GetKeyDown(KeyCode.J))
+                {
+                    if (inputController == null) inputController = FindObjectOfType<Input.PlayerInputController>();
+                    if (inputController == null || inputController.IsAimingAllowed) SetOpen(true);
+                }
+                return;
             }
 
-            // Nếu đang mở hoặc người chơi bấm tổ hợp phím chỉnh spin (I, K, J, L hoặc Mũi tên)
-            float h = 0f;
-            float v = 0f;
+            // Enter: xác nhận và quay lại thao tác bình thường
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Return) || UnityEngine.Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                SetOpen(false);
+                return;
+            }
 
-            if (UnityEngine.Input.GetKey(KeyCode.I) || (isOpen && UnityEngine.Input.GetKey(KeyCode.UpArrow))) v += 1f;
-            if (UnityEngine.Input.GetKey(KeyCode.K) || (isOpen && UnityEngine.Input.GetKey(KeyCode.DownArrow))) v -= 1f;
-            if (UnityEngine.Input.GetKey(KeyCode.J) || (isOpen && UnityEngine.Input.GetKey(KeyCode.LeftArrow))) h -= 1f;
-            if (UnityEngine.Input.GetKey(KeyCode.L) || (isOpen && UnityEngine.Input.GetKey(KeyCode.RightArrow))) h += 1f;
-
-            if (UnityEngine.Input.GetKeyDown(KeyCode.R) && isOpen)
+            if (UnityEngine.Input.GetKeyDown(KeyCode.R))
             {
                 ResetToCenter();
                 return;
             }
 
+            // Mũi tên tinh chỉnh điểm chạm khi popup đang mở
+            float h = 0f;
+            float v = 0f;
+            if (UnityEngine.Input.GetKey(KeyCode.UpArrow)) v += 1f;
+            if (UnityEngine.Input.GetKey(KeyCode.DownArrow)) v -= 1f;
+            if (UnityEngine.Input.GetKey(KeyCode.LeftArrow)) h -= 1f;
+            if (UnityEngine.Input.GetKey(KeyCode.RightArrow)) h += 1f;
+
             if (Mathf.Abs(h) > 0.01f || Mathf.Abs(v) > 0.01f)
             {
                 Vector2 delta = new Vector2(h, v) * (keyAdjustSpeed * Time.deltaTime);
                 SetContact(currentContact + delta);
-            }
-        }
-
-        private void OnGUI()
-        {
-            // Hiển thị một widget trực quan ở góc dưới màn hình
-            int size = 100;
-            int margin = 20;
-            Rect boxRect = new Rect(margin, Screen.height - size - margin - 40, size, size + 30);
-
-            GUI.Box(boxRect, "Spin (C)");
-
-            Rect ballRect = new Rect(boxRect.x + 10, boxRect.y + 25, size - 20, size - 20);
-            GUI.Box(ballRect, "");
-
-            // Vẽ tâm bi
-            Vector2 center = ballRect.center;
-            float radius = (ballRect.width * 0.5f);
-
-            // Tọa độ chấm đỏ chỉ điểm chạm
-            float dotX = center.x + (currentContact.x * radius * 0.8f);
-            float dotY = center.y - (currentContact.y * radius * 0.8f); // y đảo ngược trên GUI màn hình
-            Rect dotRect = new Rect(dotX - 4, dotY - 4, 8, 8);
-
-            GUI.color = Color.red;
-            GUI.Box(dotRect, "");
-            GUI.color = Color.white;
-
-            // Xử lý click chuột trong vòng tròn bi cái để chọn nhanh điểm chạm
-            Event e = Event.current;
-            if (e.isMouse && (e.type == EventType.MouseDown || e.type == EventType.MouseDrag) && e.button == 0)
-            {
-                if (ballRect.Contains(e.mousePosition))
-                {
-                    Vector2 localPos = e.mousePosition - center;
-                    float normX = localPos.x / radius;
-                    float normY = -localPos.y / radius;
-                    SetContact(new Vector2(normX, normY));
-                    e.Use();
-                }
             }
         }
     }

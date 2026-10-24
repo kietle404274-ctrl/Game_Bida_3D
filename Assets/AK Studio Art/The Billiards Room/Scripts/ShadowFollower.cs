@@ -1,4 +1,6 @@
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 using UnityEngine;
 
 namespace AKStudioArt.BilliardsRoom
@@ -30,6 +32,7 @@ namespace AKStudioArt.BilliardsRoom
         }
     }
 
+#if UNITY_EDITOR
     [CustomEditor(typeof(ShadowFollower))]
     public class ShadowFollowerEditor : Editor
     {
@@ -49,5 +52,6 @@ namespace AKStudioArt.BilliardsRoom
             DrawDefaultInspector();
         }
     }
+#endif
 }
 

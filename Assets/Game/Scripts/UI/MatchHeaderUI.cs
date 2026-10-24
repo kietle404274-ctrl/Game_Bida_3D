@@ -23,12 +23,12 @@ namespace Game.Billiards.UI
         {
             if (rackNumberText != null)
             {
-                rackNumberText.text = $"VÁN {rackNumber}";
+                rackNumberText.text = $"RACE TO {(int)raceTarget}  •  VÁN {rackNumber}";
             }
 
             if (scoreRaceText != null)
             {
-                scoreRaceText.text = $"{playerAWins} - {playerBWins} (Race to {(int)raceTarget})";
+                scoreRaceText.text = $"{playerAWins} - {playerBWins}";
             }
         }
 

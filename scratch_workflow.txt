@@ -1,0 +1,548 @@
+
+GAME DEVELOPMENT SPECIFICATION
+TRÒ CHƠI BIDA 3D THÔNG MINH ỨNG DỤNG AI
+Tài liệu đặc tả triển khai dành cho Antigravity Coding Agent
+
+Hạng mục
+Giá trị
+Engine
+Unity 2022.3.62f3 LTS
+Render Pipeline
+HDRP
+Nền tảng
+Windows PC
+Ngôn ngữ
+C#
+Môi trường 3D chính
+The Billiards Room (Unity Asset Store)
+Chế độ chơi
+Offline vs AI / Online 1v1
+AI
+Utility AI + tính toán hình học, không dùng machine learning
+Networking
+Photon PUN 2; authoritative simulation theo Master Client
+Luật
+WPA 8-Ball / luật quốc tế, với race-to và shot timer là cấu hình trận
+Phiên bản tài liệu
+1.0 – đặc tả triển khai ban đầu
+
+Mục tiêu của tài liệu: để coding agent đọc toàn bộ project hiện có, bảo toàn asset gốc và triển khai game theo từng module, có kiểm thử và commit riêng.
+
+1. Mục tiêu sản phẩm và phạm vi bắt buộc
+Sản phẩm là game bida 8-ball 3D trên Windows, sử dụng môi trường The Billiards Room làm scene đồ họa chính. Coding agent chỉ chịu trách nhiệm xây dựng code, cấu trúc scene bổ sung, Prefab Variant/wrapper, UI, physics configuration, AI, luật chơi, camera, âm thanh/hiệu ứng và mạng. Không được phá hoặc sửa trực tiếp nội dung gốc của asset mua từ Asset Store.
+Offline: người chơi đấu với AI, có 3 mức Easy / Normal / Hard.
+Online: 1v1 qua Photon PUN 2, tạo phòng và tham gia bằng Room ID; không có matchmaking.
+Luật: 8-ball quốc tế theo WPA; table open, chọn nhóm, call shot, foul, ball-in-hand, thắng/thua phải được xử lý bằng Rule Engine độc lập.
+Điều khiển: xoay hướng bằng chuột, con lăn chuột chỉnh lực, click trái để đánh; không có đường ngắm dự đoán.
+Spin: hỗ trợ cu-lê, trô và side-spin cơ bản thông qua điểm chạm trên bi cái.
+Camera: camera ngắm phía sau bi cái; sau cú đánh chuyển sang góc rộng để theo dõi chuyển động; pocket event có feedback rõ ràng.
+Online authority: Master Client là nguồn sự thật cho simulation và trạng thái trận; client của người chơi gửi ShotCommand, không tự quyết định kết quả.
+Ràng buộc phạm vi: Không thêm shop, rank, tiền tệ, inventory, cosmetic, matchmaking, 2v2 hoặc các thể thức ngoài 8-ball trong phiên bản đồ án. Các mục này chỉ để hướng phát triển sau.
+
+2. Quy tắc bắt buộc cho Antigravity Coding Agent
+ID
+Quy tắc
+Chi tiết
+A01
+Đọc project trước khi sửa
+Quét Scenes, Prefabs, Scripts, Packages, Input, Layers/Tags và xác định object nào thuộc asset gốc.
+A02
+Không sửa asset gốc
+Không chỉnh trực tiếp prefab/material/model/script dưới thư mục publisher. Tạo Prefab Variant hoặc wrapper trong Assets/Game/.
+A03
+Code tách module
+Mỗi hệ thống có namespace, interface và trách nhiệm rõ; tránh God Object.
+A04
+Không đổi package tùy ý
+Không nâng/hạ Unity, HDRP, Photon hay package khác nếu chưa được yêu cầu.
+A05
+Commit theo module
+Mỗi milestone/module hoàn chỉnh phải là một commit riêng, message rõ ràng.
+A06
+Không commit thư mục sinh ra
+Bảo đảm .gitignore loại Library/, Temp/, Logs/, obj/, UserSettings/ và build output.
+A07
+Inspector-friendly
+Thông số gameplay phải expose qua SerializedField/ScriptableObject thay vì hard-code.
+A08
+Không dùng aim guide
+Không sinh line renderer/trajectory guide cho người chơi.
+A09
+Rule/AI dùng cùng gameplay core
+AI và người chơi phải dùng chung ShotExecutor + Physics, không có đường tắt riêng.
+A10
+Test trước khi chuyển milestone
+Mỗi module có acceptance test và không được làm module sau khi module nền chưa ổn định.
+A11
+Luôn hỏi khi có điểm chưa rõ
+Nếu có bất kỳ yêu cầu, trạng thái project, luật chơi, thiết kế, dependency hoặc cách triển khai nào còn mơ hồ, chưa đủ thông tin hoặc có nhiều cách hiểu, phải dừng và hỏi người dùng trước khi thực hiện. Có thể đưa ra 2–4 phương án (option) kèm mô tả ngắn/ưu nhược điểm để người dùng lựa chọn. Chỉ được tiếp tục sau khi người dùng xác nhận; tuyệt đối không tự suy đoán hoặc tự chọn giả định.
+
+3. Cấu trúc thư mục chuẩn
+Assets/Game/├── ArtOverrides/              # Material/prefab override do game tạo, không sửa asset gốc├── Audio/├── Configs/                   # ScriptableObject cấu hình vật lý, AI, audio, UI├── Prefabs/│   ├── Balls/│   ├── Table/│   ├── Cue/│   ├── UI/│   └── Network/├── Scenes/│   ├── Boot.unity│   ├── Lobby.unity│   └── Gameplay.unity├── Scripts/│   ├── Core/│   ├── Input/│   ├── Physics/│   ├── Rules/│   ├── Match/│   ├── AI/│   ├── Network/│   ├── Camera/│   ├── UI/│   ├── Audio/│   └── VFX/└── Tests/    ├── EditMode/    └── PlayMode/
+Namespace: Dùng root namespace Game.Billiards và namespace con theo module, ví dụ Game.Billiards.AI, Game.Billiards.Rules, Game.Billiards.Network.
+
+4. Luồng scene và trạng thái ứng dụng
+Scene
+Mục đích
+Yêu cầu chính
+Boot
+Khởi tạo hệ thống dùng chung
+AudioService, SaveSettings, Photon bootstrap, load Lobby.
+Lobby
+Sảnh 3D/menu chính
+Background 3D, Offline, Online, Settings, Help, Quit; panel/popup thay vì đổi scene nhỏ.
+Gameplay
+Trận đấu
+Table wrapper, balls, cue, camera, rules, match state, HUD, AI hoặc network.
+
+Boot → LobbyLobby → Offline Difficulty Popup → Gameplay (Offline)Lobby → Online Popup → Create/Join → Room Lobby → Gameplay (Online)Gameplay → Result → LobbyGameplay → Surrender/Disconnect → Result → Lobby
+5. Điều khiển người chơi
+Hành động
+Input mặc định
+Điều kiện
+Xoay hướng cơ
+Di chuyển chuột
+Chỉ khi đang ở AimPhase và người chơi có lượt.
+Điều chỉnh lực
+Con lăn chuột
+Thay đổi PowerNormalized 0..1, hiển thị power bar.
+Đánh
+Chuột trái
+Chỉ khi cú đánh hợp lệ để thực hiện; khóa input ngay sau click.
+Mở chọn điểm chạm
+Click biểu tượng bi cái trên HUD
+Mở CueBallContactSelector.
+Chọn điểm chạm
+Drag/click trên bi cái phóng to
+Trả về normalized offset X/Y trong vòng tròn hợp lệ.
+Ball-in-hand
+W/A/S/D
+Di chuyển bi cái trên mặt bàn, có collision/validity check.
+Xác nhận ball-in-hand
+Chuột trái hoặc Enter
+Chỉ cho phép khi vị trí hợp lệ.
+Pause/Settings
+Esc
+Offline pause hoàn toàn; Online chỉ mở overlay, không pause simulation.
+
+Không có đường ngắm: Không hiển thị line từ bi cái tới bi mục tiêu, không ghost ball, không dự đoán đường đi trên UI. Người chơi phải tự ngắm bằng camera và cơ.
+
+6. Camera
+State
+Hành vi
+AimCamera
+Camera nằm phía sau bi cái, orbit quanh trục Y, giữ focus gần bi cái; độ cao/góc pitch giới hạn để không xuyên bàn.
+ShotCamera
+Ngay sau khi ShotCommand được chấp nhận, blend sang góc rộng thấy phần lớn/toàn bàn.
+PocketFocus
+Khi một object-ball vào lỗ, có feedback ngắn: camera bias/cinemachine impulse/UI flash; không giật camera quá mức.
+BallInHandCamera
+Top-oblique hoặc góc rộng đủ nhìn vùng đặt bi; sau xác nhận trở lại AimCamera.
+ResultCamera
+Góc cinematic toàn bàn/room trong màn hình kết quả.
+
+7. UI/UX bắt buộc
+7.1 Lobby
+Đấu với người: mở popup có hai lựa chọn Tạo phòng / Nhập ID phòng.
+Tạo phòng: chuyển sang Room Lobby; host cấu hình Race To 3/5/7/9 và Shot Timer Không giới hạn/30/45/60 giây.
+Join: nhập Room ID, validate tồn tại/đủ người/trạng thái phòng trước khi join.
+Đấu với máy: popup chọn Easy / Normal / Hard rồi vào Gameplay.
+Cài đặt: Master Volume, Music Volume, SFX Volume, hướng dẫn chơi.
+Thoát game: có confirm dialog.
+7.2 Room Lobby
+Hiển thị Room ID lớn, có nút Copy.
+Hiển thị 2 slot người chơi, trạng thái Ready.
+Host chỉnh MatchSettings trước khi Start; client chỉ xem.
+Start chỉ bật khi đủ 2 người và cả hai Ready.
+7.3 Gameplay HUD
+Khu vực
+Nội dung
+Góc trên trái
+Player A: tên/avatar mặc định, nhóm bi, các icon bi còn lại, trạng thái lượt.
+Góc trên phải
+Player B/AI: cùng cấu trúc.
+Top center
+Shot timer nếu bật; score rack theo race-to, ví dụ 2–1 / Race to 5.
+Power bar
+Thanh lực trực quan; cập nhật bằng con lăn; 0–100%.
+Cue contact
+Icon bi cái; mở selector phóng to để chọn topspin/backspin/sidespin.
+Call shot
+Chọn bi/pocket dự kiến cho cú đánh (trừ break); có lựa chọn Safety theo WPA.
+Help
+Popup minh họa nút điều khiển.
+Rules
+Popup luật bida thiết kế dễ đọc, chia Break / Open table / Foul / 8-ball / Win-Lose.
+Settings
+Âm lượng, đầu hàng, thoát trận.
+Event messages
+Turn, Foul, Ball in Hand, Group Assigned, Illegal Break, Win/Lose, Disconnect.
+
+Ball tracker: Trước khi chọn nhóm, các slot nhóm ở hai bên ở trạng thái trung tính. Khi nhóm được xác định, hiển thị các bi thuộc nhóm tương ứng; bi nào đã pocket hợp lệ thì icon biến mất.
+
+8. MatchSettings
+public enum RaceTarget { RaceTo3 = 3, RaceTo5 = 5, RaceTo7 = 7, RaceTo9 = 9 }public enum ShotTimerOption { Unlimited = 0, Seconds30 = 30, Seconds45 = 45, Seconds60 = 60 }[Serializable]public struct MatchSettings {    public RaceTarget raceTarget;    public ShotTimerOption shotTimer;    public bool useWpaRules;      // luôn true trong bản đồ án}
+Race-to nghĩa là người đầu tiên thắng đủ số rack được cấu hình sẽ thắng match.
+Hết shot timer khi chưa thực hiện cú đánh: tính lỗi turn-timeout, chuyển lượt và đối thủ nhận ball-in-hand.
+Cài đặt phòng bị khóa sau khi rack đầu tiên bắt đầu.
+9. Rule Engine – WPA 8-Ball
+Rule Engine phải độc lập với UI, AI và mạng. Mọi cú đánh đi qua cùng một pipeline: ghi nhận pre-shot state → nhận physics events → tạo ShotResult → RuleEngine.Evaluate() → cập nhật MatchState. Không cho UI tự quyết định foul hoặc win/lose.
+9.1 Quy tắc chính phải triển khai
+Nhóm luật
+Yêu cầu
+Rack
+15 object balls; 8-ball dưới apex; một solid và một stripe ở hai góc sau; apex trên foot spot.
+Break
+Cue-ball in hand phía trên head string. Break không cần call shot. Nếu không pocket ball, ít nhất 4 object-ball phải chạm rail để legal break.
+Open table
+Sau break bàn vẫn open. Nhóm chỉ được xác định bằng một called shot hợp lệ sau break.
+Chọn nhóm
+Called ball hợp lệ vào called pocket → shooter nhận nhóm tương ứng; đối thủ nhận nhóm còn lại.
+Legal first contact
+Sau khi có nhóm, cue-ball phải chạm bi thuộc nhóm mình trước; khi đã clear nhóm, 8-ball là mục tiêu hợp lệ.
+Rail requirement
+Sau contact hợp lệ, phải có object-ball pocket hoặc ít nhất một ball chạm rail, nếu không là foul.
+Call shot
+Mọi shot không phải break phải có called ball + called pocket hoặc gọi Safety. UI phải cung cấp input tương ứng.
+Safety
+Called safety kết thúc lượt dù object-ball hợp lệ được pocket; pocketed object-ball vẫn nằm trong pocket.
+Standard foul
+Foul → đổi lượt + incoming player có cue-ball in hand trên toàn playing surface.
+8-ball loss
+Thua rack nếu pocket 8-ball kèm foul, pocket 8-ball trước khi clear nhóm, pocket vào pocket không gọi, hoặc đưa 8-ball khỏi bàn (không áp dụng break).
+8-ball on break
+Không xử thua ngay; xử lý theo WPA break rule: spot 8-ball hoặc re-rack tùy lựa chọn/quy tắc hiện hành.
+Stalemate
+Nếu xác định stalemate theo rule set, re-rack; breaker ban đầu break lại.
+
+Nguồn luật: Coding agent phải lấy rule mapping từ WPA Rules of Play mà đồ án đang tham chiếu. Nếu phiên bản live của WPA khác tài liệu đồ án, không tự ý đổi hành vi; tạo RuleVersion/ghi chú và báo người dùng trước khi cập nhật test.
+
+9.2 Foul/Outcome enums
+public enum FoulType {    None,    CueBallScratch,    WrongBallFirst,    NoRailAfterContact,    BallDrivenOffTable,    BallsStillMoving,    BadCueBallPlacement,    PlayingOutOfTurn,    ShotClockExpired,    IllegalBreak,    DoubleHit,        // chỉ triển khai nếu detection đáng tin cậy    PushShot          // chỉ triển khai nếu detection đáng tin cậy}public enum RackOutcome { Continue, PlayerAWins, PlayerBWins, ReRack }public enum PlayerGroup { Open, Solids, Stripes, EightBall }
+9.3 Call Shot UX
+Break: bỏ qua call-shot.
+Sau break: người chơi chọn object ball hợp lệ và pocket dự kiến bằng UI/raycast; cho phép đổi trước khi bắn.
+Khi chỉ còn 8-ball: bắt buộc chọn pocket cho 8-ball.
+Có nút Safety. Khi Safety được chọn, RuleEngine bỏ continuation dù bi mục tiêu được pocket hợp lệ.
+AI tự sinh called ball/pocket từ phương án đang thực hiện.
+10. Physics và Shot Execution
+10.1 Nguyên tắc
+Sử dụng Rigidbody + SphereCollider của bi; không sửa trực tiếp prefab publisher, tạo wrapper/prefab variant trong Assets/Game/Prefabs/Balls/.
+Tất cả bi dùng cùng PhysicsConfig cho mass, drag, angular drag, friction, restitution và stop thresholds.
+Shot chỉ bắt đầu khi tất cả bi đang ở trạng thái Resting.
+BallMovementMonitor xác định khi toàn bộ bi dừng theo linear/angular thresholds trong một khoảng settle time.
+PocketDetector dùng trigger volume riêng cho 6 lỗ; pocket event chỉ được phát một lần/ball/rack.
+10.2 ShotCommand
+public struct ShotCommand {    public int shooterActorId;    public Vector3 direction;       // normalized on table plane    public float power01;           // 0..1    public Vector2 cueContact01;    // x: side spin, y: top/back spin, each -1..1    public int calledBallNumber;    // -1 on break/safety when not applicable    public int calledPocketId;      // -1 on break/safety    public bool calledSafety;    public int turnSequence;}
+10.3 Cu-lê / trô / side-spin
+Cue contact UI trả về Vector2 bên trong vòng tròn bi cái; center = không spin.
+Y > 0: topspin/cu-lê; Y < 0: backspin/trô; X ≠ 0: sidespin.
+ShotExecutor chuyển contact offset thành torque/angular velocity và/hoặc ApplyForceAtPosition theo PhysicsConfig.
+Mức spin phải clamp theo power để tránh trạng thái phi thực tế; spin decay theo thời gian/rolling friction.
+Mục tiêu đồ án: xu hướng cu-lê/trô quan sát được và nhất quán, không yêu cầu mô phỏng billiards cấp nghiên cứu vật lý.
+10.4 PhysicsConfig ScriptableObject
+Tham số
+Mục đích
+ballMass
+Khối lượng Rigidbody.
+maxShotImpulse
+Impulse lớn nhất khi power = 1.
+linearDrag / angularDrag
+Giảm tốc tuyến tính/quay.
+ballRestitution
+Độ nảy ball-ball.
+cushionRestitution
+Độ nảy ball-cushion.
+clothFriction
+Ma sát mặt bàn.
+spinStrength
+Hệ số chuyển cueContact thành spin.
+spinDecay
+Tốc độ suy giảm spin.
+restLinearThreshold
+Ngưỡng tốc độ tuyến tính xem là dừng.
+restAngularThreshold
+Ngưỡng tốc độ góc xem là dừng.
+settleDuration
+Thời gian liên tục dưới ngưỡng trước khi kết thúc shot.
+
+11. Match State Architecture
+MatchPhase:Initializing → BreakSetup → Aiming → ShotInProgress → ResolveShot→ BallInHand (nếu foul) → Aiming→ RackResult → NextRackSetup / MatchResult
+Class
+Trách nhiệm
+GameManager
+Composition root; khởi tạo mode và services. Không chứa rule logic.
+MatchStateManager
+Giữ MatchState hiện tại; transition state machine.
+TurnManager
+Current player, timer, chuyển lượt, turn sequence.
+RuleManager / Wpa8BallRuleEngine
+Đánh giá ShotResult, groups, foul, rack outcome.
+BallManager
+Registry bi, reset rack, ball lookup, snapshots.
+ShotController
+Nhận input local/AI/network và tạo ShotCommand.
+ShotExecutor
+Validate basic state và tác lực/spin lên cue ball.
+ShotEventCollector
+Thu first contact, rails, pocket events, off-table, scratch.
+BallInHandController
+Đặt bi cái cho player hoặc AI.
+RackManager
+Rack positions, break setup, re-rack.
+MatchScoreManager
+Rack wins và race-to result.
+
+12. AI đối thủ – Utility AI
+AI không dùng machine learning. AI phải sử dụng đúng pipeline đã xác định trong đề tài: Game State Input → State Analysis → Action Generation → Utility Evaluation → Decision Selection → Action Execution. Physics execution dùng cùng ShotExecutor với người chơi.
+12.1 State Analysis
+Xác định nhóm bi AI được phép đánh; nếu table open thì xem xét cả solids/stripes theo luật.
+Lấy vị trí cue ball, object balls còn trên bàn, 6 pocket centers, cushion bounds.
+Tạo occupancy/path test trên mặt phẳng bàn XZ.
+Xác định candidate target balls và pocket hợp lệ.
+12.2 Action Generation bằng hình học
+Với mỗi target-ball/pocket pair, tính ghost-ball contact position cần thiết để object ball đi tới pocket.
+Kiểm tra đường cue-ball → ghost position có bị ball khác chặn không.
+Kiểm tra đường object-ball → pocket có bị chặn không.
+Tính cut angle, cue-to-target distance, target-to-pocket distance, pocket entry angle và margin clearance.
+Sinh ShotCandidate: target, pocket, aim direction, estimated power, estimated spin/contact, feasibility metrics.
+Nếu không có pot candidate tốt: sinh SafetyCandidate, ưu tiên để cue ball/target khó cho đối thủ nhưng vẫn đảm bảo first contact và rail requirement.
+12.3 Utility Score
+UtilityScore =    wPot        * PotFeasibility  + wAngle      * AngleScore  + wDistance   * DistanceScore  + wClearance  * ClearanceScore  + wPosition   * CueBallPositionScore  + wSafety     * SafetyScore  - wRisk       * FoulRisk;
+12.4 Difficulty Profiles
+Mức
+Candidate/đánh giá
+Sai số thực thi
+Hành vi
+Easy
+Giới hạn số candidate/pocket; utility đơn giản
+Aim noise + power noise lớn
+Ít ưu tiên position/safety; ball-in-hand chọn trong top vùng đơn giản.
+Normal
+Đánh giá đầy đủ pot candidates phổ biến
+Noise vừa
+Có safety khi không có pot tốt; dùng basic spin khi cần.
+Hard
+Đánh giá toàn bộ candidate hợp lệ + safety
+Noise rất thấp
+Tối ưu cue-ball position, ball-in-hand search tốt hơn, spin hợp lý và chiến thuật hơn.
+
+12.5 AI Ball-in-Hand
+Sample nhiều vị trí hợp lệ trong vùng chơi, loại vị trí overlap ball/pocket/cushion.
+Tại mỗi vị trí, tạm phân tích top shot candidates bằng hình học, không chạy physics simulation.
+Chọn vị trí có utility kỳ vọng cao nhất; Easy giảm sample count và thêm noise.
+12.6 Break của AI
+Dùng break preset hợp lệ, lực cao nhưng nằm trong PhysicsConfig.
+Hard có thể lựa chọn 2–3 preset break và random nhẹ để tránh hoàn toàn lặp lại.
+13. Online – Photon PUN 2
+Quyết định kiến trúc: Dùng Master Client authoritative simulation thay vì để hai máy tự mô phỏng độc lập. Lý do: Unity PhysX không deterministic tuyệt đối giữa các máy; một authority giúp giảm desync và đơn giản hóa Rule Engine.
+
+13.1 Room flow
+Create Room→ Photon room property: MatchSettings, GameVersion, RoomState=Waiting→ Player 2 Join bằng Room ID→ Ready x2→ Master validates settings→ StartMatch RPC/Event→ Load Gameplay đồng bộ
+13.2 Shot authority
+Shooter local tạo ShotCommand nhưng không tự quyết định outcome.
+ShotCommand gửi tới Master Client bằng RaiseEvent/RPC.
+Master kiểm tra actor đúng lượt, turnSequence, state=Aiming, power/contact/call hợp lệ.
+Master áp dụng ShotExecutor vào authoritative rigidbodies.
+Trong ShotInProgress, Master gửi ball transforms/velocities theo network tick vừa phải; client nội suy để hiển thị.
+Khi all balls settled, Master tạo final BallStateSnapshot + ShotResult, chạy RuleEngine.
+Master broadcast final snapshot + MatchState delta. Client snap/correct sai lệch nhỏ và cập nhật UI.
+13.3 Dữ liệu mạng
+Message
+Nội dung
+RoomSettings
+race target, shot timer, rules version, host actor.
+ShotRequest
+ShotCommand từ shooter tới Master.
+ShotAccepted/Rejected
+Ack + reason.
+BallStateFrame
+ballId, position, rotation, velocity, angularVelocity (khi shot đang chạy).
+ShotResolved
+first contact, rails, pocketed balls, fouls, group changes, next player.
+FinalSnapshot
+trạng thái 16 bi sau khi settle.
+MatchStateUpdate
+phase, current turn, rack score, timer, outcome.
+PlayerDisconnected
+actor id; xử thua ngay theo yêu cầu.
+
+13.4 Disconnect và Master change
+Bất kỳ player nào rời/mất kết nối trong match: player đó thua match ngay, player còn lại thắng; hiển thị thông báo lý do.
+Không tiếp tục match bằng host migration vì yêu cầu sản phẩm là xử thua khi mất kết nối.
+Nếu disconnect xảy ra trong Room Lobby trước Start: slot được giải phóng, không xử kết quả trận.
+14. Audio và VFX
+Sự kiện
+Audio/VFX
+Cue hit
+Cue impact sound scale theo power; cue animation/recoil.
+Ball-ball
+SFX scale theo relative collision speed; cooldown ngắn tránh spam.
+Ball-cushion
+SFX riêng, scale theo impulse.
+Pocket
+Pocket SFX + UI/pocket highlight + optional camera impulse.
+Foul
+UI toast + SFX cảnh báo nhẹ.
+Win/Lose
+Result sting + UI animation.
+UI
+Hover/click/open/close.
+Turn change
+Subtle indicator/SFX.
+
+AudioClip không hard-code Resources path; gắn qua AudioLibrary ScriptableObject/Inspector.
+Volume gồm Master/Music/SFX, lưu PlayerPrefs hoặc file settings nhỏ.
+15. Data Model tối thiểu
+MatchState- MatchPhase phase- int currentPlayerIndex- PlayerState[2] players- int rackNumber- int playerARackWins / playerBRackWins- PlayerGroup playerAGroup / playerBGroup- bool tableOpen- MatchSettings settings- int turnSequencePlayerState- string displayName- bool isAI- AIDifficulty difficulty- bool isConnected- bool isReadyBallState- int ballNumber        // 0 = cue ball- bool isPocketed- Vector3 position- Quaternion rotation- Vector3 velocity- Vector3 angularVelocityShotResult- int firstContactBall- List<int> pocketedBalls- List<int> ballsThatHitRail- bool cueBallScratch- bool anyBallOffTable- FoulType foul- bool calledShotMade- bool rackEnded
+16. Gameplay Scene – hierarchy mục tiêu
+GameplayRoot├── Systems│   ├── GameManager│   ├── MatchStateManager│   ├── TurnManager│   ├── RuleManager│   ├── BallManager│   ├── RackManager│   ├── ShotController│   ├── ShotExecutor│   ├── ShotEventCollector│   ├── CameraDirector│   ├── AudioManager│   └── NetworkMatchManager / AIController├── EnvironmentWrapper│   └── [Prefab Variant / reference to The Billiards Room]├── TableWrapper│   ├── PlayField│   ├── Cushions│   ├── PocketTriggers x6│   ├── BallSpawn/RackPoints│   └── HeadString/FootSpot markers (hidden runtime)├── BallsRoot│   ├── CueBall│   └── Ball01..Ball15├── CueRoot└── UI    ├── PlayerLeftPanel    ├── PlayerRightPanel    ├── MatchHeader    ├── PowerBar    ├── CueContactSelector    ├── CallShotPanel    ├── HelpPanel    ├── RulesPanel    ├── SettingsPanel    └── EventToast
+17. Danh sách class/interface dự kiến
+Module
+Classes
+Core
+GameBootstrap, GameManager, ServiceRegistry
+Input
+PlayerInputController, AimInput, PowerInput, CueContactInput
+Physics
+BallController, BallMovementMonitor, ShotExecutor, PocketDetector, CushionDetector, PhysicsConfig
+Rules
+IRuleEngine, Wpa8BallRuleEngine, ShotEventCollector, ShotResultBuilder, FoulEvaluator
+Match
+MatchStateManager, TurnManager, RackManager, MatchScoreManager, BallInHandController
+AI
+AIController, TableStateAnalyzer, ShotCandidateGenerator, PathClearanceChecker, UtilityEvaluator, SafetyShotGenerator, BallInHandPlanner, AIDifficultyProfile
+Network
+PhotonBootstrap, RoomManager, NetworkMatchManager, NetworkShotAuthority, BallStateSynchronizer, NetworkEventCodes
+Camera
+CameraDirector, AimCameraRig, ShotCameraRig, CameraConfig
+UI
+LobbyUIController, OnlineRoomUI, GameplayHUD, BallTrackerUI, PowerBarUI, CueContactSelectorUI, CallShotUI, RulesUI, SettingsUI, ResultUI
+Audio/VFX
+AudioManager, AudioLibrary, CollisionAudioEmitter, PocketVFX, MatchVFX
+
+18. Thứ tự triển khai bắt buộc
+Milestone
+Deliverable
+M0 – Audit & Backup
+Đọc project, map asset/object hiện có, tạo Assets/Game, .gitignore, baseline commit. Không sửa gameplay.
+M1 – Table/Balls Wrapper
+Prefab Variant/wrapper, registry 16 bi, pocket triggers, cushion/playfield colliders, reset rack.
+M2 – Local Shot Core
+Camera aim, mouse rotation, wheel power, left-click shoot, ball settle detection, camera wide after shot.
+M3 – Spin & Ball-in-Hand
+Cue contact selector, cu-lê/trô/sidespin, WASD ball-in-hand, validity check.
+M4 – Rule Engine
+Break, open table, groups, call shot/safety, fouls, ball-in-hand, 8-ball win/loss, rack result.
+M5 – UI Gameplay
+HUD, ball tracker, timer, help, rules, settings, surrender/result.
+M6 – Offline AI
+Geometry analysis, candidates, utility, safety, AI ball-in-hand, Easy/Normal/Hard.
+M7 – Lobby & Offline Flow
+Lobby 3D, difficulty popup, settings/help/quit, scene transitions.
+M8 – Photon Room Flow
+Create/Join by ID, room settings, ready/start, synced gameplay load.
+M9 – Network Authority
+Master authoritative shot simulation, ball sync, rule sync, result sync, disconnect loss.
+M10 – Audio/VFX/Polish
+Collision audio, pocket feedback, transitions, presentation polish.
+M11 – Tests/Optimization
+Rule regression, AI metrics, network desync tests, FPS/GC profiling, build Windows.
+
+19. Git/Commit convention
+feat(physics): add shot execution and ball settle detectionfeat(rules): implement WPA open-table and group assignmentfeat(ai): add geometric shot candidate generationfeat(network): add master-authoritative shot flowfeat(ui): add gameplay HUD and cue contact selectorfix(physics): correct cushion restitution at low velocitytest(rules): add 8-ball foul regression cases
+Mỗi commit phải build được hoặc ghi rõ nếu là commit scaffolding.
+Không gộp sửa physics, AI, UI và network vào cùng một commit lớn.
+Không commit generated folders hoặc cache.
+20. Acceptance Criteria và Test Cases
+ID
+Test
+Pass condition
+T01
+Power input
+Scroll wheel thay đổi power bar 0–100%; click trái bắn đúng một lần.
+T02
+No aim guide
+Không tồn tại line/trajectory prediction trong gameplay player.
+T03
+Ball settle
+Không chuyển lượt khi còn bất kỳ bi nào vượt ngưỡng movement.
+T04
+Pocket event
+Mỗi bi vào lỗ chỉ phát pocket event một lần; state isPocketed đúng.
+T05
+Scratch
+Cue ball vào lỗ → foul, đổi lượt, incoming ball-in-hand.
+T06
+Wrong first ball
+Sau khi chọn nhóm, chạm nhóm đối thủ trước → foul.
+T07
+No rail
+Không pocket và không rail sau first contact → foul.
+T08
+Open table
+Break hợp lệ vẫn giữ open table; called shot đầu tiên hợp lệ mới gán nhóm.
+T09
+8-ball early
+Pocket 8-ball trước clear group → thua rack.
+T10
+8-ball wrong pocket
+Pocket 8-ball vào pocket không gọi → thua rack.
+T11
+Timer
+Hết shot timer → đổi lượt + đối thủ ball-in-hand.
+T12
+Race-to
+Race to 5 kết thúc đúng khi một người đạt 5 rack wins.
+T13
+AI easy/normal/hard
+Ba profile cho kết quả khác nhau về noise/candidate/strategy nhưng đều không cố ý đánh illegal shot.
+T14
+AI safety
+Khi không có pot candidate đạt ngưỡng, AI sinh safety hợp lệ.
+T15
+AI ball-in-hand
+AI đặt cue ball không overlap và chọn vị trí có utility tốt hơn vị trí mặc định.
+T16
+Network authority
+Client không thể tự đổi vị trí bi hoặc MatchState; final snapshot từ Master thắng.
+T17
+Disconnect
+Player rời trong match → đối phương thắng ngay và có thông báo.
+T18
+Room config
+Chỉ host chỉnh race/timer; joiner nhận đúng room properties.
+T19
+Spin
+Topspin/backspin tạo xu hướng cue-ball sau contact khác rõ so với center hit.
+T20
+Build
+Windows build chạy từ Lobby → hoàn thành 1 trận Offline và 1 trận Online.
+
+21. Yêu cầu phi chức năng
+Không tạo garbage allocation lớn mỗi frame trong AI, physics hoặc network sync.
+AI decision time mục tiêu: < 300 ms Normal, < 750 ms Hard trên máy phát triển; nếu vượt, chuyển phân tích qua coroutine/job theo cách không block UI.
+Gameplay target 60 FPS trên cấu hình phát triển khi chạy HDRP ở 1080p; quality có thể cấu hình.
+Network state correction không được teleport rõ rệt khi sai lệch nhỏ; nội suy visual và snap ở final settle nếu cần.
+UI hỗ trợ 16:9 tối thiểu 1920×1080 và 1366×768, dùng anchors/layout groups.
+Không phụ thuộc vào thứ tự GameObject trong Hierarchy; dùng serialized references/registry.
+22. Các điều Antigravity KHÔNG được tự ý làm
+Không chuyển Unity version hoặc render pipeline.
+Không thay The Billiards Room bằng environment khác.
+Không viết đè file/prefab/material của publisher.
+Không thêm aim line hoặc trajectory preview.
+Không bỏ qua Rule Engine để hard-code kết quả trong UI.
+Không cho AI teleport bi, sửa state trực tiếp hoặc dùng physics khác người chơi.
+Không để mỗi client online tự quyết định kết quả physics/rules.
+Không thêm package mạng khác thay Photon PUN 2.
+Không thêm machine learning, cloud AI hay dependency nặng ngoài yêu cầu.
+Không thêm tính năng ngoài phạm vi (shop, rank, inventory, matchmaking) trước khi core hoàn thành.
+23. Chỉ thị khởi động cho Antigravity
+Đoạn dưới đây có thể dùng làm yêu cầu mở đầu khi đưa tài liệu này cho coding agent:
+Bạn đang làm việc trong một Unity 2022.3.62f3 LTS HDRP project có asset The Billiards Room đã được import. Hãy đọc toàn bộ project trước khi thay đổi. Tài liệu này là source of truth cho gameplay và kiến trúc.Bắt đầu ở Milestone M0. Không triển khai nhiều milestone cùng lúc. Với mỗi milestone:1) mô tả file/object hiện có mà bạn sẽ tái sử dụng;2) nêu danh sách file mới/sửa;3) triển khai trong Assets/Game/;4) không sửa asset publisher;5) chạy compile/test phù hợp;6) báo kết quả và acceptance criteria;7) tạo một Git commit riêng.Nếu gặp mâu thuẫn giữa project hiện tại và specification, dừng tại điểm đó và báo rõ thay vì tự ý đổi architecture hoặc package.
+24. Cơ sở thiết kế
+Tài liệu đặc tả này được xây dựng từ đề cương đồ án và tài liệu khảo sát/kiến trúc của dự án, trong đó phạm vi cốt lõi gồm Unity/C#, vật lý bida, WPA 8-ball, Utility AI và Photon PUN 2. Các quyết định chi tiết về input, UI, difficulty, race-to, timer và authority online đã được chốt trong quá trình làm rõ yêu cầu với chủ dự án.
+WPA Rules of Play – 8-Ball: dùng làm chuẩn nghiệp vụ cho Rule Engine và bộ test luật.
+Unity Physics: Rigidbody/Collider/Physics Material là nền tảng simulation.
+Photon PUN 2: tạo/join room, room properties, event/RPC, state synchronization.
+Utility AI: score-based action selection kết hợp tính toán hình học.

@@ -13,6 +13,9 @@ namespace Game.Billiards.Audio
         [Tooltip("Âm thanh va chạm giữa 2 bi bida")]
         [SerializeField] private AudioClip ballHitClip;
 
+        [Tooltip("Âm thanh cú phá bi (khai cuộc)")]
+        [SerializeField] private AudioClip breakShotClip;
+
         [Tooltip("Âm thanh bi đập vào băng cao su bàn")]
         [SerializeField] private AudioClip cushionHitClip;
 
@@ -37,6 +40,7 @@ namespace Game.Billiards.Audio
 
         public AudioClip CueHitClip => cueHitClip;
         public AudioClip BallHitClip => ballHitClip;
+        public AudioClip BreakShotClip => breakShotClip;
         public AudioClip CushionHitClip => cushionHitClip;
         public AudioClip PocketDropClip => pocketDropClip;
         public AudioClip FoulClip => foulClip;

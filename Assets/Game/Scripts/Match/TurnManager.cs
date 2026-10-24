@@ -269,8 +269,9 @@ namespace Game.Billiards.Match
             // Trường hợp 3: Không có lỗi
             if (result.calledShotMade && !lastExecutedCommand.calledSafety)
             {
-                // Gọi trúng bi và vào đúng lỗ -> Giữ lượt, đánh tiếp
-                Debug.Log("[TurnManager] Called shot thành công! Người chơi tiếp tục lượt.");
+                // Gọi trúng bi và vào đúng lỗ (hoặc cú khai cuộc ăn bi hợp lệ) -> Giữ lượt, đánh tiếp
+                Debug.Log("[TurnManager] Cú đánh thành công! Người chơi tiếp tục lượt.");
+                stateManager.State.IncrementTurnSequence();
                 stateManager.SetPhase(MatchPhase.Aiming);
             }
             else

@@ -37,6 +37,41 @@ namespace Game.Billiards.Match
                 balls = new BallController[16];
             }
 
+            // Tự động tìm kiếm và đăng ký các quả bi trong scene nếu mảng còn thiếu
+            bool hasMissingBalls = false;
+            for (int i = 0; i < 16; i++)
+            {
+                if (balls[i] == null)
+                {
+                    hasMissingBalls = true;
+                    break;
+                }
+            }
+
+            if (hasMissingBalls)
+            {
+                var foundBalls = FindObjectsOfType<BallController>(true);
+                foreach (var b in foundBalls)
+                {
+                    if (b == null) continue;
+                    string bName = b.gameObject.name;
+                    int parsedNum = -1;
+                    int underscoreIdx = bName.LastIndexOf('_');
+                    if (underscoreIdx >= 0 && underscoreIdx < bName.Length - 1)
+                    {
+                        int.TryParse(bName.Substring(underscoreIdx + 1), out parsedNum);
+                    }
+                    if (parsedNum < 0 || parsedNum > 15)
+                    {
+                        parsedNum = b.BallNumber;
+                    }
+                    if (parsedNum >= 0 && parsedNum < 16)
+                    {
+                        balls[parsedNum] = b;
+                    }
+                }
+            }
+
             // Gán BallController vào MovementMonitor và đăng ký sự kiện
             for (int i = 0; i < balls.Length; i++)
             {
@@ -124,52 +159,56 @@ namespace Game.Billiards.Match
 
         /// <summary>
         /// Xếp dàn bi 15 quả đúng quy cách WPA 8-Ball:
-        /// - Đỉnh dàn bi tại Foot Spot
+        /// - Đỉnh dàn bi tại Foot Spot (Apex)
         /// - Bi 8 đen nằm ở tâm dàn bi (hàng thứ 3, quả chính giữa)
         /// - Hai quả ở hai góc đáy (hàng 5): một quả trơn (solid) và một quả sọc (stripe)
         /// - Bi cái tại Head Spot
+        /// - Triệt tiêu 100% hiện tượng tự lăn bằng cách khóa Kinematic đến khi cơ thủ thực hiện cú đánh
         /// </summary>
         public void ResetRack()
         {
             if (tableWrapper == null || physicsConfig == null) return;
 
+            // Đảm bảo toàn bộ 16 bi đã được liên kết
+            InitializeRegistry();
+
             float radius = physicsConfig.BallRadius;
             float diameter = radius * 2f;
-            float rowSpacing = diameter * 0.8660254f; // d * sqrt(3)/2
+            float spacing = diameter * 1.002f; // Khoảng đệm vi mô 0.05mm chống va chạm lồng nhau
+            float rowSpacing = spacing * 0.8660254f; // spacing * sqrt(3)/2
 
             Vector3 footSpot = tableWrapper.FootSpot;
             Vector3 headSpot = tableWrapper.HeadSpot;
 
-            // 1. Đặt bi cái
+            // 1. Đặt bi cái tại Head Spot và khóa Kinematic để chống tự lăn
             if (balls[0] != null)
             {
                 balls[0].ResetTo(headSpot, Quaternion.identity);
+                balls[0].SetKinematic(true);
             }
 
             // 2. Chuẩn bị danh sách số bi cho dàn 15 quả theo WPA
-            // Thứ tự các vị trí trong tam giác:
-            // Hàng 0 (1 bi): Apex
-            // Hàng 1 (2 bi):
-            // Hàng 2 (3 bi): Bi giữa (index 4) là bi 8
-            // Hàng 3 (4 bi):
-            // Hàng 4 (5 bi): Góc trái (index 10) là solid, góc phải (index 14) là stripe
             int[] rackBallNumbers = GenerateWpaRackBallNumbers();
 
             int ballIndex = 0;
             for (int row = 0; row < 5; row++)
             {
                 int countInRow = row + 1;
-                float z = footSpot.z + (row * rowSpacing);
+                // Đỉnh dàn bi đặt ở footSpot.x, các hàng tiếp theo lùi dần về phía chân bàn (-X)
+                float x = footSpot.x - (row * rowSpacing);
 
                 for (int k = 0; k < countInRow; k++)
                 {
-                    float x = (k - (row * 0.5f)) * diameter;
+                    // Các bi trong cùng hàng trải đều theo trục ngang Z (đối xứng qua footSpot.z)
+                    float z = footSpot.z + ((k - (row * 0.5f)) * spacing);
                     Vector3 ballPos = new Vector3(x, footSpot.y, z);
 
                     int number = rackBallNumbers[ballIndex];
                     if (number >= 1 && number <= 15 && balls[number] != null)
                     {
                         balls[number].ResetTo(ballPos, UnityEngine.Random.rotation);
+                        // Khóa Kinematic cho 15 bi mục tiêu để triệt tiêu 100% hiện tượng tự lăn trước khi đánh
+                        balls[number].SetKinematic(true);
                     }
                     ballIndex++;
                 }
@@ -178,6 +217,20 @@ namespace Game.Billiards.Match
             if (movementMonitor != null)
             {
                 movementMonitor.StopMonitoring();
+            }
+        }
+
+        /// <summary>
+        /// Mở khóa Rigidbody của toàn bộ dàn bi khi bắt đầu cú đánh để PhysX mô phỏng va chạm nổ bi tự nhiên
+        /// </summary>
+        public void UnlockAllBallsKinematic()
+        {
+            for (int i = 0; i < balls.Length; i++)
+            {
+                if (balls[i] != null && !balls[i].IsPocketed && balls[i].gameObject.activeInHierarchy)
+                {
+                    balls[i].SetKinematic(false);
+                }
             }
         }
 

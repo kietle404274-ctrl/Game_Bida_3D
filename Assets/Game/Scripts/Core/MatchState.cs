@@ -28,7 +28,7 @@ namespace Game.Billiards.Core
         public static MatchSettings Default => new MatchSettings
         {
             raceTarget = RaceTarget.RaceTo5,
-            shotTimer = ShotTimerOption.Unlimited,
+            shotTimer = ShotTimerOption.Seconds30,
             useWpaRules = true
         };
     }
@@ -91,9 +91,15 @@ namespace Game.Billiards.Core
             }
         }
 
-        public void ResetForNewRack()
+        public void IncrementTurnSequence()
+        {
+            turnSequence++;
+        }
+
+        public void ResetForNewRack(int breakerIndex = 0)
         {
             phase = MatchPhase.BreakSetup;
+            currentPlayerIndex = breakerIndex;
             tableOpen = true;
             playerAGroup = PlayerGroup.Open;
             playerBGroup = PlayerGroup.Open;

@@ -30,7 +30,7 @@ namespace Game.Billiards.UI
             if (rematchButton != null) rematchButton.onClick.AddListener(OnRematchClicked);
             if (returnToLobbyButton != null) returnToLobbyButton.onClick.AddListener(OnReturnToLobbyClicked);
 
-            if (resultModalRoot != null) resultModalRoot.SetActive(false);
+            // Modal đã được builder để tắt sẵn. KHÔNG SetActive(false) ở đây: Awake chạy ngay khi modal được bật lần đầu và sẽ tự tắt modal.
         }
 
         public void Initialize(MatchStateManager stateMgr, BallManager bManager, Action returnToLobby = null)
@@ -42,7 +42,7 @@ namespace Game.Billiards.UI
 
         public void ShowRackResult(int winnerIndex, int playerAScore, int playerBScore, RaceTarget raceTarget)
         {
-            if (resultModalRoot != null) resultModalRoot.SetActive(true);
+            HudModalState.ForceOpen("result"); if (resultModalRoot != null) resultModalRoot.SetActive(true);
 
             string winnerName = (winnerIndex == 0) ? "CƠ THỦ 1 (PLAYER A)" : "CƠ THỦ 2 (PLAYER B / AI)";
             if (matchStateManager != null && matchStateManager.State != null)
@@ -62,7 +62,7 @@ namespace Game.Billiards.UI
 
         public void ShowMatchResult(int winnerIndex, int finalScoreA, int finalScoreB)
         {
-            if (resultModalRoot != null) resultModalRoot.SetActive(true);
+            HudModalState.ForceOpen("result"); if (resultModalRoot != null) resultModalRoot.SetActive(true);
 
             string winnerName = (winnerIndex == 0) ? "CƠ THỦ 1 (PLAYER A)" : "CƠ THỦ 2 (PLAYER B / AI)";
             if (matchStateManager != null && matchStateManager.State != null)
@@ -82,32 +82,62 @@ namespace Game.Billiards.UI
 
         public void Hide()
         {
+            HudModalState.Release("result");
             if (resultModalRoot != null) resultModalRoot.SetActive(false);
         }
 
         private void OnNextRackClicked()
         {
+            AdvanceToNextRack();
+        }
+
+        /// <summary>Chuyển sang ván mới: xếp lại bi, chạy cảnh mở đầu rồi bắt đầu ván (khóa thao tác trong lúc đó).</summary>
+        public void AdvanceToNextRack()
+        {
             Hide();
-            if (matchStateManager != null)
-            {
-                matchStateManager.StartNextRack();
-            }
+            HudModalState.ForceOpen("result");
             if (ballManager != null)
             {
                 ballManager.ResetRack();
             }
+            PlayIntroThen(() =>
+            {
+                HudModalState.Release("result");
+                if (matchStateManager != null)
+                {
+                    matchStateManager.StartNextRack();
+                }
+            });
         }
 
         private void OnRematchClicked()
         {
             Hide();
-            if (matchStateManager != null)
-            {
-                matchStateManager.Initialize(matchStateManager.State.settings);
-            }
             if (ballManager != null)
             {
                 ballManager.ResetRack();
+            }
+            PlayIntroThen(() =>
+            {
+                if (matchStateManager != null)
+                {
+                    var st = matchStateManager.State;
+                    matchStateManager.Initialize(st.settings, st.players[0].displayName, st.players[1].displayName, st.players[1].isAI);
+                    matchStateManager.RaiseRackStarted();
+                }
+            });
+        }
+
+        private void PlayIntroThen(Action onComplete)
+        {
+            var intro = FindObjectOfType<RackIntroSequence>();
+            if (intro != null && ballManager != null)
+            {
+                intro.Play(onComplete);
+            }
+            else
+            {
+                onComplete?.Invoke();
             }
         }
 

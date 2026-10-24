@@ -94,8 +94,7 @@ namespace Game.Billiards.Editor
                 // Bi có cu-lê (Topspin: y > 0)
                 GameObject topBallGO = new GameObject("TopBall");
                 var topBC = topBallGO.AddComponent<BallController>();
-                var topRB = topBallGO.AddComponent<Rigidbody>();
-                topBallGO.AddComponent<SphereCollider>();
+                var topRB = topBC.Rigidbody != null ? topBC.Rigidbody : topBallGO.GetComponent<Rigidbody>();
                 topBC.ApplyPhysicsConfig(config);
 
                 // Giả lập trạng thái sau va chạm trực diện: vận tốc tịnh tiến bị triệt tiêu, nhưng còn xoáy cu-lê
@@ -117,8 +116,7 @@ namespace Game.Billiards.Editor
                 // Bi có trô (Backspin: y < 0)
                 GameObject backBallGO = new GameObject("BackBall");
                 var backBC = backBallGO.AddComponent<BallController>();
-                var backRB = backBallGO.AddComponent<Rigidbody>();
-                backBallGO.AddComponent<SphereCollider>();
+                var backRB = backBC.Rigidbody != null ? backBC.Rigidbody : backBallGO.GetComponent<Rigidbody>();
                 backBC.ApplyPhysicsConfig(config);
 
                 backRB.velocity = Vector3.zero;
@@ -156,8 +154,6 @@ namespace Game.Billiards.Editor
                 // Mock bi cái
                 GameObject cueGO = new GameObject("MockCueBall");
                 var cueBC = cueGO.AddComponent<BallController>();
-                cueGO.AddComponent<SphereCollider>();
-                cueGO.AddComponent<Rigidbody>();
                 cueBC.SetBallNumber(0);
                 cueBC.ApplyPhysicsConfig(config);
 
@@ -175,7 +171,7 @@ namespace Game.Billiards.Editor
 
                 // 2. Kiểm tra chế độ HeadStringOnly (lỗi khi break): chỉ được đặt ở vùng đầu bàn (z <= HeadString)
                 bih.EnterBallInHand(headStringOnly: true);
-                bool validPastHeadString = bih.IsPositionValid(new Vector3(0f, wrapper.ClothSurfaceY + 0.028f, 0.4f)); // Vùng chân bàn
+                bool validPastHeadString = bih.IsPositionValid(new Vector3(-0.4f, wrapper.ClothSurfaceY + 0.028f, 0f)); // Vùng chân bàn (-X)
                 if (validPastHeadString)
                 {
                     Debug.LogError("[Test 3 FAILED] Chế độ HeadStringOnly chấp nhận vị trí vượt quá Head String về phía chân bàn!");
@@ -216,8 +212,6 @@ namespace Game.Billiards.Editor
                 // Mock bi cái
                 GameObject cueGO = new GameObject("MockCueBall");
                 var cueBC = cueGO.AddComponent<BallController>();
-                cueGO.AddComponent<SphereCollider>();
-                cueGO.AddComponent<Rigidbody>();
                 cueBC.SetBallNumber(0);
                 cueBC.ApplyPhysicsConfig(config);
                 ballManager.RegisterBall(0, cueBC);
@@ -225,8 +219,6 @@ namespace Game.Billiards.Editor
                 // Mock một bi mục tiêu đang nằm trên bàn tại (0, Y, 0)
                 GameObject objBallGO = new GameObject("MockObjectBall");
                 var objBC = objBallGO.AddComponent<BallController>();
-                objBallGO.AddComponent<SphereCollider>();
-                objBallGO.AddComponent<Rigidbody>();
                 objBC.SetBallNumber(1);
                 objBC.ApplyPhysicsConfig(config);
                 objBallGO.transform.position = new Vector3(0f, wrapper.ClothSurfaceY + 0.02855f, 0f);

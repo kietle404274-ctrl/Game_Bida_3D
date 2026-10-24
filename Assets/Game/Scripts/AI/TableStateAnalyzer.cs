@@ -95,12 +95,12 @@ namespace Game.Billiards.AI
 
             switch (pocketId)
             {
-                case 0: return new Vector3(-halfW, y, halfL); // Foot Left
-                case 1: return new Vector3(halfW, y, halfL);  // Foot Right
-                case 2: return new Vector3(-halfW, y, 0f);    // Mid Left
-                case 3: return new Vector3(halfW, y, 0f);     // Mid Right
-                case 4: return new Vector3(-halfW, y, -halfL); // Head Left
-                case 5: return new Vector3(halfW, y, -halfL);  // Head Right
+                case 0: return new Vector3(-halfL, y, halfW);  // Foot Left
+                case 1: return new Vector3(-halfL, y, -halfW); // Foot Right
+                case 2: return new Vector3(0f, y, halfW);      // Mid Left
+                case 3: return new Vector3(0f, y, -halfW);     // Mid Right
+                case 4: return new Vector3(halfL, y, halfW);   // Head Left
+                case 5: return new Vector3(halfL, y, -halfW);  // Head Right
                 default: return new Vector3(0f, y, 0f);
             }
         }

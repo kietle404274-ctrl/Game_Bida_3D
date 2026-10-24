@@ -10,6 +10,7 @@ namespace Game.Billiards.Physics
         [SerializeField] private List<BallController> monitoredBalls = new List<BallController>();
 
         private float settleTimer = 0f;
+        private float trackingDuration = 0f;
         private bool isTracking = false;
         private bool haveBallsMoved = false;
 
@@ -40,6 +41,7 @@ namespace Game.Billiards.Physics
             isTracking = true;
             haveBallsMoved = false;
             settleTimer = 0f;
+            trackingDuration = 0f;
             AreAllBallsResting = false;
         }
 
@@ -51,6 +53,14 @@ namespace Game.Billiards.Physics
         private void FixedUpdate()
         {
             if (!isTracking || physicsConfig == null) return;
+
+            trackingDuration += Time.fixedDeltaTime;
+            // Watchdog: Nếu cú đánh kéo dài quá 10 giây (do va chạm liên tục hoặc bi rơi khỏi bàn), ép dừng để trận đấu không bị treo
+            if (trackingDuration >= 10.0f)
+            {
+                ForceSettle();
+                return;
+            }
 
             bool anyBallMoving = false;
             float linearThresh = physicsConfig.RestLinearThreshold;
@@ -87,23 +97,28 @@ namespace Game.Billiards.Physics
                 {
                     if (!AreAllBallsResting)
                     {
-                        AreAllBallsResting = true;
-                        isTracking = false;
-
-                        // Ép dừng triệt để các dao động vi mô còn lại
-                        for (int i = 0; i < monitoredBalls.Count; i++)
-                        {
-                            var ball = monitoredBalls[i];
-                            if (ball != null && !ball.IsPocketed)
-                            {
-                                ball.StopAndRest();
-                            }
-                        }
-
-                        OnAllBallsSettled?.Invoke();
+                        ForceSettle();
                     }
                 }
             }
+        }
+
+        public void ForceSettle()
+        {
+            AreAllBallsResting = true;
+            isTracking = false;
+
+            // Ép dừng triệt để các dao động vi mô còn lại
+            for (int i = 0; i < monitoredBalls.Count; i++)
+            {
+                var ball = monitoredBalls[i];
+                if (ball != null && !ball.IsPocketed)
+                {
+                    ball.StopAndRest();
+                }
+            }
+
+            OnAllBallsSettled?.Invoke();
         }
     }
 }

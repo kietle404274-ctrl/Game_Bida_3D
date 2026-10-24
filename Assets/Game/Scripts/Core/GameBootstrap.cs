@@ -7,7 +7,7 @@ namespace Game.Billiards.Core
     public class GameBootstrap : MonoBehaviour
     {
         [Header("Settings")]
-        [SerializeField] private float splashDelaySeconds = 0.5f;
+        [SerializeField] private float splashDelaySeconds = 1.0f;
         [SerializeField] private string targetInitialScene = "Lobby";
 
         private void Start()

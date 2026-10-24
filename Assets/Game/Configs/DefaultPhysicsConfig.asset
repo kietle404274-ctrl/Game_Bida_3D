@@ -14,14 +14,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ballMass: 0.17
   ballRadius: 0.02855
-  maxShotImpulse: 6
-  linearDrag: 0.22
-  angularDrag: 0.35
-  clothFriction: 0.08
+  maxShotImpulse: 1.0
+  linearDrag: 0.16
+  angularDrag: 0.12
+  clothFriction: 0.2
+  rollingResistance: 0.032
   ballRestitution: 0.95
   cushionRestitution: 0.78
-  spinStrength: 18
-  spinDecay: 2
+  spinStrength: 16
+  spinDecay: 8
+  cushionSpinTransfer: 0.2
   restLinearThreshold: 0.015
   restAngularThreshold: 0.1
   settleDuration: 0.25

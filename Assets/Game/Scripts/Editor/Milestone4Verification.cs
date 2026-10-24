@@ -85,7 +85,14 @@ namespace Game.Billiards.Editor
                     return false;
                 }
 
-                Debug.Log("[Test 1 PASSED] Kiểm tra khai cuộc (Legal/Illegal break) và trạng thái Open Table hoạt động chuẩn WPA.");
+                // Cú khai cuộc ăn bi hợp lệ phải cho phép tiếp tục lượt (calledShotMade = true)
+                if (!evalLegal.calledShotMade)
+                {
+                    Debug.LogError("[Test 1 FAILED] Khai cuộc ăn bi hợp lệ không được cấp quyền tiếp tục lượt đánh!");
+                    return false;
+                }
+
+                Debug.Log("[Test 1 PASSED] Kiểm tra khai cuộc (Legal/Illegal break, tiếp tục lượt khi ăn bi) và trạng thái Open Table hoạt động chuẩn WPA.");
                 return true;
             }
             finally
@@ -154,8 +161,6 @@ namespace Game.Billiards.Editor
                     var bGO = new GameObject($"Ball_{i}");
                     balls.Add(bGO);
                     var bc = bGO.AddComponent<BallController>();
-                    bGO.AddComponent<SphereCollider>();
-                    bGO.AddComponent<Rigidbody>();
                     bc.SetBallNumber(i);
                     bc.ApplyPhysicsConfig(config);
                     ballManager.RegisterBall(i, bc);
@@ -312,8 +317,6 @@ namespace Game.Billiards.Editor
                     var bGO = new GameObject($"Ball_{i}");
                     balls.Add(bGO);
                     var bc = bGO.AddComponent<BallController>();
-                    bGO.AddComponent<SphereCollider>();
-                    bGO.AddComponent<Rigidbody>();
                     bc.SetBallNumber(i);
                     bc.ApplyPhysicsConfig(config);
                     ballManager.RegisterBall(i, bc);
@@ -343,7 +346,7 @@ namespace Game.Billiards.Editor
                     return false;
                 }
 
-                // Tình huống 2: Ăn bi 8 vào sai lỗ đã gọi (gọi lỗ 1 nhưng vào lỗ 2)
+                // Tình huống 2: Luật đã bỏ gọi lỗ -> bi 8 vào bất kỳ lỗ nào sau khi dọn sạch nhóm (không lỗi) vẫn thắng rack
                 // Giả lập đã dọn sạch nhóm: bỏ active của bi 1..7
                 for (int i = 1; i <= 7; i++)
                 {
@@ -357,12 +360,13 @@ namespace Game.Billiards.Editor
                     cueBallScratch = false
                 };
                 rawWrongPocket.pocketedBalls.Add(8);
-                rawWrongPocket.pocketedBallPockets[8] = 2; // Rơi vào lỗ 2 thay vì lỗ 1
+                rawWrongPocket.pocketedBallPockets[8] = 2; // Vào lỗ 2, không còn bắt buộc đúng lỗ đã gọi
+                rawWrongPocket.ballsThatHitRail.Add(8);
 
                 ShotResult evalWrongPocket = ruleEngine.EvaluateShot(cmdWrongPocket, rawWrongPocket, matchState, ballManager);
-                if (evalWrongPocket.outcome != RackOutcome.PlayerBWins)
+                if (evalWrongPocket.outcome != RackOutcome.PlayerAWins)
                 {
-                    Debug.LogError($"[Test 6 FAILED] Đưa bi 8 vào sai lỗ gọi không bị xử thua rack! Outcome={evalWrongPocket.outcome}");
+                    Debug.LogError($"[Test 6 FAILED] Bi 8 vào lỗ bất kỳ sau khi dọn sạch nhóm (không cần gọi lỗ) không được xử thắng rack! Outcome={evalWrongPocket.outcome}");
                     foreach (var b in balls) UnityEngine.Object.DestroyImmediate(b);
                     return false;
                 }
@@ -384,8 +388,25 @@ namespace Game.Billiards.Editor
                     return false;
                 }
 
+                // Tình huống 4: Bi 8 văng khỏi bàn -> Thua rack theo chuẩn WPA 3.8.a
+                ShotResult rawOffTable8 = new ShotResult
+                {
+                    firstContactBall = 8,
+                    cueBallScratch = false,
+                    anyBallOffTable = true
+                };
+                rawOffTable8.ballsDrivenOffTable.Add(8);
+
+                ShotResult evalOffTable = ruleEngine.EvaluateShot(cmdEarly8, rawOffTable8, matchState, ballManager);
+                if (evalOffTable.outcome != RackOutcome.PlayerBWins)
+                {
+                    Debug.LogError($"[Test 6 FAILED] Làm bi 8 văng khỏi bàn không bị xử thua rack! Outcome={evalOffTable.outcome}");
+                    foreach (var b in balls) UnityEngine.Object.DestroyImmediate(b);
+                    return false;
+                }
+
                 foreach (var b in balls) UnityEngine.Object.DestroyImmediate(b);
-                Debug.Log("[Test 6 PASSED] Tất cả các điều kiện thua rack do bi 8 (ăn sớm, sai lỗ, phạm lỗi/scratch) được xử lý chính xác.");
+                Debug.Log("[Test 6 PASSED] Tất cả các điều kiện thua rack do bi 8 (ăn sớm, sai lỗ, scratch, văng khỏi bàn) được xử lý chính xác.");
                 return true;
             }
             finally
@@ -410,8 +431,6 @@ namespace Game.Billiards.Editor
                     var bGO = new GameObject($"Ball_{i}");
                     balls.Add(bGO);
                     var bc = bGO.AddComponent<BallController>();
-                    bGO.AddComponent<SphereCollider>();
-                    bGO.AddComponent<Rigidbody>();
                     bc.SetBallNumber(i);
                     bc.ApplyPhysicsConfig(config);
                     ballManager.RegisterBall(i, bc);

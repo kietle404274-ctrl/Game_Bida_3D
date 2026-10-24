@@ -19,7 +19,7 @@ namespace Game.Billiards.Rules
             }
 
             // 2. Đánh giá cú khai cuộc (Break Shot)
-            bool isBreakShot = (matchState.phase == MatchPhase.BreakSetup || matchState.turnSequence == 0);
+            bool isBreakShot = (matchState.turnSequence == 0);
             if (isBreakShot)
             {
                 return EvaluateBreakShot(command, rawResult, matchState, ballManager);
@@ -77,6 +77,15 @@ namespace Game.Billiards.Rules
             // Kết quả lượt sau cú break:
             // Nếu khai cuộc hợp lệ, không scratch và có bi vào lỗ -> người khai cuộc tiếp tục
             // Ngược lại -> đổi lượt, đối thủ nhận ball-in-hand (sau Head String nếu scratch)
+            if (isLegalBreak && result.foul == FoulType.None && hasPocketedObjectBall)
+            {
+                result.calledShotMade = true;
+            }
+            else
+            {
+                result.calledShotMade = false;
+            }
+
             result.outcome = RackOutcome.Continue;
             return result;
         }
@@ -136,9 +145,21 @@ namespace Game.Billiards.Rules
             }
 
             // --- BƯỚC 3: KIỂM TRA BI BAY KHỎI BÀN ---
-            if (result.anyBallOffTable && result.foul == FoulType.None)
+            if (result.anyBallOffTable)
             {
-                result.foul = FoulType.BallDrivenOffTable;
+                if (result.ballsDrivenOffTable.Contains(8))
+                {
+                    // Theo luật WPA: Làm bi 8 bay khỏi bàn ngoài cú break -> Xử THUA RACK ngay lập tức
+                    result.rackEnded = true;
+                    result.foul = FoulType.BallDrivenOffTable;
+                    result.outcome = (matchState.currentPlayerIndex == 0) ? RackOutcome.PlayerBWins : RackOutcome.PlayerAWins;
+                    return result;
+                }
+
+                if (result.foul == FoulType.None)
+                {
+                    result.foul = FoulType.BallDrivenOffTable;
+                }
             }
 
             // --- BƯỚC 4: ĐÁNH GIÁ BI 8 VÀO LỖ (THẮNG / THUA RACK) ---
@@ -147,16 +168,12 @@ namespace Game.Billiards.Rules
                 result.rackEnded = true;
 
                 int remainingBeforeShot = CountRemainingBalls(shooterGroup, ballManager, excludeBallNumber: 8);
-                bool calledPocketMatched = (result.pocketedBallPockets.ContainsKey(8) && result.pocketedBallPockets[8] == command.calledPocketId);
-                bool calledBallIsEight = (command.calledBallNumber == 8);
 
-                // Điều kiện THUA RACK ngay lập tức:
+                // Điều kiện THUA RACK ngay lập tức (không còn yêu cầu gọi bi/gọi lỗ):
                 // 1. Phạm bất kỳ lỗi nào (scratch, sai bi trước, không chạm băng...)
                 // 2. Bàn vẫn đang Open
                 // 3. Chưa ăn hết nhóm của mình
-                // 4. Bi 8 vào lỗ khác với lỗ đã gọi
-                // 5. Không gọi bi 8
-                if (result.HasFoul || matchState.tableOpen || remainingBeforeShot > 0 || !calledPocketMatched || !calledBallIsEight)
+                if (result.HasFoul || matchState.tableOpen || remainingBeforeShot > 0)
                 {
                     result.outcome = (matchState.currentPlayerIndex == 0) ? RackOutcome.PlayerBWins : RackOutcome.PlayerAWins;
                 }
@@ -169,7 +186,7 @@ namespace Game.Billiards.Rules
                 return result;
             }
 
-            // --- BƯỚC 5: XỬ LÝ CALL SHOT, GÁN NHÓM VÀ DUY TRÌ LƯỢT ---
+            // --- BƯỚC 5: GÁN NHÓM VÀ DUY TRÌ LƯỢT (không cần gọi bi/gọi lỗ) ---
             if (!result.rackEnded && result.foul == FoulType.None)
             {
                 if (command.calledSafety)
@@ -179,21 +196,36 @@ namespace Game.Billiards.Rules
                 }
                 else
                 {
-                    // So khớp called ball và called pocket
-                    bool calledMade = (command.calledBallNumber > 0 &&
-                                       result.pocketedBallPockets.ContainsKey(command.calledBallNumber) &&
-                                       result.pocketedBallPockets[command.calledBallNumber] == command.calledPocketId);
-                    result.calledShotMade = calledMade;
-
-                    // Nếu bàn đang Open và người chơi đưa called ball vào đúng called pocket hợp lệ -> Gán nhóm!
-                    if (matchState.tableOpen && calledMade)
+                    // Bàn Open: bi trơn/sọc đầu tiên vào lỗ (bất kỳ lỗ nào) quyết định nhóm của người đánh
+                    if (matchState.tableOpen)
                     {
-                        PlayerGroup group = GetBallGroup(command.calledBallNumber);
-                        if (group == PlayerGroup.Solids || group == PlayerGroup.Stripes)
+                        for (int i = 0; i < result.pocketedBalls.Count; i++)
                         {
-                            matchState.AssignGroups(group);
+                            PlayerGroup group = GetBallGroup(result.pocketedBalls[i]);
+                            if (group == PlayerGroup.Solids || group == PlayerGroup.Stripes)
+                            {
+                                matchState.AssignGroups(group);
+                                break;
+                            }
                         }
                     }
+
+                    // Giữ lượt khi ăn được ít nhất 1 bi hợp lệ: bàn Open -> bất kỳ bi trơn/sọc; đã chia nhóm -> bi thuộc nhóm của mình
+                    PlayerGroup activeGroup = matchState.CurrentShooterGroup;
+                    bool legalPotted = false;
+                    for (int i = 0; i < result.pocketedBalls.Count; i++)
+                    {
+                        PlayerGroup g = GetBallGroup(result.pocketedBalls[i]);
+                        if (g == PlayerGroup.Solids || g == PlayerGroup.Stripes)
+                        {
+                            if (matchState.tableOpen || g == activeGroup)
+                            {
+                                legalPotted = true;
+                                break;
+                            }
+                        }
+                    }
+                    result.calledShotMade = legalPotted;
                 }
             }
 
@@ -211,7 +243,8 @@ namespace Game.Billiards.Rules
 
         public int CountRemainingBalls(PlayerGroup group, BallManager ballManager, int excludeBallNumber = -1)
         {
-            if (ballManager == null || group == PlayerGroup.Open) return 0;
+            if (group == PlayerGroup.Open) return 0;
+            if (ballManager == null) return 7; // Fallback khi không có BallManager (giả định còn bi trên bàn)
 
             int count = 0;
             int start = (group == PlayerGroup.Solids) ? 1 : 9;

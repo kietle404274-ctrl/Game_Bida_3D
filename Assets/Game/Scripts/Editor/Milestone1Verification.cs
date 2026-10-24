@@ -62,7 +62,7 @@ namespace Game.Billiards.Editor
             bool allValid = true;
             for (int i = 0; i <= 15; i++)
             {
-                string path = $"Assets/Game/Prefabs/Balls/GameBall_{i:02d}.prefab";
+                string path = $"Assets/Game/Prefabs/Balls/GameBall_{i:D2}.prefab";
                 GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
                 if (prefab == null)
                 {
@@ -120,8 +120,8 @@ namespace Game.Billiards.Editor
             // Kiểm tra bounds logic
             bool insideCenter = wrapper.IsInsidePlayArea(Vector3.zero);
             bool outsideBounds = wrapper.IsInsidePlayArea(new Vector3(10f, 0f, 10f));
-            bool headStringCheck = wrapper.IsBehindHeadString(new Vector3(0f, 0f, -0.8f));
-            bool pastHeadStringCheck = !wrapper.IsBehindHeadString(new Vector3(0f, 0f, 0.2f));
+            bool headStringCheck = wrapper.IsBehindHeadString(new Vector3(0.8f, 0f, 0f));
+            bool pastHeadStringCheck = !wrapper.IsBehindHeadString(new Vector3(-0.2f, 0f, 0f));
 
             if (!insideCenter || outsideBounds || !headStringCheck || !pastHeadStringCheck)
             {
@@ -150,8 +150,6 @@ namespace Game.Billiards.Editor
                     GameObject bGO = new GameObject($"MockBall_{i}");
                     tempBallObjects.Add(bGO);
                     var bc = bGO.AddComponent<BallController>();
-                    bGO.AddComponent<SphereCollider>();
-                    bGO.AddComponent<Rigidbody>();
                     ballManager.RegisterBall(i, bc);
                 }
 
@@ -176,8 +174,8 @@ namespace Game.Billiards.Editor
                 // 2. Kiểm tra bi 8 nằm ở tâm dàn bi (khoảng cách tương đối với Apex)
                 var eightBall = ballManager.EightBall;
                 float d = config.BallRadius * 2f;
-                float expectedEightBallZ = wrapper.FootSpot.z + (2 * d * 0.8660254f);
-                if (Mathf.Abs(eightBall.transform.position.z - expectedEightBallZ) > 0.015f || Mathf.Abs(eightBall.transform.position.x) > 0.01f)
+                float expectedEightBallX = wrapper.FootSpot.x - (2 * d * 0.8660254f);
+                if (Mathf.Abs(eightBall.transform.position.x - expectedEightBallX) > 0.015f || Mathf.Abs(eightBall.transform.position.z) > 0.01f)
                 {
                     Debug.LogError($"[Test 4 FAILED] Bi 8 không nằm ở tâm hàng thứ 3 của dàn bi! Pos={eightBall.transform.position}");
                     return false;
@@ -223,8 +221,7 @@ namespace Game.Billiards.Editor
 
                 GameObject bGO = new GameObject("TestBall");
                 var bc = bGO.AddComponent<BallController>();
-                var rb = bGO.AddComponent<Rigidbody>();
-                bGO.AddComponent<SphereCollider>();
+                var rb = bc.Rigidbody != null ? bc.Rigidbody : bGO.GetComponent<Rigidbody>();
 
                 bc.ApplyPhysicsConfig(config);
                 monitor.Initialize(config, new[] { bc });

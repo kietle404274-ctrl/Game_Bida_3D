@@ -47,8 +47,7 @@ namespace Game.Billiards.Editor
                 // Tạo mock cue ball
                 GameObject cueGO = new GameObject("MockCueBall");
                 var bc = cueGO.AddComponent<BallController>();
-                var rb = cueGO.AddComponent<Rigidbody>();
-                cueGO.AddComponent<SphereCollider>();
+                var rb = bc.Rigidbody != null ? bc.Rigidbody : cueGO.GetComponent<Rigidbody>();
 
                 bc.SetBallNumber(0);
                 bc.ApplyPhysicsConfig(config);
