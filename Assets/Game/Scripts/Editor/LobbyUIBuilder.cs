@@ -109,7 +109,7 @@ namespace Game.Billiards.Editor
             titleRt.offsetMin = Vector2.zero;
             titleRt.offsetMax = Vector2.zero;
 
-            Text subTitleText = UIBuilderUtilities.CreateText(headerGo.transform, "SubTitleText", "CHAMPIONSHIP TOURNAMENT EDITION • WPA OFFICIAL RULES", 18, UIBuilderUtilities.ColorAccentCyan, TextAnchor.MiddleLeft, FontStyle.Normal);
+            Text subTitleText = UIBuilderUtilities.CreateText(headerGo.transform, "SubTitleText", "", 18, UIBuilderUtilities.ColorAccentCyan, TextAnchor.MiddleLeft, FontStyle.Normal);
             RectTransform subTitleRt = subTitleText.GetComponent<RectTransform>();
             subTitleRt.anchorMin = new Vector2(0f, 0f);
             subTitleRt.anchorMax = new Vector2(1f, 0.45f);

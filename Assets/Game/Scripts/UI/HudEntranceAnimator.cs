@@ -61,6 +61,8 @@ namespace Game.Billiards.UI
             anim.played = false;
 
             Canvas.ForceUpdateCanvases();
+            CueElevationSelector.EnsureBuilt();
+            Canvas.ForceUpdateCanvases();
 
             // Thanh tên / tỉ số phía trên: trượt xuống
             var top = new List<RectTransform>();

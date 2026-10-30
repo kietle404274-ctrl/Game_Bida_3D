@@ -60,61 +60,92 @@ namespace Game.Billiards.AI
         [Tooltip("Số lượng mẫu vị trí thử nghiệm khi AI có quyền Ball-in-Hand")]
         public int ballInHandSampleCount = 30;
 
+        [Header("Advanced Tactics & Capabilities")]
+        [Tooltip("Cho phép AI đánh mượn 1 băng chạm bi khi bị giấu bi (Kick Shot)")]
+        public bool allowKickShots = true;
+
+        [Tooltip("Cho phép AI đánh mượn bi (Combination Shot)")]
+        public bool allowComboShots = true;
+
+        [Tooltip("Cho phép AI đánh bi mục tiêu bật băng vào lỗ (Bank Shot)")]
+        public bool allowBankShots = false;
+
+        [Tooltip("Bật thuật toán điều bi (Position Play) tính thế bi dọn bàn tiếp theo")]
+        public bool usePositionPlay = false;
+
+        [Tooltip("Tự động áp dụng Trô/Cù-lê né lỗ hoặc hãm bi (Smart Spin)")]
+        public bool allowSmartSpin = true;
+
         public static AIDifficultyProfile EasyProfile => new AIDifficultyProfile
         {
             difficulty = AIDifficulty.Easy,
             displayName = "Dễ (Easy)",
-            wPot = 1.0f,
+            wPot = 1.2f,
             wAngle = 0.6f,
-            wDistance = 0.4f,
+            wDistance = 0.8f,
             wClearance = 0.5f,
-            wPosition = 0.1f,
-            wSafety = 0.2f, // Ít khi tính safety
+            wPosition = 0.2f,
+            wSafety = 0.0f, // Full công, không đánh safety
             wRisk = 0.6f,
-            maxCutAngleDegrees = 50f, // Chỉ xét các góc dễ
-            minPotFeasibility = 0.25f,
-            safetyPreferenceThreshold = 0.20f,
-            aimNoiseDegrees = 2.2f, // Sai số ngắm tương đối lớn
-            powerNoiseFraction = 0.12f, // Lực chênh lệch 12%
-            ballInHandSampleCount = 15
+            maxCutAngleDegrees = 55f, // Chỉ xét các góc dễ
+            minPotFeasibility = 0.20f,
+            safetyPreferenceThreshold = 0.0f,
+            aimNoiseDegrees = 0.20f, // Sai số nhẹ cho người mới
+            powerNoiseFraction = 0.02f,
+            ballInHandSampleCount = 15,
+            allowKickShots = false,
+            allowComboShots = false,
+            allowBankShots = false,
+            usePositionPlay = false,
+            allowSmartSpin = false
         };
 
         public static AIDifficultyProfile NormalProfile => new AIDifficultyProfile
         {
             difficulty = AIDifficulty.Normal,
             displayName = "Bình Thường (Normal)",
-            wPot = 1.0f,
-            wAngle = 0.8f,
-            wDistance = 0.6f,
+            wPot = 1.5f,
+            wAngle = 0.7f,
+            wDistance = 1.1f, // Ưu tiên cực mạnh bi gần lỗ
             wClearance = 0.7f,
-            wPosition = 0.4f,
-            wSafety = 0.7f,
+            wPosition = 0.9f, // Bật điều bi cho Normal
+            wSafety = 0.0f, // Full công, không đánh safety
             wRisk = 1.0f,
             maxCutAngleDegrees = 65f,
-            minPotFeasibility = 0.15f,
-            safetyPreferenceThreshold = 0.45f,
-            aimNoiseDegrees = 0.65f, // Sai số ngắm nhẹ
-            powerNoiseFraction = 0.04f,
-            ballInHandSampleCount = 35
+            minPotFeasibility = 0.12f,
+            safetyPreferenceThreshold = 0.0f,
+            aimNoiseDegrees = 0.0f, // Ngắm chuẩn xác không bị lệch
+            powerNoiseFraction = 0.0f,
+            ballInHandSampleCount = 35,
+            allowKickShots = true,
+            allowComboShots = true,
+            allowBankShots = true,
+            usePositionPlay = true, // Kích hoạt điều bi cho Normal
+            allowSmartSpin = true
         };
 
         public static AIDifficultyProfile HardProfile => new AIDifficultyProfile
         {
             difficulty = AIDifficulty.Hard,
             displayName = "Khó (Hard)",
-            wPot = 1.2f,
-            wAngle = 1.0f,
-            wDistance = 0.7f,
+            wPot = 1.6f,
+            wAngle = 0.8f,
+            wDistance = 1.2f, // Ưu tiên cực mạnh bi gần lỗ
             wClearance = 0.9f,
-            wPosition = 0.8f, // Rất chú trọng vị trí giữ lượt cho cú đánh tiếp theo
-            wSafety = 1.1f, // Đánh safety điêu luyện khi không có thế bi ngon
+            wPosition = 1.4f, // Điều bi thượng thừa
+            wSafety = 0.0f, // Full công, không đánh safety
             wRisk = 1.5f,
             maxCutAngleDegrees = 78f, // Tận dụng các góc cắt khó
             minPotFeasibility = 0.08f,
-            safetyPreferenceThreshold = 0.55f,
-            aimNoiseDegrees = 0.1f, // Ngắm cực kỳ chuẩn xác
-            powerNoiseFraction = 0.015f,
-            ballInHandSampleCount = 65
+            safetyPreferenceThreshold = 0.0f,
+            aimNoiseDegrees = 0.0f, // Ngắm chính xác tuyệt đối
+            powerNoiseFraction = 0.0f,
+            ballInHandSampleCount = 65,
+            allowKickShots = true,
+            allowComboShots = true,
+            allowBankShots = true,
+            usePositionPlay = true, // Kích hoạt điều bi chuyên nghiệp
+            allowSmartSpin = true
         };
 
         public static AIDifficultyProfile GetProfile(AIDifficulty diff)

@@ -76,21 +76,42 @@ namespace Game.Billiards.Physics
             rb.angularVelocity = Vector3.zero;
 
             // Tác động lực đẩy lên bi cái theo định luật xung lượng v = impulse / mass (chỉ chuyển động ngang trên mặt phẳng XZ)
-            rb.velocity = impulse / rb.mass;
+            Vector3 launchVelocity = impulse / rb.mass;
 
-            // 2. Tác động xoáy (Topspin, Backspin, Sidespin) nếu có tiếp xúc lệch tâm
+            // 2. Xoáy vật lý: điểm chạm lệch tâm b (đơn vị bán kính bi) cho ω = 2.5 * v * b / R (bi đặc: I = 0.4 m R²)
             Vector2 contact = Vector2.ClampMagnitude(command.cueContact01, 1f);
+            Vector2 b = contact * physicsConfig.MaxContactOffset;
+
+            // Đánh lệch tâm làm hao tốc độ bi cái (một phần xung lượng biến thành xoáy)
+            launchVelocity /= 1f + physicsConfig.OffsetSpeedLoss * b.sqrMagnitude;
+            rb.velocity = launchVelocity;
+
             if (contact.sqrMagnitude > 0.001f && physicsConfig.SpinStrength > 0f)
             {
+                const float ballRadius = 0.02855f;
+                float v = launchVelocity.magnitude;
+                float k = 2.5f * v / ballRadius * physicsConfig.SpinStrength;
+
                 // Trục xoay cu-lê / trô nằm ngang vuông góc với hướng đánh
                 Vector3 horizontalSpinAxis = Vector3.Cross(Vector3.up, shotDir).normalized;
-                float topBackSpin = contact.y * shotPower * physicsConfig.SpinStrength;
+                float topBackSpin = b.y * k;
 
                 // Trục xoay ép phê (side-spin) xoay quanh trục thẳng đứng Y
-                float sideSpin = -contact.x * shotPower * physicsConfig.SpinStrength;
+                float sideSpin = -b.x * k;
 
-                Vector3 initialAngularVelocity = (horizontalSpinAxis * topBackSpin) + (Vector3.up * sideSpin);
-                rb.angularVelocity = initialAngularVelocity;
+                rb.angularVelocity = (horizontalSpinAxis * topBackSpin) + (Vector3.up * sideSpin);
+            }
+
+            // 2b. Nhảy bi: cơ nâng đủ góc thì một phần xung lực thành bật lên (phản lực mặt đá), còn lại là tốc độ ngang
+            // v_ngang = v * cos(góc), v_đứng = min(v * sin(góc) * JumpGain, MaxJumpSpeed). Không áp dụng cho cú phá bi.
+            float elevation = Mathf.Clamp(command.cueElevationDeg, 0f, physicsConfig.MaxCueElevation);
+            if (!isBreakShot && elevation >= physicsConfig.MinJumpAngle)
+            {
+                float rad = elevation * Mathf.Deg2Rad;
+                float speed = launchVelocity.magnitude;
+                float vUp = Mathf.Min(speed * Mathf.Sin(rad) * physicsConfig.JumpGain, physicsConfig.MaxJumpSpeed);
+                Vector3 jumpVelocity = launchVelocity * Mathf.Cos(rad) + Vector3.up * vUp;
+                cueBall.LaunchJump(jumpVelocity, rb.angularVelocity);
             }
 
             // 3. Khởi động bộ giám sát chuyển động

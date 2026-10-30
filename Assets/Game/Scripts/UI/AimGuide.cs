@@ -150,6 +150,24 @@ namespace Game.Billiards.UI
             // Đường vẽ nằm sát mặt nỉ (thấp hơn tâm bi) để trông như vạch kẻ trên bàn
             float drawY = origin.y - radius + 0.003f;
 
+            // Cú nhảy bi: bi bay qua mọi vật cản, nên chỉ vẽ đường bay và vòng tròn tại điểm chạm nỉ dự kiến
+            var elevation = CueElevationSelector.Instance;
+            if (elevation != null && ballManager.PhysicsConfig != null &&
+                CueElevationSelector.PredictJump(ballManager.PhysicsConfig, elevation.CurrentAngleDeg,
+                    inputController.CurrentPower01, inputController.CueContact01, out float jumpHeight, out float jumpRange))
+            {
+                Vector3 landing = origin + dir * jumpRange;
+                pathLine.positionCount = 2;
+                pathLine.SetPosition(0, Flat(origin, drawY));
+                pathLine.SetPosition(1, Flat(landing, drawY));
+                pathLine.enabled = true;
+                DrawRing(landing, radius, drawY);
+                ringLine.enabled = true;
+                targetLine.enabled = false;
+                deflectLine.enabled = false;
+                return;
+            }
+
             float hitDistance = maxDistance;
             BallController targetBall = null;
             Vector3 hitNormal = Vector3.zero;
@@ -265,6 +283,10 @@ namespace Game.Billiards.UI
                 // Bỏ qua mặt nỉ / sàn (pháp tuyến hướng lên)
                 if (Mathf.Abs(h.normal.y) > 0.6f) continue;
                 if (h.distance <= 0.0001f) continue;
+
+                // Chỉ nhận va chạm khi tia ngắm thực sự lao vào bề mặt (hướng ngược pháp tuyến: dot < 0).
+                // Bỏ qua các bề mặt mở rộng xuôi theo hướng tia ngắm (như má vát mở rộng của lỗ góc).
+                if (Vector3.Dot(dir, h.normal) >= -0.05f) continue;
 
                 distance = h.distance;
                 normal = h.normal;

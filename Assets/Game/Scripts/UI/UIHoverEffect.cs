@@ -53,6 +53,22 @@ namespace Game.Billiards.UI
         }
 
         /// <summary>
+        /// Đổi màu nền/viền cơ sở và màu hover mà KHÔNG khởi tạo lại (không chụp lại scale/vị trí hiện tại),
+        /// dùng cho nút đổi trạng thái liên tục như Sẵn sàng/Hủy.
+        /// </summary>
+        public void Recolor(Color body, Color frameColor, Color hoverBody, Color hoverFrame)
+        {
+            Init();
+            changeColor = true;
+            baseColor = body;
+            baseFrameColor = frameColor;
+            hoverColor = hoverBody;
+            hoverFrameColor = hoverFrame;
+            if (background != null) background.color = body;
+            if (frame != null) frame.SetBaseColor(frameColor);
+        }
+
+        /// <summary>
         /// Gắn hiệu ứng hover cho mọi Button trong scene (kể cả popup đang ẩn).
         /// Nút kiểu HUD vát góc: phóng to + dịch phải + vàng cam; nút khác: chỉ phóng to nhẹ.
         /// </summary>

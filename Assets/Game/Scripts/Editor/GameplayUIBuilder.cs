@@ -743,7 +743,7 @@ namespace Game.Billiards.Editor
             simTitle.rectTransform.anchoredPosition = new Vector2(0f, 185f);
             simTitle.rectTransform.sizeDelta = new Vector2(680f, 42f);
 
-            Text simSub = UIBuilderUtilities.CreateText(startIntroModalGo.transform, "SubTitle", "CHAMPIONSHIP TOURNAMENT EDITION • WPA OFFICIAL RULES", 14, UIBuilderUtilities.ColorAccentCyan, TextAnchor.MiddleCenter);
+            Text simSub = UIBuilderUtilities.CreateText(startIntroModalGo.transform, "SubTitle", "", 14, UIBuilderUtilities.ColorAccentCyan, TextAnchor.MiddleCenter);
             simSub.rectTransform.anchoredPosition = new Vector2(0f, 145f);
             simSub.rectTransform.sizeDelta = new Vector2(680f, 25f);
 

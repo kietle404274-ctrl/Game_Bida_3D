@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 namespace Game.Billiards.Audio
 {
@@ -25,23 +27,72 @@ namespace Game.Billiards.Audio
         private float sfxVolume = 1.0f;
         private float musicVolume = 0.8f;
 
+        private float lastButtonClickTime = -1f;
+        private static readonly List<RaycastResult> raycastResults = new List<RaycastResult>();
+
         public float MasterVolume => masterVolume;
         public float SFXVolume => sfxVolume;
         public float MusicVolume => musicVolume;
+        public AudioLibrary Library => audioLibrary;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            Instance = null;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void Bootstrap()
+        {
+            GetOrCreateInstance();
+        }
+
+        public static AudioManager GetOrCreateInstance()
+        {
+            if (Instance == null)
+            {
+                var existing = FindObjectOfType<AudioManager>();
+                if (existing != null)
+                {
+                    Instance = existing;
+                    DontDestroyOnLoad(existing.gameObject);
+                }
+                else
+                {
+                    var go = new GameObject("AudioManager");
+                    Instance = go.AddComponent<AudioManager>();
+                    DontDestroyOnLoad(go);
+                }
+            }
+            return Instance;
+        }
 
         private void Awake()
         {
             if (Instance != null && Instance != this)
             {
-                Destroy(gameObject);
+                if (gameObject.name == "AudioManager")
+                {
+                    Destroy(gameObject);
+                }
+                else
+                {
+                    Destroy(this);
+                }
                 return;
             }
 
             Instance = this;
             DontDestroyOnLoad(gameObject);
 
+            if (audioLibrary == null)
+            {
+                audioLibrary = Resources.Load<AudioLibrary>("DefaultAudioLibrary");
+            }
+
             InitializeAudioSources();
             LoadVolumeSettings();
+            PlayMusic();
         }
 
         private void InitializeAudioSources()
@@ -73,6 +124,70 @@ namespace Game.Billiards.Audio
                 src.playOnAwake = false;
                 sfxPool.Add(src);
             }
+        }
+
+        private void Update()
+        {
+            // Tự động phát âm thanh khi click vào bất kỳ nút bấm UI nào (Button, Toggle)
+            if (UnityEngine.Input.GetMouseButtonDown(0))
+            {
+                var es = EventSystem.current;
+                if (es != null)
+                {
+                    var pointerData = new PointerEventData(es) { position = UnityEngine.Input.mousePosition };
+                    raycastResults.Clear();
+                    es.RaycastAll(pointerData, raycastResults);
+                    for (int i = 0; i < raycastResults.Count; i++)
+                    {
+                        var go = raycastResults[i].gameObject;
+                        if (go == null) continue;
+
+                        var sel = go.GetComponentInParent<Selectable>();
+                        if (sel != null && (sel is Button || sel is Toggle) && sel.interactable && sel.isActiveAndEnabled)
+                        {
+                            PlayButtonClick();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        public void PlayMusic(AudioClip clip = null)
+        {
+            AudioClip targetClip = clip != null ? clip : (audioLibrary != null ? audioLibrary.BackgroundMusicClip : null);
+            if (targetClip == null) return;
+
+            if (musicSource == null)
+            {
+                musicSource = gameObject.AddComponent<AudioSource>();
+                musicSource.loop = true;
+            }
+
+            if (musicSource.clip == targetClip && musicSource.isPlaying)
+            {
+                return; // Đang phát bài này rồi
+            }
+
+            musicSource.clip = targetClip;
+            musicSource.loop = true;
+            musicSource.volume = musicVolume * masterVolume;
+            musicSource.Play();
+        }
+
+        public void StopMusic()
+        {
+            if (musicSource != null) musicSource.Stop();
+        }
+
+        public void PauseMusic()
+        {
+            if (musicSource != null) musicSource.Pause();
+        }
+
+        public void ResumeMusic()
+        {
+            if (musicSource != null && !musicSource.isPlaying) musicSource.UnPause();
         }
 
         private void LoadVolumeSettings()
@@ -130,7 +245,6 @@ namespace Game.Billiards.Audio
         {
             if (audioLibrary == null) return;
 
-            // Cú phá bi dùng tiếng riêng (nếu có), không biến thiên pitch để giữ âm "chát" đặc trưng
             if (isBreak && audioLibrary.BreakShotClip != null)
             {
                 var breakSrc = GetNextSfxSource();
@@ -143,7 +257,6 @@ namespace Game.Billiards.Audio
 
             var src = GetNextSfxSource();
             float p = Mathf.Clamp01(power01);
-            // Đánh càng mạnh tiếng càng to; pitch hơi cao hơn khi đánh mạnh (đầu cơ nén cứng hơn)
             float vol = Mathf.Lerp(0.30f, 1.0f, Mathf.Pow(p, 0.8f)) * sfxVolume;
             src.pitch = UnityEngine.Random.Range(0.97f, 1.03f) * Mathf.Lerp(0.96f, 1.04f, p);
             src.PlayOneShot(audioLibrary.CueHitClip, vol);
@@ -154,8 +267,6 @@ namespace Game.Billiards.Audio
             if (audioLibrary == null || audioLibrary.BallHitClip == null) return;
             if (relativeSpeed < 0.05f) return;
 
-            // Tốc độ va chạm tương đối (m/s) -> âm lượng. Chạm nhẹ vẫn nghe rõ tiếng "tách" nhỏ,
-            // va chạm mạnh (phá bi) lên tới 1.0
             float norm = Mathf.Clamp01(relativeSpeed / 6.0f);
             float vol = Mathf.Lerp(0.12f, 1.0f, Mathf.Pow(norm, 0.7f)) * sfxVolume;
 
@@ -173,7 +284,6 @@ namespace Game.Billiards.Audio
             float vol = Mathf.Lerp(0.10f, 0.85f, Mathf.Pow(norm, 0.8f)) * sfxVolume;
 
             var src = GetNextSfxSource();
-            // Băng bị nén mạnh thì tiếng trầm và nặng hơn
             src.pitch = UnityEngine.Random.Range(0.96f, 1.04f) * Mathf.Lerp(1.04f, 0.96f, norm);
             src.PlayOneShot(audioLibrary.CushionHitClip, vol);
         }
@@ -186,6 +296,8 @@ namespace Game.Billiards.Audio
             src.pitch = UnityEngine.Random.Range(0.96f, 1.04f);
             src.PlayOneShot(audioLibrary.PocketDropClip, sfxVolume);
         }
+
+        public void PlayPocket() => PlayPocketDrop();
 
         public void PlayFoul()
         {
@@ -211,6 +323,9 @@ namespace Game.Billiards.Audio
 
         public void PlayButtonClick()
         {
+            if (Time.unscaledTime - lastButtonClickTime < 0.04f) return;
+            lastButtonClickTime = Time.unscaledTime;
+
             if (audioLibrary == null || audioLibrary.ButtonClickClip == null) return;
 
             if (uiSource != null)
@@ -218,12 +333,17 @@ namespace Game.Billiards.Audio
                 uiSource.pitch = UnityEngine.Random.Range(0.98f, 1.02f);
                 uiSource.PlayOneShot(audioLibrary.ButtonClickClip, sfxVolume);
             }
+            else
+            {
+                var src = GetNextSfxSource();
+                src.pitch = UnityEngine.Random.Range(0.98f, 1.02f);
+                src.PlayOneShot(audioLibrary.ButtonClickClip, sfxVolume);
+            }
         }
 
         private AudioClip tickClip;
         private bool tickToggle;
 
-        /// <summary>Tiếng tích-tắc đếm giờ (5 giây cuối). Tạo clip bằng code nên không cần thêm file âm thanh.</summary>
         public void PlayTimerTick()
         {
             if (tickClip == null) tickClip = BuildTickClip();
@@ -231,7 +351,7 @@ namespace Game.Billiards.Audio
             tickToggle = !tickToggle;
             var src = uiSource != null ? uiSource : GetNextSfxSource();
             if (src == null) return;
-            src.pitch = tickToggle ? 1.0f : 0.78f; // tích cao, tắc trầm
+            src.pitch = tickToggle ? 1.0f : 0.78f;
             src.PlayOneShot(tickClip, 0.8f * sfxVolume);
         }
 

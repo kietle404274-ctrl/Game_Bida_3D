@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using Game.Billiards.Core;
 
 namespace Game.Billiards.UI
 {
@@ -26,13 +27,19 @@ namespace Game.Billiards.UI
         private void Awake()
         {
             rect = (RectTransform)transform;
+            if (selector == null) selector = FindObjectOfType<CueBallContactSelector>();
         }
 
         private void OnEnable()
         {
+            if (selector == null) selector = FindObjectOfType<CueBallContactSelector>();
+            LocalizationManager.OnLanguageChanged -= HandleLanguageChanged;
+            LocalizationManager.OnLanguageChanged += HandleLanguageChanged;
             if (selector != null)
             {
+                selector.OnContactPointChanged -= Refresh;
                 selector.OnContactPointChanged += Refresh;
+                selector.OnSelectorToggled -= HandleToggled;
                 selector.OnSelectorToggled += HandleToggled;
                 Refresh(selector.CurrentContact);
             }
@@ -40,6 +47,7 @@ namespace Game.Billiards.UI
 
         private void OnDisable()
         {
+            LocalizationManager.OnLanguageChanged -= HandleLanguageChanged;
             if (selector != null)
             {
                 selector.OnContactPointChanged -= Refresh;
@@ -48,6 +56,11 @@ namespace Game.Billiards.UI
             pointerInside = false;
             dragging = false;
             UpdateHover();
+        }
+
+        private void HandleLanguageChanged()
+        {
+            if (selector != null) Refresh(selector.CurrentContact);
         }
 
         private void HandleToggled(bool open)
@@ -96,9 +109,9 @@ namespace Game.Billiards.UI
         private static string Describe(Vector2 c)
         {
             const float t = 0.15f;
-            if (c.magnitude < t) return "Giữa";
-            string v = c.y > t ? "Cu-lê" : (c.y < -t ? "Trô" : "");
-            string h = c.x > t ? "Phải" : (c.x < -t ? "Trái" : "");
+            if (c.magnitude < t) return LocalizationManager.Get("spin_center");
+            string v = c.y > t ? LocalizationManager.Get("spin_top") : (c.y < -t ? LocalizationManager.Get("spin_bottom") : "");
+            string h = c.x > t ? LocalizationManager.Get("spin_right") : (c.x < -t ? LocalizationManager.Get("spin_left") : "");
             if (v.Length > 0 && h.Length > 0) return v + " + " + h;
             return v.Length > 0 ? v : h;
         }

@@ -66,16 +66,35 @@ namespace Game.Billiards.UI
 
         private void Start()
         {
+            Time.timeScale = 1f;
+            HudModalState.Reset();
+            CursorToggle.SetCursorToggled(false);
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+
+            EnsureLanguageDropdown();
+            EnsureProfileSettings();
             SetupDropdowns();
             EnsureAimGuideToggle();
             StyleModals();
             SetupOnlineConfigPopup();
+            if (onlineRoomUI != null) onlineRoomUI.SetupRoomView(roomConfigButton);
             StyleQuitButtons();
             SetupButtonListeners();
             ApplyHoverEffects();
             LoadAudioSettings();
             SelectDifficulty(AIDifficulty.Normal);
             HideAllModals();
+
+            LocalizationManager.OnLanguageChanged -= RefreshAllLocalizedTexts;
+            LocalizationManager.OnLanguageChanged += RefreshAllLocalizedTexts;
+            RefreshAllLocalizedTexts();
+        }
+
+        private void OnDestroy()
+        {
+            LocalizationManager.OnLanguageChanged -= RefreshAllLocalizedTexts;
+            PlayerProfile.OnChanged -= RefreshProfileViews;
         }
 
         private DifficultyCardUI[] difficultyCards;
@@ -98,10 +117,12 @@ namespace Game.Billiards.UI
 
         private void StyleQuitButtons()
         {
-            Button[] quitButtons = { quitGameButton, quitConfirmYesButton };
+            Button[] quitButtons = { quitGameButton, quitConfirmYesButton, quitConfirmNoButton };
             foreach (Button b in quitButtons)
             {
                 if (b == null) continue;
+                b.transition = Selectable.Transition.None;
+                if (b == quitConfirmNoButton) continue;
                 if (b.targetGraphic != null) b.targetGraphic.color = QuitBase;
                 BorderProgressGraphic frame = b.GetComponentInChildren<BorderProgressGraphic>(true);
                 if (frame != null) frame.SetBaseColor(QuitFrame);
@@ -122,6 +143,10 @@ namespace Game.Billiards.UI
                 if (b == quitGameButton || b == quitConfirmYesButton)
                 {
                     UIHoverEffect.Attach(b.gameObject, true, QuitHover, QuitHoverFrame);
+                }
+                else if (b == quitConfirmNoButton)
+                {
+                    UIHoverEffect.Attach(b.gameObject, true, new Color(0.20f, 0.40f, 0.65f, 1f), new Color(0.40f, 0.85f, 1f, 1f));
                 }
                 else if (b.targetGraphic is SkewedPanelGraphic)
                 {
@@ -189,7 +214,7 @@ namespace Game.Billiards.UI
         private void RefreshOnlineConfigSummary()
         {
             if (onlineConfigSummary == null) return;
-            onlineConfigSummary.text = "CẤU HÌNH TRẬN ĐẤU  •  " + ShortCaption(onlineRaceDropdown) + "  •  " + ShortCaption(onlineTimerDropdown);
+            onlineConfigSummary.text = LocalizationManager.Get("online_config_summary") + "  •  " + ShortCaption(onlineRaceDropdown) + "  •  " + ShortCaption(onlineTimerDropdown);
         }
 
         private static void ReplaceHudButtonIcon(Button b, string label, int fontSize)
@@ -204,7 +229,7 @@ namespace Game.Billiards.UI
                 {
                     t.text = label;
                     t.fontSize = fontSize;
-                    t.rectTransform.offsetMin = Vector2.zero;
+                    t.rectTransform.offsetMin = b.transform.Find("Glyph") != null ? new Vector2(44f, t.rectTransform.offsetMin.y) : Vector2.zero;
                 }
             }
         }
@@ -224,7 +249,6 @@ namespace Game.Billiards.UI
             if (onlineRaceDropdown == null || onlineTimerDropdown == null || source == null) return;
 
             Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            const float cut = 36f;
 
             // --- Khung popup (nền mờ + thẻ vát góc + viền) ---
             GameObject popup = new GameObject("OnlineConfigModal", typeof(RectTransform));
@@ -259,26 +283,26 @@ namespace Game.Billiards.UI
             frameG.raycastTarget = false;
 
             // --- Chữ: tiêu đề + nhãn (tên đặt để LobbyModalStyler tự nhận diện) ---
-            Text title = NewConfigText(popup.transform, "Title", "CẤU HÌNH TRẬN ĐẤU", font);
+            Text title = NewConfigText(popup.transform, "Title", LocalizationManager.Get("online_config_title"), font);
             title.rectTransform.anchorMin = new Vector2(0f, 1f);
             title.rectTransform.anchorMax = new Vector2(1f, 1f);
             title.rectTransform.pivot = new Vector2(0.5f, 1f);
             title.rectTransform.anchoredPosition = new Vector2(0f, -25f);
             title.rectTransform.sizeDelta = new Vector2(0f, 40f);
-            Text raceLabel = NewConfigText(popup.transform, "RaceLabel", "SỐ VÁN THẮNG MỤC TIÊU", font);
+            Text raceLabel = NewConfigText(popup.transform, "RaceLabel", LocalizationManager.Get("diff_race"), font);
             PlaceCfg(raceLabel.rectTransform, 118f, 24f);
-            Text timerLabel = NewConfigText(popup.transform, "TimerLabel", "THỜI GIAN LƯỢT BẮN", font);
+            Text timerLabel = NewConfigText(popup.transform, "TimerLabel", LocalizationManager.Get("diff_timer"), font);
             PlaceCfg(timerLabel.rectTransform, 34f, 24f);
 
             // --- Hai tick cài đặt dùng chung ---
-            popupIntroToggle = CreateTickToggle(popup.transform, "PopupIntroToggle", "Hiển thị intro xếp bi đầu trận", GameSession.RackIntroEnabled,
+            popupIntroToggle = CreateTickToggle(popup.transform, "PopupIntroToggle", LocalizationManager.Get("diff_rack_intro"), GameSession.RackIntroEnabled,
                 out popupIntroCheck, out popupIntroOutline, out popupIntroBox);
             popupIntroToggle.onValueChanged.AddListener(v =>
             {
                 GameSession.RackIntroEnabled = v;
                 SyncTickToggles();
             });
-            popupAimToggle = CreateTickToggle(popup.transform, "PopupAimToggle", "Bật thước ngắm (đường ngắm & điểm va chạm)", GameSession.AimGuideEnabled,
+            popupAimToggle = CreateTickToggle(popup.transform, "PopupAimToggle", LocalizationManager.Get("diff_aim_guide"), GameSession.AimGuideEnabled,
                 out popupAimCheck, out popupAimOutline, out popupAimBox);
             popupAimToggle.onValueChanged.AddListener(v =>
             {
@@ -292,7 +316,7 @@ namespace Game.Billiards.UI
             Button confirm = Instantiate(startOfflineMatchButton, popup.transform);
             confirm.name = "BtnConfirmConfig";
             confirm.onClick.RemoveAllListeners();
-            ReplaceHudButtonIcon(confirm, "XÁC NHẬN", 18);
+            ReplaceHudButtonIcon(confirm, LocalizationManager.Get("btn_confirm"), 18);
             PlaceCfg((RectTransform)confirm.transform, -156f, 54f);
 
             // Style chung (tiêu đề, nhãn mục, hiệu ứng mở) khi chưa có dropdown
@@ -307,7 +331,7 @@ namespace Game.Billiards.UI
             Button openBtn = Instantiate(source, roomSub);
             openBtn.name = "BtnOnlineConfig";
             openBtn.onClick.RemoveAllListeners();
-            ReplaceHudButtonIcon(openBtn, "CẤU HÌNH TRẬN ĐẤU", 16);
+            ReplaceHudButtonIcon(openBtn, LocalizationManager.Get("online_config_summary"), 16);
             roomConfigButton = openBtn;
 
             // Sắp lại các nút trong phòng để có chỗ cho nút cấu hình
@@ -418,7 +442,7 @@ namespace Game.Billiards.UI
         {
             if (aimGuideToggle == null && difficultyModalRoot != null)
             {
-                aimGuideToggle = CreateTickToggle(difficultyModalRoot.transform, "AimGuideToggle", "Bật thước ngắm (đường ngắm & điểm va chạm)",
+                aimGuideToggle = CreateTickToggle(difficultyModalRoot.transform, "AimGuideToggle", LocalizationManager.Get("diff_aim_guide"),
                     GameSession.AimGuideEnabled, out aimGuideCheckRoot, out aimGuideOutline, out aimGuideBox);
             }
 
@@ -435,7 +459,7 @@ namespace Game.Billiards.UI
 
             if (rackIntroToggle == null && difficultyModalRoot != null)
             {
-                rackIntroToggle = CreateTickToggle(difficultyModalRoot.transform, "RackIntroToggle", "Hiển thị intro xếp bi đầu trận",
+                rackIntroToggle = CreateTickToggle(difficultyModalRoot.transform, "RackIntroToggle", LocalizationManager.Get("diff_rack_intro"),
                     GameSession.RackIntroEnabled, out introCheckRoot, out introOutline, out introBox);
                 rackIntroToggle.onValueChanged.AddListener(value =>
                 {
@@ -538,27 +562,583 @@ namespace Game.Billiards.UI
             return toggle;
         }
 
+        private Dropdown languageDropdown;
+        private Text languageLabel;
+
+        private void EnsureLanguageDropdown()
+        {
+            if (settingsModalRoot == null) return;
+
+            // Mở rộng chiều cao SettingsModal từ 520 lên 600
+            RectTransform modalRt = settingsModalRoot.GetComponent<RectTransform>();
+            if (modalRt != null && modalRt.sizeDelta.y < 580f)
+            {
+                modalRt.sizeDelta = new Vector2(modalRt.sizeDelta.x, 600f);
+            }
+
+            // Dịch nút Đóng (BtnCloseSettings) xuống dưới cùng
+            if (closeSettingsModalButton != null)
+            {
+                RectTransform closeRt = closeSettingsModalButton.GetComponent<RectTransform>();
+                if (closeRt != null)
+                {
+                    closeRt.anchoredPosition = new Vector2(0f, -225f);
+                }
+            }
+
+            // Kiểm tra hoặc tạo nhãn LblLanguage
+            Transform existingLbl = settingsModalRoot.transform.Find("LblLanguage");
+            if (existingLbl == null)
+            {
+                GameObject lblGo = new GameObject("LblLanguage", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+                lblGo.transform.SetParent(settingsModalRoot.transform, false);
+                RectTransform rt = lblGo.GetComponent<RectTransform>();
+                rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+                rt.pivot = new Vector2(0.5f, 0.5f);
+                rt.anchoredPosition = new Vector2(0f, -112f);
+                rt.sizeDelta = new Vector2(440f, 25f);
+
+                Text txt = lblGo.GetComponent<Text>();
+                Text sample = settingsModalRoot.GetComponentInChildren<Text>(true);
+                txt.font = sample != null ? sample.font : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                txt.fontSize = 13;
+                txt.fontStyle = FontStyle.Bold;
+                txt.alignment = TextAnchor.MiddleLeft;
+                txt.color = new Color(0.58f, 0.72f, 0.92f, 1f);
+                txt.text = LocalizationManager.Get("settings_language");
+                languageLabel = txt;
+
+                LobbyModalStyler.StyleSectionLabel(txt);
+            }
+            else
+            {
+                languageLabel = existingLbl.GetComponent<Text>();
+            }
+
+            // Kiểm tra hoặc tạo LanguageDropdown
+            Transform existingDrop = settingsModalRoot.transform.Find("LanguageDropdown");
+            if (existingDrop == null)
+            {
+                if (raceTargetDropdown != null)
+                {
+                    GameObject dropGo = Instantiate(raceTargetDropdown.gameObject, settingsModalRoot.transform);
+                    dropGo.name = "LanguageDropdown";
+
+                    RectTransform dropRt = dropGo.GetComponent<RectTransform>();
+                    dropRt.anchorMin = dropRt.anchorMax = new Vector2(0.5f, 0.5f);
+                    dropRt.pivot = new Vector2(0.5f, 0.5f);
+                    dropRt.anchoredPosition = new Vector2(0f, -155f);
+                    dropRt.sizeDelta = new Vector2(440f, 42f);
+
+                    languageDropdown = dropGo.GetComponent<Dropdown>();
+                    languageDropdown.ClearOptions();
+                    languageDropdown.AddOptions(new List<string>(LocalizationManager.LanguageNames));
+                    languageDropdown.SetValueWithoutNotify(LocalizationManager.CurrentLanguageIndex);
+                    if (languageDropdown.captionText != null)
+                    {
+                        languageDropdown.captionText.text = LocalizationManager.LanguageNames[LocalizationManager.CurrentLanguageIndex];
+                    }
+
+                    languageDropdown.onValueChanged.RemoveAllListeners();
+                    languageDropdown.onValueChanged.AddListener((int index) =>
+                    {
+                        LocalizationManager.SetLanguageByIndex(index);
+                        if (languageDropdown.captionText != null)
+                        {
+                            languageDropdown.captionText.text = LocalizationManager.LanguageNames[index];
+                        }
+                        if (Audio.AudioManager.Instance != null)
+                        {
+                            Audio.AudioManager.Instance.PlayButtonClick();
+                        }
+                    });
+                }
+            }
+            else
+            {
+                languageDropdown = existingDrop.GetComponent<Dropdown>();
+            }
+        }
+
+        // ---- Hồ sơ người chơi (tên + avatar) trong Cài đặt ----
+
+        private InputField profileNameInput;
+        private Text profileNameLabel;
+        private Image avatarPreview;
+        private Button changeAvatarButton;
+        private Button closePickerButton;
+        private Text avatarPickerTitle;
+        private GameObject avatarPicker;
+        private Image[] avatarImages;
+        private Image[] avatarRings;
+
+        private static readonly Color AvatarRingColor = new Color(0.25f, 0.95f, 0.50f, 1f);
+
+        private static void SetAnchoredY(Transform parent, string childName, float y)
+        {
+            Transform t = parent.Find(childName);
+            if (t == null) return;
+            RectTransform rt = (RectTransform)t;
+            Vector2 p = rt.anchoredPosition;
+            p.y = y;
+            rt.anchoredPosition = p;
+        }
+
+        private static void PlaceCenter(RectTransform rt, Vector2 pos, Vector2 size)
+        {
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos;
+            rt.sizeDelta = size;
+        }
+
+        private Text EnsureSettingsLabel(Transform root, string objName, float y, string locKey)
+        {
+            Transform existing = root.Find(objName);
+            if (existing != null) return existing.GetComponent<Text>();
+
+            GameObject go = new GameObject(objName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+            go.transform.SetParent(root, false);
+            PlaceCenter(go.GetComponent<RectTransform>(), new Vector2(0f, y), new Vector2(440f, 25f));
+
+            Text txt = go.GetComponent<Text>();
+            Text sample = root.GetComponentInChildren<Text>(true);
+            txt.font = sample != null ? sample.font : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            txt.fontSize = 13;
+            txt.fontStyle = FontStyle.Bold;
+            txt.alignment = TextAnchor.MiddleLeft;
+            txt.color = new Color(0.58f, 0.72f, 0.92f, 1f);
+            txt.text = LocalizationManager.Get(locKey);
+            txt.raycastTarget = false;
+            LobbyModalStyler.StyleSectionLabel(txt);
+            return txt;
+        }
+
+        /// <summary>
+        /// Thêm khu vực Hồ sơ vào modal Cài đặt: ô nhập tên (ngắn) + ảnh đại diện đang chọn + nút "ĐỔI ẢNH" mở popup chọn avatar.
+        /// Đây là nơi duy nhất để đổi tên/avatar; các ô tên ở modal độ khó và sảnh online chỉ hiển thị.
+        /// </summary>
+        private void EnsureProfileSettings()
+        {
+            if (settingsModalRoot == null) return;
+            Transform root = settingsModalRoot.transform;
+
+            RectTransform modalRt = settingsModalRoot.GetComponent<RectTransform>();
+            if (modalRt != null) modalRt.sizeDelta = new Vector2(modalRt.sizeDelta.x, 640f);
+
+            // Sắp lại các mục cũ để nhường chỗ cho khu vực Hồ sơ ở trên cùng
+            SetAnchoredY(root, "Title", 275f);
+            SetAnchoredY(root, "LblMaster", 100f);
+            SetAnchoredY(root, "SldMaster", 65f);
+            SetAnchoredY(root, "LblMusic", 22f);
+            SetAnchoredY(root, "SldMusic", -13f);
+            SetAnchoredY(root, "LblSFX", -58f);
+            SetAnchoredY(root, "SldSFX", -93f);
+            SetAnchoredY(root, "LblLanguage", -138f);
+            SetAnchoredY(root, "LanguageDropdown", -181f);
+            SetAnchoredY(root, "BtnCloseSettings", -258f);
+
+            profileNameLabel = EnsureSettingsLabel(root, "LblPlayerName", 215f, "settings_player_name");
+
+            // Ô nhập tên (ngắn): nhân bản từ ô tên chưa được làm đẹp ở modal độ khó (được style cùng các popup sau đó)
+            Transform existingInput = root.Find("ProfileNameInput");
+            if (existingInput != null)
+            {
+                profileNameInput = existingInput.GetComponent<InputField>();
+            }
+            else if (playerNameInput != null)
+            {
+                GameObject go = Instantiate(playerNameInput.gameObject, root);
+                go.name = "ProfileNameInput";
+                PlaceCenter(go.GetComponent<RectTransform>(), new Vector2(-110f, 160f), new Vector2(220f, 44f));
+
+                profileNameInput = go.GetComponent<InputField>();
+                profileNameInput.interactable = true;
+                profileNameInput.characterLimit = PlayerProfile.MaxNameLength;
+                profileNameInput.onValueChanged.RemoveAllListeners();
+                profileNameInput.onEndEdit.RemoveAllListeners();
+                profileNameInput.onEndEdit.AddListener(OnProfileNameEdited);
+                if (profileNameInput.placeholder is Text ph) ph.text = LocalizationManager.Get("settings_player_name_hint");
+            }
+
+            // Ảnh đại diện đang chọn (bấm vào cũng mở popup)
+            if (root.Find("AvatarPreview") == null)
+            {
+                GameObject pv = new GameObject("AvatarPreview", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button));
+                pv.transform.SetParent(root, false);
+                PlaceCenter(pv.GetComponent<RectTransform>(), new Vector2(66f, 160f), new Vector2(84f, 84f));
+                avatarPreview = pv.GetComponent<Image>();
+                avatarPreview.preserveAspect = true;
+                avatarPreview.sprite = AvatarLibrary.Get(PlayerProfile.AvatarIndex);
+                avatarPreview.raycastTarget = false; // chỉ hiển thị, không bấm được
+
+                GameObject ringGo = new GameObject("Ring", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+                ringGo.transform.SetParent(pv.transform, false);
+                RectTransform rr = ringGo.GetComponent<RectTransform>();
+                rr.anchorMin = Vector2.zero;
+                rr.anchorMax = Vector2.one;
+                rr.offsetMin = new Vector2(-7f, -7f);
+                rr.offsetMax = new Vector2(7f, 7f);
+                Image ring = ringGo.GetComponent<Image>();
+                ring.sprite = AvatarLibrary.RingSprite;
+                ring.color = new Color(0.40f, 0.85f, 1f, 1f);
+                ring.raycastTarget = false;
+
+                Button pb = pv.GetComponent<Button>();
+                pb.interactable = false;
+                pb.transition = Selectable.Transition.None;
+                pb.navigation = new Navigation { mode = Navigation.Mode.None };
+            }
+            else
+            {
+                avatarPreview = root.Find("AvatarPreview").GetComponent<Image>();
+            }
+
+            // Nút ĐỔI ẢNH (nhân bản từ nút Đóng để giữ đúng phong cách HUD)
+            if (closeSettingsModalButton != null && root.Find("BtnChangeAvatar") == null)
+            {
+                changeAvatarButton = Instantiate(closeSettingsModalButton, root);
+                changeAvatarButton.name = "BtnChangeAvatar";
+                changeAvatarButton.onClick.RemoveAllListeners();
+                PlaceCenter((RectTransform)changeAvatarButton.transform, new Vector2(170f, 160f), new Vector2(92f, 34f));
+                ReplaceHudButtonIcon(changeAvatarButton, LocalizationManager.Get("settings_change_avatar"), 12);
+                changeAvatarButton.onClick.AddListener(OpenAvatarPicker);
+            }
+
+            BuildAvatarPicker(root);
+
+            PlayerProfile.OnChanged -= RefreshProfileViews;
+            PlayerProfile.OnChanged += RefreshProfileViews;
+            RefreshProfileViews();
+        }
+
+        /// <summary>Khung popup kiểu HUD (nền mờ + thẻ vát góc + viền) dùng chung cho các popup con.</summary>
+        private static GameObject CreatePopupFrame(Transform parent, string objName, Vector2 size)
+        {
+            GameObject popup = new GameObject(objName, typeof(RectTransform));
+            popup.transform.SetParent(parent, false);
+            PlaceCenter(popup.GetComponent<RectTransform>(), Vector2.zero, size);
+
+            GameObject dim = new GameObject("Dim", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            dim.transform.SetParent(popup.transform, false);
+            dim.GetComponent<RectTransform>().sizeDelta = new Vector2(6000f, 4000f);
+            dim.GetComponent<Image>().color = new Color(0.02f, 0.04f, 0.08f, 0.78f);
+
+            GameObject card = new GameObject("Card", typeof(RectTransform), typeof(CanvasRenderer), typeof(SkewedPanelGraphic));
+            card.transform.SetParent(popup.transform, false);
+            RectTransform cr = card.GetComponent<RectTransform>();
+            cr.anchorMin = Vector2.zero; cr.anchorMax = Vector2.one; cr.offsetMin = Vector2.zero; cr.offsetMax = Vector2.zero;
+            SkewedPanelGraphic cardG = card.GetComponent<SkewedPanelGraphic>();
+            cardG.color = new Color(0.06f, 0.10f, 0.18f, 0.99f);
+            cardG.SetInsets(0f, 30f, 30f, 0f);
+            cardG.raycastTarget = true;
+
+            GameObject frame = new GameObject("Frame", typeof(RectTransform), typeof(CanvasRenderer), typeof(BorderProgressGraphic));
+            frame.transform.SetParent(popup.transform, false);
+            RectTransform fr = frame.GetComponent<RectTransform>();
+            fr.anchorMin = Vector2.zero; fr.anchorMax = Vector2.one; fr.offsetMin = Vector2.zero; fr.offsetMax = Vector2.zero;
+            BorderProgressGraphic frameG = frame.GetComponent<BorderProgressGraphic>();
+            frameG.SetInsets(0f, 30f, 30f, 0f);
+            frameG.SetBaseColor(new Color(0.42f, 0.56f, 0.74f, 1f));
+            frameG.raycastTarget = false;
+            return popup;
+        }
+
+        /// <summary>Popup chọn ảnh đại diện (lưới avatar 9 cột x 3 hàng) cùng phong cách các popup ở sảnh.</summary>
+        private void BuildAvatarPicker(Transform settingsRoot)
+        {
+            if (settingsRoot.Find("AvatarPickerModal") != null)
+            {
+                avatarPicker = settingsRoot.Find("AvatarPickerModal").gameObject;
+                return;
+            }
+
+            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            GameObject popup = CreatePopupFrame(settingsRoot, "AvatarPickerModal", new Vector2(720f, 460f));
+
+            avatarPickerTitle = NewConfigText(popup.transform, "Title", LocalizationManager.Get("avatar_picker_title"), font);
+            avatarPickerTitle.rectTransform.anchorMin = new Vector2(0f, 1f);
+            avatarPickerTitle.rectTransform.anchorMax = new Vector2(1f, 1f);
+            avatarPickerTitle.rectTransform.pivot = new Vector2(0.5f, 1f);
+            avatarPickerTitle.rectTransform.anchoredPosition = new Vector2(0f, -25f);
+            avatarPickerTitle.rectTransform.sizeDelta = new Vector2(0f, 40f);
+
+            avatarImages = new Image[AvatarLibrary.Count];
+            avatarRings = new Image[AvatarLibrary.Count];
+            for (int i = 0; i < AvatarLibrary.Count; i++)
+            {
+                int row = i / 9;
+                int col = i % 9;
+                CreateAvatarButton(popup.transform, i, new Vector2((col - 4) * 74f, 65f - row * 84f));
+            }
+
+            if (closeSettingsModalButton != null)
+            {
+                closePickerButton = Instantiate(closeSettingsModalButton, popup.transform);
+                closePickerButton.name = "BtnClosePicker";
+                closePickerButton.onClick.RemoveAllListeners();
+                PlaceCenter((RectTransform)closePickerButton.transform, new Vector2(0f, -178f), new Vector2(260f, 46f));
+                ReplaceHudButtonIcon(closePickerButton, LocalizationManager.Get("settings_close"), 15);
+                foreach (Transform ch in closePickerButton.transform)
+                {
+                    if (ch.name == "Icon" || ch.name == "Q" || ch.name == "Glyph") ch.gameObject.SetActive(false); // ẩn icon/phím tắt thừa lòi ra ngoài
+                }
+                closePickerButton.onClick.AddListener(CloseAvatarPicker);
+            }
+
+            LobbyModalStyler.StyleModal(popup, LobbyModalStyler.AccentBlue);
+            avatarPicker = popup;
+            popup.SetActive(false);
+        }
+
+        private void OpenAvatarPicker()
+        {
+            if (avatarPicker == null) return;
+            RefreshProfileViews();
+            avatarPicker.SetActive(true);
+            avatarPicker.transform.SetAsLastSibling();
+            if (Audio.AudioManager.Instance != null) Audio.AudioManager.Instance.PlayButtonClick();
+        }
+
+        private void CloseAvatarPicker()
+        {
+            if (avatarPicker != null) avatarPicker.SetActive(false);
+        }
+
+        private void CreateAvatarButton(Transform parent, int index, Vector2 pos)
+        {
+            GameObject go = new GameObject("Avatar_" + index, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button));
+            go.transform.SetParent(parent, false);
+            PlaceCenter(go.GetComponent<RectTransform>(), pos, new Vector2(60f, 60f));
+
+            Image img = go.GetComponent<Image>();
+            img.sprite = AvatarLibrary.Get(index);
+            img.preserveAspect = true;
+            avatarImages[index] = img;
+
+            GameObject ringGo = new GameObject("Ring", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            ringGo.transform.SetParent(go.transform, false);
+            RectTransform rr = ringGo.GetComponent<RectTransform>();
+            rr.anchorMin = Vector2.zero;
+            rr.anchorMax = Vector2.one;
+            rr.offsetMin = new Vector2(-8f, -8f);
+            rr.offsetMax = new Vector2(8f, 8f);
+            Image ring = ringGo.GetComponent<Image>();
+            ring.sprite = AvatarLibrary.RingSprite;
+            ring.color = AvatarRingColor;
+            ring.raycastTarget = false;
+            avatarRings[index] = ring;
+
+            Button btn = go.GetComponent<Button>();
+            btn.targetGraphic = img;
+            btn.transition = Selectable.Transition.None;
+            int captured = index;
+            btn.onClick.AddListener(() => OnAvatarPicked(captured));
+        }
+
+        private void OnProfileNameEdited(string value)
+        {
+            PlayerProfile.SetName(value);
+            if (profileNameInput != null) profileNameInput.SetTextWithoutNotify(PlayerProfile.Name);
+        }
+
+        private void OnAvatarPicked(int index)
+        {
+            PlayerProfile.SetAvatar(index);
+            if (Audio.AudioManager.Instance != null) Audio.AudioManager.Instance.PlayButtonClick();
+        }
+
+        /// <summary>Đồng bộ mọi nơi hiển thị tên/avatar (Cài đặt, popup chọn, modal độ khó) theo PlayerProfile.</summary>
+        private void RefreshProfileViews()
+        {
+            string n = PlayerProfile.Name;
+            if (profileNameInput != null && !profileNameInput.isFocused) profileNameInput.SetTextWithoutNotify(n);
+            if (playerNameInput != null)
+            {
+                playerNameInput.SetTextWithoutNotify(n);
+                playerNameInput.interactable = false; // chỉ hiển thị; đổi tên trong Cài đặt
+            }
+
+            int selected = AvatarLibrary.Wrap(PlayerProfile.AvatarIndex);
+            if (avatarPreview != null) avatarPreview.sprite = AvatarLibrary.Get(selected);
+
+            if (avatarImages == null || avatarRings == null) return;
+            for (int i = 0; i < avatarImages.Length; i++)
+            {
+                if (avatarImages[i] == null) continue;
+                bool on = i == selected;
+                avatarImages[i].color = on ? Color.white : new Color(0.72f, 0.72f, 0.72f, 1f);
+                if (avatarRings[i] != null) avatarRings[i].gameObject.SetActive(on);
+            }
+        }
+
         private void SetupDropdowns()
+        {
+            PopulateDropdownsLocalized();
+            if (raceTargetDropdown != null) raceTargetDropdown.value = 1; // Mặc định Race to 5
+            if (shotTimerDropdown != null) shotTimerDropdown.value = 1; // Mặc định 30 giây
+
+            RefreshProfileViews();
+        }
+
+        private void PopulateDropdownsLocalized()
         {
             if (raceTargetDropdown != null)
             {
+                int cur = raceTargetDropdown.value;
                 raceTargetDropdown.ClearOptions();
-                List<string> options = new List<string> { "Race to 3 (Chạm 3)", "Race to 5 (Chạm 5)", "Race to 7 (Chạm 7)", "Race to 9 (Chạm 9)" };
-                raceTargetDropdown.AddOptions(options);
-                raceTargetDropdown.value = 1; // Mặc định Race to 5
+                raceTargetDropdown.AddOptions(new List<string> {
+                    LocalizationManager.Get("opt_race_3"),
+                    LocalizationManager.Get("opt_race_5"),
+                    LocalizationManager.Get("opt_race_7"),
+                    LocalizationManager.Get("opt_race_9")
+                });
+                raceTargetDropdown.value = Mathf.Clamp(cur, 0, 3);
+                raceTargetDropdown.RefreshShownValue();
             }
 
             if (shotTimerDropdown != null)
             {
+                int cur = shotTimerDropdown.value;
                 shotTimerDropdown.ClearOptions();
-                List<string> options = new List<string> { "Không giới hạn", "30 Giây / Cú đánh", "45 Giây / Cú đánh", "60 Giây / Cú đánh" };
-                shotTimerDropdown.AddOptions(options);
-                shotTimerDropdown.value = 1; // Mặc định 30 giây
+                shotTimerDropdown.AddOptions(new List<string> {
+                    LocalizationManager.Get("opt_timer_unlimited"),
+                    LocalizationManager.Get("opt_timer_30"),
+                    LocalizationManager.Get("opt_timer_45"),
+                    LocalizationManager.Get("opt_timer_60")
+                });
+                shotTimerDropdown.value = Mathf.Clamp(cur, 0, 3);
+                shotTimerDropdown.RefreshShownValue();
+            }
+        }
+
+        private void RefreshAllLocalizedTexts()
+        {
+            // Menu chính
+            SetButtonText(playVsAIButton, LocalizationManager.Get("menu_play_ai"));
+            SetButtonText(playOnlineButton, LocalizationManager.Get("menu_play_online"));
+            SetButtonText(rulesButton, LocalizationManager.Get("menu_rules"));
+            SetButtonText(settingsButton, LocalizationManager.Get("menu_settings"));
+            SetButtonText(quitGameButton, LocalizationManager.Get("menu_quit"));
+
+            // Settings Modal
+            if (settingsModalRoot != null)
+            {
+                SetChildText(settingsModalRoot.transform, "Title", LocalizationManager.Get("settings_title"));
+                SetChildText(settingsModalRoot.transform, "LblMaster", LocalizationManager.Get("settings_master"));
+                SetChildText(settingsModalRoot.transform, "LblMusic", LocalizationManager.Get("settings_music"));
+                SetChildText(settingsModalRoot.transform, "LblSFX", LocalizationManager.Get("settings_sfx"));
+                if (languageLabel != null) languageLabel.text = LocalizationManager.Get("settings_language");
+                if (profileNameLabel != null) profileNameLabel.text = LocalizationManager.Get("settings_player_name");
+                if (changeAvatarButton != null) ReplaceHudButtonIcon(changeAvatarButton, LocalizationManager.Get("settings_change_avatar"), 13);
+                if (avatarPickerTitle != null) avatarPickerTitle.text = LocalizationManager.Get("avatar_picker_title");
+                if (closePickerButton != null) SetButtonText(closePickerButton, LocalizationManager.Get("settings_close"));
+                if (profileNameInput != null && profileNameInput.placeholder is Text namePh) namePh.text = LocalizationManager.Get("settings_player_name_hint");
+                SetButtonText(closeSettingsModalButton, LocalizationManager.Get("settings_close"));
+                if (languageDropdown != null)
+                {
+                    languageDropdown.SetValueWithoutNotify(LocalizationManager.CurrentLanguageIndex);
+                    if (languageDropdown.captionText != null)
+                    {
+                        languageDropdown.captionText.text = LocalizationManager.LanguageNames[LocalizationManager.CurrentLanguageIndex];
+                    }
+                }
             }
 
-            if (playerNameInput != null && string.IsNullOrEmpty(playerNameInput.text))
+            // Difficulty Modal
+            if (difficultyModalRoot != null)
             {
-                playerNameInput.text = PlayerPrefs.GetString("PlayerName", "Cơ Thủ");
+                SetChildText(difficultyModalRoot.transform, "Title", LocalizationManager.Get("diff_title"));
+                SetButtonText(diffEasyButton, LocalizationManager.Get("diff_easy"));
+                SetButtonText(diffNormalButton, LocalizationManager.Get("diff_normal"));
+                SetButtonText(diffHardButton, LocalizationManager.Get("diff_hard"));
+                SetChildText(difficultyModalRoot.transform, "LblRace", LocalizationManager.Get("diff_race"));
+                SetChildText(difficultyModalRoot.transform, "LblTimer", LocalizationManager.Get("diff_timer"));
+                SetChildText(difficultyModalRoot.transform, "LblPlayerName", LocalizationManager.Get("diff_player_name"));
+                SetButtonText(startOfflineMatchButton, LocalizationManager.Get("diff_start"));
+                SetButtonText(closeDifficultyModalButton, LocalizationManager.Get("settings_close"));
+
+                Transform aimToggleTrans = difficultyModalRoot.transform.Find("AimGuideToggle");
+                if (aimToggleTrans != null) SetChildText(aimToggleTrans, "Label", LocalizationManager.Get("diff_aim_guide"));
+
+                Transform introToggleTrans = difficultyModalRoot.transform.Find("RackIntroToggle");
+                if (introToggleTrans != null) SetChildText(introToggleTrans, "Label", LocalizationManager.Get("diff_rack_intro"));
+            }
+
+            // Quit Confirm Modal
+            if (quitConfirmModalRoot != null)
+            {
+                SetChildText(quitConfirmModalRoot.transform, "Title", LocalizationManager.Get("quit_title"));
+                SetChildText(quitConfirmModalRoot.transform, "Message", LocalizationManager.Get("quit_msg"));
+                SetButtonText(quitConfirmYesButton, LocalizationManager.Get("btn_yes"));
+                SetButtonText(quitConfirmNoButton, LocalizationManager.Get("btn_no"));
+            }
+
+            // Rules Modal
+            if (rulesModalRoot != null)
+            {
+                SetChildText(rulesModalRoot.transform, "Title", LocalizationManager.Get("rules_title"));
+                SetButtonText(closeRulesModalButton, LocalizationManager.Get("settings_close"));
+            }
+
+            // Cập nhật Difficulty Cards nếu đã tạo
+            if (difficultyCards != null && difficultyCards.Length == 3)
+            {
+                if (difficultyCards[0] != null) difficultyCards[0].SetTitle(LocalizationManager.Get("diff_easy"));
+                if (difficultyCards[1] != null) difficultyCards[1].SetTitle(LocalizationManager.Get("diff_normal"));
+                if (difficultyCards[2] != null) difficultyCards[2].SetTitle(LocalizationManager.Get("diff_hard"));
+            }
+
+            PopulateDropdownsLocalized();
+            RefreshOnlineConfigSummary();
+            RefreshProfileViews();
+
+            if (onlineConfigPopup != null)
+            {
+                SetChildText(onlineConfigPopup.transform, "Title", LocalizationManager.Get("online_config_title"));
+                SetChildText(onlineConfigPopup.transform, "RaceLabel", LocalizationManager.Get("diff_race"));
+                SetChildText(onlineConfigPopup.transform, "TimerLabel", LocalizationManager.Get("diff_timer"));
+                Transform intro = onlineConfigPopup.transform.Find("PopupIntroToggle");
+                if (intro != null) SetChildText(intro, "Label", LocalizationManager.Get("diff_rack_intro"));
+                Transform aim = onlineConfigPopup.transform.Find("PopupAimToggle");
+                if (aim != null) SetChildText(aim, "Label", LocalizationManager.Get("diff_aim_guide"));
+                Button conf = onlineConfigPopup.transform.Find("BtnConfirmConfig")?.GetComponent<Button>();
+                if (conf != null) ReplaceHudButtonIcon(conf, LocalizationManager.Get("btn_confirm"), 18);
+            }
+            if (roomConfigButton != null)
+            {
+                ReplaceHudButtonIcon(roomConfigButton, LocalizationManager.Get("online_config_summary"), 16);
+            }
+        }
+
+        private static void SetButtonText(Button b, string val)
+        {
+            if (b == null || string.IsNullOrEmpty(val)) return;
+            Transform lbl = b.transform.Find("Label");
+            Text t = lbl != null ? lbl.GetComponent<Text>() : null;
+            if (t == null)
+            {
+                foreach (var candidate in b.GetComponentsInChildren<Text>(true))
+                {
+                    if (candidate != null && candidate.gameObject.name != "Q")
+                    {
+                        t = candidate;
+                        break;
+                    }
+                }
+            }
+            if (t == null) t = b.GetComponentInChildren<Text>(true);
+            if (t != null) t.text = val;
+        }
+
+        private static void SetChildText(Transform parent, string childName, string val)
+        {
+            if (parent == null || string.IsNullOrEmpty(childName) || string.IsNullOrEmpty(val)) return;
+            Transform c = parent.Find(childName);
+            if (c != null)
+            {
+                Text t = c.GetComponent<Text>();
+                if (t != null) t.text = val;
             }
         }
 
@@ -600,6 +1180,7 @@ namespace Game.Billiards.UI
         public void SelectDifficulty(AIDifficulty diff)
         {
             selectedDifficulty = diff;
+            Debug.Log($"[LobbyUI] Người chơi chọn độ khó: {diff}");
 
             if (difficultyCards != null && difficultyCards.Length == 3)
             {
@@ -622,6 +1203,7 @@ namespace Game.Billiards.UI
         {
             HideAllModals();
             SyncTickToggles();
+            RefreshProfileViews();
             if (difficultyModalRoot != null) difficultyModalRoot.SetActive(true);
         }
 
@@ -636,13 +1218,15 @@ namespace Game.Billiards.UI
             else
             {
                 if (onlineModalRoot != null) onlineModalRoot.SetActive(true);
-                if (onlineStatusText != null) onlineStatusText.text = "Sẵn sàng tạo phòng hoặc tham gia bằng Room ID";
+                if (onlineStatusText != null) onlineStatusText.text = LocalizationManager.Get("online_status_ready");
             }
         }
 
         public void ShowSettingsModal()
         {
             HideAllModals();
+            CloseAvatarPicker();
+            RefreshProfileViews();
             if (settingsModalRoot != null) settingsModalRoot.SetActive(true);
         }
 
@@ -683,8 +1267,7 @@ namespace Game.Billiards.UI
                 timer = timerOptions[shotTimerDropdown.value];
             }
 
-            string name = (playerNameInput != null && !string.IsNullOrEmpty(playerNameInput.text)) ? playerNameInput.text : "Cơ Thủ";
-            PlayerPrefs.SetString("PlayerName", name);
+            string name = PlayerProfile.Name;
 
             GameSession session = GameSession.GetOrCreateInstance();
             session.StartOfflineMatch(selectedDifficulty, race, timer, name);
@@ -694,9 +1277,9 @@ namespace Game.Billiards.UI
         {
             if (onlineStatusText != null)
             {
-                onlineStatusText.text = "Đang kết nối tới máy chủ Photon PUN 2... (Milestone M8)";
+                onlineStatusText.text = LocalizationManager.Get("online_connecting");
             }
-            Debug.Log("[LobbyUI] Tạo phòng Online (chuẩn bị kết nối ở Milestone M8)");
+            Debug.Log("[LobbyUI] Tạo phòng Online (chuẩn bị kết nối)");
         }
 
         private void OnJoinRoomClicked()
@@ -706,16 +1289,16 @@ namespace Game.Billiards.UI
             {
                 if (onlineStatusText != null)
                 {
-                    onlineStatusText.text = "<color=red>Vui lòng nhập ID phòng hợp lệ!</color>";
+                    onlineStatusText.text = $"<color=red>{LocalizationManager.Get("online_id_invalid")}</color>";
                 }
                 return;
             }
 
             if (onlineStatusText != null)
             {
-                onlineStatusText.text = $"Đang tìm phòng {code}... (Milestone M8)";
+                onlineStatusText.text = LocalizationManager.Format("online_searching_room", code);
             }
-            Debug.Log($"[LobbyUI] Tham gia phòng {code} (chuẩn bị kết nối ở Milestone M8)");
+            Debug.Log($"[LobbyUI] Tham gia phòng {code}");
         }
 
         private void LoadAudioSettings()
@@ -733,16 +1316,19 @@ namespace Game.Billiards.UI
         {
             PlayerPrefs.SetFloat("Volume_Master", val);
             AudioListener.volume = val;
+            if (Audio.AudioManager.Instance != null) Audio.AudioManager.Instance.SetMasterVolume(val);
         }
 
         private void OnMusicVolumeChanged(float val)
         {
             PlayerPrefs.SetFloat("Volume_Music", val);
+            if (Audio.AudioManager.Instance != null) Audio.AudioManager.Instance.SetMusicVolume(val);
         }
 
         private void OnSfxVolumeChanged(float val)
         {
             PlayerPrefs.SetFloat("Volume_SFX", val);
+            if (Audio.AudioManager.Instance != null) Audio.AudioManager.Instance.SetSFXVolume(val);
         }
 
         private void OnConfirmQuitClicked()

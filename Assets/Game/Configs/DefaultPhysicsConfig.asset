@@ -15,15 +15,22 @@ MonoBehaviour:
   ballMass: 0.17
   ballRadius: 0.02855
   maxShotImpulse: 1.0
-  linearDrag: 0.16
+  linearDrag: 0
   angularDrag: 0.12
   clothFriction: 0.2
-  rollingResistance: 0.032
+  rollingResistance: 0.015
   ballRestitution: 0.95
-  cushionRestitution: 0.78
-  spinStrength: 16
-  spinDecay: 8
+  cushionRestitution: 0.58
+  spinStrength: 1
+  spinDecay: 25
   cushionSpinTransfer: 0.2
+  cushionNoseHeight: 0.27
+  cushionFriction: 0.16
+  cushionRestitutionSlow: 0.60
+  cushionRestitutionFast: 0.44
+  cushionRestitutionSpeedRef: 3.5
   restLinearThreshold: 0.015
   restAngularThreshold: 0.1
   settleDuration: 0.25
+  pocketFacingRestitution: 0.4
+  pocketFacingFriction: 0.25

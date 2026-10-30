@@ -73,9 +73,6 @@ namespace Game.Billiards.Camera
         [Tooltip("True: camera Ä‘áº·t á»Ÿ cuá»‘i bÃ n phÃ­a bÄƒng ngáº¯n Foot (-X); False: phÃ­a bÄƒng ngáº¯n Head (+X)")]
         [SerializeField] private bool opponentViewFromFootEnd = true;
 
-        [Tooltip("GÃ³c nghiÃªng xuá»‘ng (Ä‘á»™) cá»§a camera khi Ä‘áº¿n lÆ°á»£t Ä‘á»‘i thá»§")]
-        [SerializeField] private float opponentPitch = 52f;
-
         [Tooltip("Ná»­a kÃ­ch thÆ°á»›c máº·t bÃ n cáº§n luÃ´n náº±m trong khung hÃ¬nh (X = chiá»u dÃ i, Z = chiá»u rá»™ng, gá»“m cáº£ bÄƒng vÃ  lá»—)")]
         [SerializeField] private Vector2 tableFitHalfSize = new Vector2(1.20f, 0.63f);
 

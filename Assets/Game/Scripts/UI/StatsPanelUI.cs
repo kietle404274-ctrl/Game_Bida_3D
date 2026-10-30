@@ -28,6 +28,7 @@ namespace Game.Billiards.UI
         private class Row
         {
             public bool isHeader;
+            public string labelKey;
             public string label;
             public Color accent;
             public Func<PlayerStats, float> value;
@@ -86,7 +87,10 @@ namespace Game.Billiards.UI
         private bool resultMode;
         private int resultWinner;
         private Action onRematch, onLobby;
+        private bool resultLobbyOnly, resultRematchEnabled = true;
+        private string resultTitleOverride, resultRematchLabel;
         private Text resultTitle;
+        private Text btnRematchText, btnLobbyText, tagAText, tagBText, hintText;
         private GameObject tagA, tagB, btnRematchGo, btnLobbyGo, closeGo, hintGo;
         private RectTransform rowsAreaRt;
         private Image dimmerImg;
@@ -124,6 +128,8 @@ namespace Game.Billiards.UI
 
             statsTracker.OnStatsChanged += panel.OnStatsChanged;
             if (stateMgr != null) stateMgr.OnRackScoreChanged += panel.OnScoreChanged;
+            LocalizationManager.OnLanguageChanged -= panel.RefreshLocalizedTexts;
+            LocalizationManager.OnLanguageChanged += panel.RefreshLocalizedTexts;
             return panel;
         }
 
@@ -176,8 +182,8 @@ namespace Game.Billiards.UI
             Anchor(infoText.rectTransform, 0.10f, 0.795f, 0.90f, 0.832f);
 
             // Tab: Cả trận / Ván hiện tại (nút vát chéo ghép thành thanh phân đoạn)
-            tabMatchButton = MakeSlantedTab(inner.transform, "TabMatch", "CẢ TRẬN", new Vector4(Tab0X0, TabY0, Tab0X1, TabY1), ColorTabIdle, null, out tabMatchLabel);
-            tabRackButton = MakeSlantedTab(inner.transform, "TabRack", "VÁN HIỆN TẠI", new Vector4(Tab1X0, TabY0, Tab1X1, TabY1), ColorTabIdle, null, out tabRackLabel);
+            tabMatchButton = MakeSlantedTab(inner.transform, "TabMatch", LocalizationManager.Get("stats_tab_match"), new Vector4(Tab0X0, TabY0, Tab0X1, TabY1), ColorTabIdle, null, out tabMatchLabel);
+            tabRackButton = MakeSlantedTab(inner.transform, "TabRack", LocalizationManager.Get("stats_tab_rack"), new Vector4(Tab1X0, TabY0, Tab1X1, TabY1), ColorTabIdle, null, out tabRackLabel);
             tabMatchButton.onClick.AddListener(() => SetTab(0));
             tabRackButton.onClick.AddListener(() => SetTab(1));
 
@@ -200,9 +206,9 @@ namespace Game.Billiards.UI
             Anchor(areaRt, 0.03f, 0.05f, 0.97f, 0.732f);
             BuildRows(areaRt);
 
-            var hint = MakeText(inner.transform, "Hint", "[TAB] hoặc [ESC] để đóng", 16, ColorMuted, TextAnchor.MiddleCenter, FontStyle.Normal);
-            Anchor(hint.rectTransform, 0f, 0.005f, 1f, 0.045f);
-            hintGo = hint.gameObject;
+            hintText = MakeText(inner.transform, "Hint", LocalizationManager.Get("stats_hint_close"), 16, ColorMuted, TextAnchor.MiddleCenter, FontStyle.Normal);
+            Anchor(hintText.rectTransform, 0f, 0.005f, 1f, 0.045f);
+            hintGo = hintText.gameObject;
 
             BuildResultElements(inner.transform);
 
@@ -250,52 +256,52 @@ namespace Game.Billiards.UI
             Color cFoul = new Color(1.00f, 0.38f, 0.38f);
             Color cTactic = new Color(1.00f, 0.80f, 0.30f);
 
-            AddHeader("TỔNG QUAN", cOverview);
-            AddRow("Số cú", s => s.Get(StatId.Shots), null, false, Better.None);
-            AddRow("Lượt tới bàn", s => s.Get(StatId.Visits), null, false, Better.None);
-            AddRow("Bi vào lỗ", s => s.Get(StatId.BallsPocketed), null, false, Better.High);
-            AddRow("Chuỗi bi dài nhất", s => s.Get(StatId.LongestRun), null, false, Better.High);
+            AddHeader("stat_overview", cOverview);
+            AddRow("stat_shots", s => s.Get(StatId.Shots), null, false, Better.None);
+            AddRow("stat_visits", s => s.Get(StatId.Visits), null, false, Better.None);
+            AddRow("stat_balls_pocketed", s => s.Get(StatId.BallsPocketed), null, false, Better.High);
+            AddRow("stat_longest_run", s => s.Get(StatId.LongestRun), null, false, Better.High);
 
-            AddHeader("ĐỘ CHÍNH XÁC", cAccuracy);
-            AddRow("Tỉ lệ vào lỗ",
+            AddHeader("stat_accuracy", cAccuracy);
+            AddRow("stat_pot_rate",
                 s => PlayerStats.Ratio(s.Get(StatId.PotSuccess), s.Get(StatId.PotAttempts)) * 100f,
                 s => Pct(s.Get(StatId.PotSuccess), s.Get(StatId.PotAttempts)), true, Better.High);
-            AddRow("Gọi bi trúng",
+            AddRow("stat_called_rate",
                 s => PlayerStats.Ratio(s.Get(StatId.CalledSuccess), s.Get(StatId.CalledAttempts)) * 100f,
                 s => Pct(s.Get(StatId.CalledSuccess), s.Get(StatId.CalledAttempts)), true, Better.High);
-            AddRow("Đặt bi tự do → vào bi",
+            AddRow("stat_bih_converted",
                 s => PlayerStats.Ratio(s.Get(StatId.BihConverted), s.Get(StatId.BihChances)) * 100f,
                 s => Pct(s.Get(StatId.BihConverted), s.Get(StatId.BihChances)), true, Better.High);
-            AddRow("Dọn bàn", s => s.Get(StatId.RunOuts), null, false, Better.High);
+            AddRow("stat_run_outs", s => s.Get(StatId.RunOuts), null, false, Better.High);
 
-            AddHeader("KHAI CUỘC", cBreak);
-            AddRow("Khai cuộc hợp lệ",
+            AddHeader("stat_break", cBreak);
+            AddRow("stat_legal_breaks",
                 s => PlayerStats.Ratio(s.Get(StatId.BreakLegal), s.Get(StatId.Breaks)) * 100f,
                 s => Pct(s.Get(StatId.BreakLegal), s.Get(StatId.Breaks)), true, Better.High);
-            AddRow("Bi vào khi khai cuộc", s => s.Get(StatId.BreakPocketed), null, false, Better.High);
-            AddRow("Khai cuộc & dọn bàn", s => s.Get(StatId.BreakAndRuns), null, false, Better.High);
+            AddRow("stat_break_pocketed", s => s.Get(StatId.BreakPocketed), null, false, Better.High);
+            AddRow("stat_break_and_runs", s => s.Get(StatId.BreakAndRuns), null, false, Better.High);
 
-            AddHeader("LỖI", cFoul);
-            AddRow("Tổng lỗi", s => s.Get(StatId.Fouls), null, false, Better.Low);
-            AddRow("Tỉ lệ lỗi",
+            AddHeader("stat_fouls", cFoul);
+            AddRow("stat_total_fouls", s => s.Get(StatId.Fouls), null, false, Better.Low);
+            AddRow("stat_foul_rate",
                 s => PlayerStats.Ratio(s.Get(StatId.Fouls), s.Get(StatId.Shots)) * 100f,
                 s => Pct(s.Get(StatId.Fouls), s.Get(StatId.Shots)), true, Better.Low);
-            AddRow("Bi cái vào lỗ", s => s.Get(StatId.FoulScratch), null, false, Better.Low);
-            AddRow("Chạm sai bi", s => s.Get(StatId.FoulWrongBall), null, false, Better.Low);
-            AddRow("Không chạm băng", s => s.Get(StatId.FoulNoRail), null, false, Better.Low);
-            AddRow("Hết giờ", s => s.Get(StatId.FoulTimeout), null, false, Better.Low);
-            AddRow("Lỗi khác",
+            AddRow("stat_scratch_stat", s => s.Get(StatId.FoulScratch), null, false, Better.Low);
+            AddRow("stat_wrong_ball_stat", s => s.Get(StatId.FoulWrongBall), null, false, Better.Low);
+            AddRow("stat_no_rail_stat", s => s.Get(StatId.FoulNoRail), null, false, Better.Low);
+            AddRow("stat_timeout_stat", s => s.Get(StatId.FoulTimeout), null, false, Better.Low);
+            AddRow("stat_other_fouls",
                 s => s.Get(StatId.FoulOffTable) + s.Get(StatId.FoulIllegalBreak) + s.Get(StatId.FoulOther), null, false, Better.Low);
 
-            AddHeader("CHIẾN THUẬT & KỸ THUẬT", cTactic);
-            AddRow("Phòng thủ thành công",
+            AddHeader("stat_tactics", cTactic);
+            AddRow("stat_safeties",
                 s => PlayerStats.Ratio(s.Get(StatId.SafetiesOk), s.Get(StatId.Safeties)) * 100f,
                 s => Pct(s.Get(StatId.SafetiesOk), s.Get(StatId.Safeties)), true, Better.High);
-            AddRow("Lực đánh trung bình",
+            AddRow("stat_avg_power",
                 s => PlayerStats.Ratio(s.Get(StatId.PowerSum), s.Get(StatId.Shots)) * 100f,
                 s => Mathf.RoundToInt(PlayerStats.Ratio(s.Get(StatId.PowerSum), s.Get(StatId.Shots)) * 100f) + "%", true, Better.None);
-            AddRow("Cú có xoay bi", s => s.Get(StatId.SpinShots), null, false, Better.None);
-            AddRow("Thời gian nghĩ TB",
+            AddRow("stat_spin_shots", s => s.Get(StatId.SpinShots), null, false, Better.None);
+            AddRow("stat_avg_think",
                 s => PlayerStats.Ratio(s.Get(StatId.ThinkSum), s.Get(StatId.Shots)),
                 s => PlayerStats.Ratio(s.Get(StatId.ThinkSum), s.Get(StatId.Shots)).ToString("0.0") + "s", false, Better.None,
                 v => v.ToString("0.0") + "s");
@@ -410,19 +416,19 @@ namespace Game.Billiards.UI
             return Mathf.RoundToInt(num / den * 100f) + "% (" + Mathf.RoundToInt(num) + "/" + Mathf.RoundToInt(den) + ")";
         }
 
-        private void AddHeader(string title, Color accent)
+        private void AddHeader(string key, Color accent)
         {
-            rows.Add(new Row { isHeader = true, label = title, accent = accent });
+            rows.Add(new Row { isHeader = true, labelKey = key, label = LocalizationManager.Get(key), accent = accent });
         }
 
-        private void AddRow(string label, Func<PlayerStats, float> value, Func<PlayerStats, string> text, bool percent, Better better, Func<float, string> anim = null)
+        private void AddRow(string key, Func<PlayerStats, float> value, Func<PlayerStats, string> text, bool percent, Better better, Func<float, string> anim = null)
         {
             if (anim == null)
             {
                 if (percent) anim = v => Mathf.RoundToInt(v) + "%";
                 else anim = v => Mathf.RoundToInt(v).ToString();
             }
-            rows.Add(new Row { label = label, value = value, text = text, anim = anim, percent = percent, better = better });
+            rows.Add(new Row { labelKey = key, label = LocalizationManager.Get(key), value = value, text = text, anim = anim, percent = percent, better = better });
         }
 
         private Button MakeSquareButton(Transform parent, string name, string label, Vector4 anchors)
@@ -611,10 +617,10 @@ namespace Game.Billiards.UI
             if (resultMode && state != null)
             {
                 int totalRacks = state.playerARackWins + state.playerBRackWins;
-                infoText.text = "RACE TO " + race + "  •  TỔNG " + totalRacks + " VÁN  •  THỜI GIAN TRẬN " + FormatTime(stats.matchTime);
+                infoText.text = LocalizationManager.Format("stats_info_match", race, totalRacks, FormatTime(stats.matchTime));
                 return;
             }
-            infoText.text = "RACE TO " + race + "  •  VÁN " + rackNo + "  •  TRẬN " + FormatTime(stats.matchTime) + "  •  VÁN " + FormatTime(stats.rackTime);
+            infoText.text = LocalizationManager.Format("stats_info_rack", race, rackNo, FormatTime(stats.matchTime), FormatTime(stats.rackTime));
         }
 
         // ------------------------------------------------------------------ Màn hình kết thúc trận
@@ -622,19 +628,19 @@ namespace Game.Billiards.UI
         /// <summary>Tạo các thành phần chỉ hiện ở màn hình kết thúc trận: tiêu đề, thẻ "CHIẾN THẮNG" và 2 nút.</summary>
         private void BuildResultElements(Transform inner)
         {
-            resultTitle = MakeText(inner, "ResultTitle", "TRẬN ĐẤU KẾT THÚC", 28, new Color(1f, 0.82f, 0.30f, 1f), TextAnchor.MiddleCenter, FontStyle.Bold);
+            resultTitle = MakeText(inner, "ResultTitle", LocalizationManager.Get("stats_match_over"), 28, new Color(1f, 0.82f, 0.30f, 1f), TextAnchor.MiddleCenter, FontStyle.Bold);
             Anchor(resultTitle.rectTransform, 0.30f, 0.958f, 0.70f, 0.998f);
             var ts = resultTitle.gameObject.AddComponent<Shadow>();
             ts.effectColor = new Color(0f, 0f, 0f, 0.6f);
             ts.effectDistance = new Vector2(2f, -2f);
 
-            tagA = MakeWinnerTag(inner, new Vector4(0.085f, 0.940f, 0.305f, 0.985f));
-            tagB = MakeWinnerTag(inner, new Vector4(0.695f, 0.940f, 0.915f, 0.985f));
+            tagA = MakeWinnerTag(inner, new Vector4(0.085f, 0.940f, 0.305f, 0.985f), out tagAText);
+            tagB = MakeWinnerTag(inner, new Vector4(0.695f, 0.940f, 0.915f, 0.985f), out tagBText);
 
-            var rematch = MakeResultButton(inner, "BtnRematch", "CHƠI LẠI", new Vector4(0.22f, 0.024f, 0.49f, 0.112f),
-                new Color(0.25f, 0.92f, 0.58f, 1f), 0.45f, true);
-            var lobby = MakeResultButton(inner, "BtnLobby", "VỀ SẢNH", new Vector4(0.51f, 0.024f, 0.78f, 0.112f),
-                new Color(1f, 0.38f, 0.36f, 1f), 0.6f, false);
+            var rematch = MakeResultButton(inner, "BtnRematch", LocalizationManager.Get("stats_btn_rematch"), new Vector4(0.22f, 0.024f, 0.49f, 0.112f),
+                new Color(0.25f, 0.92f, 0.58f, 1f), 0.45f, true, out btnRematchText);
+            var lobby = MakeResultButton(inner, "BtnLobby", LocalizationManager.Get("stats_btn_lobby"), new Vector4(0.51f, 0.024f, 0.78f, 0.112f),
+                new Color(1f, 0.38f, 0.36f, 1f), 0.6f, false, out btnLobbyText);
             rematch.onClick.AddListener(() => onRematch?.Invoke());
             lobby.onClick.AddListener(() => onLobby?.Invoke());
             btnRematchGo = rematch.gameObject;
@@ -645,7 +651,7 @@ namespace Game.Billiards.UI
         /// Nút lớn màn hình kết trận, cùng ngôn ngữ thiết kế với nút HUD trong trận: nền xanh đậm tối dần xuống dưới,
         /// viền cyan, dải màu ở đáy (xanh lá = chơi lại, đỏ = về sảnh), hover chuyển cam. Hiệu ứng do <see cref="ResultButtonFx"/> đảm nhận.
         /// </summary>
-        private Button MakeResultButton(Transform parent, string name, string label, Vector4 anchors, Color accentColor, float delay, bool pulse)
+        private Button MakeResultButton(Transform parent, string name, string label, Vector4 anchors, Color accentColor, float delay, bool pulse, out Text labelText)
         {
             const float s = 20f;
             Color bodyColor = new Color(0.16f, 0.27f, 0.44f, 0.96f);
@@ -695,9 +701,9 @@ namespace Game.Billiards.UI
             shineRt.anchoredPosition = Vector2.zero;
             shineRt.gameObject.SetActive(false);
 
-            var t = MakeText(root.transform, "Label", label, 24, ColorWhite, TextAnchor.MiddleCenter, FontStyle.Bold);
-            Stretch(t.rectTransform);
-            var sh = t.gameObject.AddComponent<Shadow>();
+            labelText = MakeText(root.transform, "Label", label, 24, ColorWhite, TextAnchor.MiddleCenter, FontStyle.Bold);
+            Stretch(labelText.rectTransform);
+            var sh = labelText.gameObject.AddComponent<Shadow>();
             sh.effectColor = new Color(0f, 0f, 0f, 0.55f);
             sh.effectDistance = new Vector2(1.5f, -1.5f);
 
@@ -717,14 +723,14 @@ namespace Game.Billiards.UI
             return btn;
         }
 
-        private GameObject MakeWinnerTag(Transform parent, Vector4 a)
+        private GameObject MakeWinnerTag(Transform parent, Vector4 a, out Text labelText)
         {
             var frame = MakeSkewed(parent, "WinnerTag", new Color(1f, 0.90f, 0.45f, 1f), 14f, 0f, 0f, 14f);
             Anchor(frame.rectTransform, a.x, a.y, a.z, a.w);
             var body = MakeSkewed(frame.transform, "Body", new Color(1f, 0.74f, 0.15f, 1f), 14f, 0f, 0f, 14f);
             Stretch(body.rectTransform, 2f);
-            var t = MakeText(body.transform, "Label", "CHIẾN THẮNG", 17, ColorNavyText, TextAnchor.MiddleCenter, FontStyle.Bold);
-            Stretch(t.rectTransform);
+            labelText = MakeText(body.transform, "Label", LocalizationManager.Get("stats_winner_badge"), 17, ColorNavyText, TextAnchor.MiddleCenter, FontStyle.Bold);
+            Stretch(labelText.rectTransform);
             frame.gameObject.SetActive(false);
             return frame.gameObject;
         }
@@ -735,8 +741,9 @@ namespace Game.Billiards.UI
             bool res = resultMode;
 
             if (resultTitle != null) resultTitle.gameObject.SetActive(res);
-            if (btnRematchGo != null) btnRematchGo.SetActive(res);
+            if (btnRematchGo != null) btnRematchGo.SetActive(res && !resultLobbyOnly);
             if (btnLobbyGo != null) btnLobbyGo.SetActive(res);
+            if (res) ApplyResultButtons();
             if (closeGo != null) closeGo.SetActive(!res);
             if (hintGo != null) hintGo.SetActive(!res);
             if (tabMatchButton != null) tabMatchButton.gameObject.SetActive(!res);
@@ -765,13 +772,21 @@ namespace Game.Billiards.UI
             }
         }
 
-        /// <summary>Hiện màn hình kết thúc trận: thống kê cả trận, người thắng nổi bật, nút Chơi lại / Về sảnh.</summary>
-        public void ShowMatchResult(int winnerIndex, Action rematchAction, Action lobbyAction)
+        /// <summary>
+        /// Hiện màn hình kết thúc trận: thống kê cả trận, người thắng nổi bật, nút Chơi lại / Về sảnh.
+        /// lobbyOnly: chỉ còn nút Về sảnh ở giữa (đối thủ đã rời trận). title: thay tiêu đề mặc định. rematchEnabled/rematchLabel: khóa nút Chơi lại (ví dụ Client chờ chủ phòng).
+        /// </summary>
+        public void ShowMatchResult(int winnerIndex, Action rematchAction, Action lobbyAction,
+            bool lobbyOnly = false, string title = null, bool rematchEnabled = true, string rematchLabel = null)
         {
             resultMode = true;
             resultWinner = winnerIndex;
             onRematch = rematchAction;
             onLobby = lobbyAction;
+            resultLobbyOnly = lobbyOnly;
+            resultTitleOverride = title;
+            resultRematchEnabled = rematchEnabled;
+            resultRematchLabel = rematchLabel;
 
             HudModalState.ForceOpen("result");
             tab = 0;
@@ -784,6 +799,41 @@ namespace Game.Billiards.UI
 
             Refresh();
             StartReplay();
+        }
+
+        /// <summary>Đổi sang chế độ chỉ còn nút Về sảnh khi màn hình kết quả đang mở (đối thủ rời phòng sau khi trận đã kết thúc).</summary>
+        public void SetLobbyOnly(bool value)
+        {
+            resultLobbyOnly = value;
+            if (resultMode && root != null && root.activeSelf) ApplyMode();
+        }
+
+        /// <summary>Đặt nút theo chế độ: chỉ Về sảnh (căn giữa), nút Chơi lại bị khóa/đổi nhãn, tiêu đề tùy chỉnh.</summary>
+        private void ApplyResultButtons()
+        {
+            if (btnLobbyGo != null)
+            {
+                var rt = (RectTransform)btnLobbyGo.transform;
+                if (resultLobbyOnly) Anchor(rt, 0.36f, 0.024f, 0.64f, 0.112f);
+                else Anchor(rt, 0.51f, 0.024f, 0.78f, 0.112f);
+            }
+
+            if (btnRematchGo != null)
+            {
+                var b = btnRematchGo.GetComponent<Button>();
+                if (b != null) b.interactable = resultRematchEnabled;
+                if (btnRematchText != null)
+                {
+                    btnRematchText.text = string.IsNullOrEmpty(resultRematchLabel) ? LocalizationManager.Get("stats_btn_rematch") : resultRematchLabel;
+                    var c = btnRematchText.color; c.a = resultRematchEnabled ? 1f : 0.55f; btnRematchText.color = c;
+                }
+            }
+
+            if (resultTitle != null)
+            {
+                string t = resultLobbyOnly && string.IsNullOrEmpty(resultTitleOverride) ? LocalizationManager.Get("stats_opponent_left") : resultTitleOverride;
+                resultTitle.text = string.IsNullOrEmpty(t) ? LocalizationManager.Get("stats_match_over") : t;
+            }
         }
 
         /// <summary>Đóng màn hình kết thúc trận (sau khi bấm Chơi lại / Về sảnh).</summary>
@@ -805,7 +855,7 @@ namespace Game.Billiards.UI
         {
             if (state != null && state.players != null && index < state.players.Length && !string.IsNullOrEmpty(state.players[index].displayName))
                 return state.players[index].displayName;
-            return "Người chơi " + (index + 1);
+            return LocalizationManager.Format("stats_player_n", index + 1);
         }
 
         // ------------------------------------------------------------------ Hoạt ảnh
@@ -918,8 +968,32 @@ namespace Game.Billiards.UI
             if (r.rightCap != null) r.rightCap.enabled = right > 0.015f;
         }
 
+        private void RefreshLocalizedTexts()
+        {
+            if (tabMatchLabel != null) tabMatchLabel.text = LocalizationManager.Get("stats_tab_match");
+            if (tabRackLabel != null) tabRackLabel.text = LocalizationManager.Get("stats_tab_rack");
+            if (hintText != null) hintText.text = LocalizationManager.Get("stats_hint_close");
+            if (resultTitle != null) resultTitle.text = LocalizationManager.Get("stats_match_over");
+            if (btnRematchText != null) btnRematchText.text = LocalizationManager.Get("stats_btn_rematch");
+            if (btnLobbyText != null) btnLobbyText.text = LocalizationManager.Get("stats_btn_lobby");
+            if (tagAText != null) tagAText.text = LocalizationManager.Get("stats_winner_badge");
+            if (tagBText != null) tagBText.text = LocalizationManager.Get("stats_winner_badge");
+
+            foreach (var r in rows)
+            {
+                if (r != null && r.labelText != null && !string.IsNullOrEmpty(r.labelKey))
+                {
+                    r.label = LocalizationManager.Get(r.labelKey);
+                    r.labelText.text = r.label;
+                }
+            }
+
+            if (open) Refresh();
+        }
+
         private void OnDestroy()
         {
+            LocalizationManager.OnLanguageChanged -= RefreshLocalizedTexts;
             HudModalState.Release(ModalId);
             if (tracker != null) tracker.OnStatsChanged -= OnStatsChanged;
             if (stateManager != null) stateManager.OnRackScoreChanged -= OnScoreChanged;

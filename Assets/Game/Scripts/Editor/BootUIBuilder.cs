@@ -44,7 +44,7 @@ namespace Game.Billiards.Editor
             logoText.rectTransform.anchoredPosition = new Vector2(0f, 90f);
             logoText.rectTransform.sizeDelta = new Vector2(700f, 65f);
 
-            Text subTitle = UIBuilderUtilities.CreateText(logoCard.transform, "SubTitle", "CHAMPIONSHIP TOURNAMENT EDITION • WPA RULES", 18, UIBuilderUtilities.ColorAccentCyan, TextAnchor.MiddleCenter, FontStyle.Normal);
+            Text subTitle = UIBuilderUtilities.CreateText(logoCard.transform, "SubTitle", "", 18, UIBuilderUtilities.ColorAccentCyan, TextAnchor.MiddleCenter, FontStyle.Normal);
             subTitle.rectTransform.anchoredPosition = new Vector2(0f, 35f);
             subTitle.rectTransform.sizeDelta = new Vector2(700f, 30f);
 

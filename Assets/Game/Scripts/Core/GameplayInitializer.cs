@@ -116,7 +116,8 @@ namespace Game.Billiards.Core
             UnityEngine.Physics.bounceThreshold = 0.05f;
             UnityEngine.Physics.defaultSolverIterations = 12;
             UnityEngine.Physics.defaultSolverVelocityIterations = 4;
-            UnityEngine.Physics.defaultMaxAngularSpeed = 100f;
+            UnityEngine.Physics.defaultMaxAngularSpeed = 1000f;
+            Time.fixedDeltaTime = 0.01f;
         }
 
         private void RemoveRedundantCueSticks()
@@ -148,7 +149,18 @@ namespace Game.Billiards.Core
 
             if (autoResetRackOnStart && ballManager != null)
             {
-                ballManager.ResetRack();
+                int[] initialRack = null;
+                if (Photon.Pun.PhotonNetwork.InRoom && Photon.Pun.PhotonNetwork.CurrentRoom != null && Photon.Pun.PhotonNetwork.CurrentRoom.CustomProperties != null)
+                {
+                    if (Photon.Pun.PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(Network.NetworkConstants.PROP_RACK_BALLS, out object rbObj))
+                    {
+                        if (rbObj is int[] rackArr && rackArr.Length == 15)
+                        {
+                            initialRack = rackArr;
+                        }
+                    }
+                }
+                ballManager.ResetRack(initialRack);
             }
 
             // Chờ 1 frame để các script khác (CameraDirector, ...) hoàn tất Start()

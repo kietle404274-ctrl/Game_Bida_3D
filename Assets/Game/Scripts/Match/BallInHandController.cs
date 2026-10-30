@@ -50,6 +50,7 @@ namespace Game.Billiards.Match
         private bool tintApplied = false;
 
         public event Action<Vector3> OnBallInHandConfirmed;
+        public event Action<Vector3> OnBallInHandMoved;
         public event Action<bool> OnValidityChanged;
 
         public void Initialize(BallManager bManager, TableWrapper tWrapper, CameraDirector camDirector)
@@ -326,6 +327,7 @@ namespace Game.Billiards.Match
                 }
 
                 ValidatePlacement();
+                OnBallInHandMoved?.Invoke(currentPosition);
             }
         }
 

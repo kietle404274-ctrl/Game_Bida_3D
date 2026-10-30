@@ -97,48 +97,63 @@ namespace Game.Billiards.Rules
             // --- BƯỚC 1: KIỂM TRA ĐIỂM CHẠM ĐẦU TIÊN (LEGAL FIRST CONTACT) ---
             if (result.firstContactBall <= 0)
             {
-                // Không chạm bất kỳ quả bi mục tiêu nào
-                result.foul = FoulType.WrongBallFirst;
+                // Không chạm bất kỳ quả bi mục tiêu nào: phạt NoBallHit nếu chưa bị lỗi khác (như CueBallScratch)
+                if (result.foul == FoulType.None)
+                {
+                    result.foul = FoulType.NoBallHit;
+                }
             }
             else
             {
-                if (matchState.tableOpen)
+                // WPA Rule 6.13: Xử lý va chạm đồng thời (Split Hit)
+                // Nếu bi ghi nhận đầu tiên phạm lỗi, nhưng trong cùng cửa sổ va chạm có bi hợp lệ, ưu tiên cho cơ thủ
+                if (!IsLegalFirstContactBall(result.firstContactBall, shooterGroup, matchState.tableOpen, ballManager, result.pocketedBalls))
                 {
-                    // Khi bàn Open: không được chạm bi 8 trước
-                    if (result.firstContactBall == 8)
+                    if (result.initialContactCandidates != null && result.initialContactCandidates.Count > 0)
+                    {
+                        for (int i = 0; i < result.initialContactCandidates.Count; i++)
+                        {
+                            int candidate = result.initialContactCandidates[i];
+                            if (IsLegalFirstContactBall(candidate, shooterGroup, matchState.tableOpen, ballManager, result.pocketedBalls))
+                            {
+                                Debug.Log($"[Wpa8BallRuleEngine] WPA 6.13 Split Hit: Cơ thủ đánh trúng đồng thời! Công nhận bi hợp lệ #{candidate} thay vì #{result.firstContactBall}");
+                                result.firstContactBall = candidate;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Đánh giá tính hợp lệ của cú chạm đầu tiên sau khi đã áp dụng WPA 6.13
+                if (!IsLegalFirstContactBall(result.firstContactBall, shooterGroup, matchState.tableOpen, ballManager, result.pocketedBalls))
+                {
+                    if (result.foul == FoulType.None)
                     {
                         result.foul = FoulType.WrongBallFirst;
                     }
                 }
-                else
+            }
+
+            // --- BƯỚC 2: KIỂM TRA CHẠM BĂNG (RAIL REQUIREMENT - WPA Rule 6.3) ---
+            if (result.foul == FoulType.None)
+            {
+                // Sau khi chạm bi hợp lệ, phải có ít nhất 1 bi vào lỗ HOẶC ít nhất 1 bi chạm băng SAU TIẾP XÚC
+                // Kiểm tra: có bi chạm băng sau tiếp xúc (ballsThatHitRailAfterContact),
+                // hoặc có bi mục tiêu (1-15) chạm băng trong ballsThatHitRail (vì bi mục tiêu chỉ có thể di chuyển sau va chạm)
+                bool hasLegalRailHit = result.ballsThatHitRailAfterContact.Count > 0;
+                if (!hasLegalRailHit)
                 {
-                    // Khi đã chọn nhóm
-                    int remainingInGroup = CountRemainingBalls(shooterGroup, ballManager);
-                    if (remainingInGroup > 0)
+                    for (int i = 0; i < result.ballsThatHitRail.Count; i++)
                     {
-                        // Phải chạm bi thuộc nhóm của mình trước
-                        PlayerGroup contactGroup = GetBallGroup(result.firstContactBall);
-                        if (contactGroup != shooterGroup)
+                        if (result.ballsThatHitRail[i] >= 1 && result.ballsThatHitRail[i] <= 15)
                         {
-                            result.foul = FoulType.WrongBallFirst;
-                        }
-                    }
-                    else
-                    {
-                        // Đã ăn hết nhóm: mục tiêu hợp lệ duy nhất là bi 8
-                        if (result.firstContactBall != 8)
-                        {
-                            result.foul = FoulType.WrongBallFirst;
+                            hasLegalRailHit = true;
+                            break;
                         }
                     }
                 }
-            }
 
-            // --- BƯỚC 2: KIỂM TRA CHẠM BĂNG (RAIL REQUIREMENT) ---
-            if (result.foul == FoulType.None)
-            {
-                // Sau khi chạm bi hợp lệ, phải có ít nhất 1 bi vào lỗ HOẶC ít nhất 1 bi chạm băng
-                if (result.pocketedBalls.Count == 0 && result.ballsThatHitRail.Count == 0)
+                if (result.pocketedBalls.Count == 0 && !hasLegalRailHit)
                 {
                     result.foul = FoulType.NoRailAfterContact;
                 }
@@ -167,12 +182,18 @@ namespace Game.Billiards.Rules
             {
                 result.rackEnded = true;
 
-                int remainingBeforeShot = CountRemainingBalls(shooterGroup, ballManager, excludeBallNumber: 8);
+                int pocketedOfMyGroupInThisShot = 0;
+                for (int i = 0; i < result.pocketedBalls.Count; i++)
+                {
+                    if (result.pocketedBalls[i] != 8 && GetBallGroup(result.pocketedBalls[i]) == shooterGroup)
+                        pocketedOfMyGroupInThisShot++;
+                }
+                int remainingBeforeShot = CountRemainingBalls(shooterGroup, ballManager, excludeBallNumber: 8) + pocketedOfMyGroupInThisShot;
 
                 // Điều kiện THUA RACK ngay lập tức (không còn yêu cầu gọi bi/gọi lỗ):
                 // 1. Phạm bất kỳ lỗi nào (scratch, sai bi trước, không chạm băng...)
                 // 2. Bàn vẫn đang Open
-                // 3. Chưa ăn hết nhóm của mình
+                // 3. Chưa ăn hết nhóm của mình trước khi đánh bi 8
                 if (result.HasFoul || matchState.tableOpen || remainingBeforeShot > 0)
                 {
                     result.outcome = (matchState.currentPlayerIndex == 0) ? RackOutcome.PlayerBWins : RackOutcome.PlayerAWins;
@@ -233,6 +254,43 @@ namespace Game.Billiards.Rules
             return result;
         }
 
+        public bool IsLegalFirstContactBall(int ballNum, PlayerGroup shooterGroup, bool tableOpen, BallManager ballManager, List<int> pocketedBalls)
+        {
+            if (ballNum <= 0) return false;
+
+            if (tableOpen || shooterGroup == PlayerGroup.Open)
+            {
+                // Khi bàn Open (hoặc nhóm chưa xác định): được chạm bất kỳ bi trơn hoặc sọc, không được chạm bi 8 trước
+                return ballNum != 8;
+            }
+
+            PlayerGroup contactGroup = GetBallGroup(ballNum);
+            if (contactGroup == shooterGroup)
+            {
+                // Chạm bi nhóm mình đầu tiên -> LUÔN HỢP LỆ!
+                return true;
+            }
+
+            if (ballNum == 8)
+            {
+                // Chạm bi 8 đầu tiên: chỉ hợp lệ khi trước cú đánh cơ thủ ĐÃ dọn sạch toàn bộ bi nhóm mình.
+                int pocketedOfMyGroupInThisShot = 0;
+                if (pocketedBalls != null)
+                {
+                    for (int i = 0; i < pocketedBalls.Count; i++)
+                    {
+                        if (GetBallGroup(pocketedBalls[i]) == shooterGroup)
+                            pocketedOfMyGroupInThisShot++;
+                    }
+                }
+                int remainingBeforeShot = CountRemainingBalls(shooterGroup, ballManager) + pocketedOfMyGroupInThisShot;
+                return remainingBeforeShot == 0;
+            }
+
+            // Chạm bi của đối thủ trước (hoặc bi không hợp lệ)
+            return false;
+        }
+
         public PlayerGroup GetBallGroup(int ballNumber)
         {
             if (ballNumber >= 1 && ballNumber <= 7) return PlayerGroup.Solids;
@@ -243,7 +301,7 @@ namespace Game.Billiards.Rules
 
         public int CountRemainingBalls(PlayerGroup group, BallManager ballManager, int excludeBallNumber = -1)
         {
-            if (group == PlayerGroup.Open) return 0;
+            if (group == PlayerGroup.Open || group == PlayerGroup.EightBall) return 0;
             if (ballManager == null) return 7; // Fallback khi không có BallManager (giả định còn bi trên bàn)
 
             int count = 0;

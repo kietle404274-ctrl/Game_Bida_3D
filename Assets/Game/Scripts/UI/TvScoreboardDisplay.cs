@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using Game.Billiards.Core;
 using Game.Billiards.Match;
 
 namespace Game.Billiards.UI
@@ -172,7 +173,7 @@ namespace Game.Billiards.UI
             scoreB.text = st.playerBRackWins.ToString();
             int race = 0;
             int.TryParse(st.settings.raceTarget.ToString().Replace("RaceTo", ""), out race);
-            info.text = "8-BALL  •  VÁN " + st.rackNumber + (race > 0 ? "  •  RACE TO " + race : "");
+            info.text = Game.Billiards.Core.LocalizationManager.Format("tv_info_format", st.rackNumber, race);
         }
     }
 }

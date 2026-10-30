@@ -15,7 +15,8 @@ namespace Game.Billiards.Core
         ShotClockExpired,
         IllegalBreak,
         DoubleHit,
-        PushShot
+        PushShot,
+        NoBallHit
     }
 
     public enum RackOutcome

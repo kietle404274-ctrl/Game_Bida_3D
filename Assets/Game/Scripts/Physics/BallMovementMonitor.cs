@@ -9,6 +9,11 @@ namespace Game.Billiards.Physics
         [SerializeField] private PhysicsConfig physicsConfig;
         [SerializeField] private List<BallController> monitoredBalls = new List<BallController>();
 
+        /// <summary>Thời gian tối đa chờ sau khi có bi văng khỏi bàn trước khi ép kết thúc cú đánh (giây).</summary>
+        private const float OffTableSettleDelay = 3f;
+        private float offTableTimer = 0f;
+        private Game.Billiards.Physics.TableWrapper tableRef;
+
         private float settleTimer = 0f;
         private float trackingDuration = 0f;
         private bool isTracking = false;
@@ -41,6 +46,7 @@ namespace Game.Billiards.Physics
             isTracking = true;
             haveBallsMoved = false;
             settleTimer = 0f;
+            offTableTimer = 0f;
             trackingDuration = 0f;
             AreAllBallsResting = false;
         }
@@ -76,19 +82,41 @@ namespace Game.Billiards.Physics
             }
 
             bool anyBallMoving = false;
+            bool cueBallOffTable = false;
             float linearThresh = physicsConfig.RestLinearThreshold;
             float angularThresh = physicsConfig.RestAngularThreshold;
+            if (tableRef == null) tableRef = FindObjectOfType<Game.Billiards.Physics.TableWrapper>();
 
             for (int i = 0; i < monitoredBalls.Count; i++)
             {
                 var ball = monitoredBalls[i];
                 if (ball != null && !ball.IsPocketed && ball.gameObject.activeInHierarchy)
                 {
+                    // Chỉ áp dụng cơ chế chờ 3s khi BI CÁI bị đánh nhảy văng hẳn ra ngoài sàn phòng
+                    if (ball.IsCueBall && tableRef != null)
+                    {
+                        Vector3 p = ball.transform.position;
+                        if (!tableRef.IsInsidePlayArea(p, -0.05f) && p.y < tableRef.ClothSurfaceY - 0.20f)
+                        {
+                            cueBallOffTable = true;
+                            continue;
+                        }
+                    }
+
                     if (ball.IsMoving(linearThresh, angularThresh))
                     {
                         anyBallMoving = true;
-                        break;
                     }
+                }
+            }
+
+            if (cueBallOffTable)
+            {
+                offTableTimer += Time.fixedDeltaTime;
+                if (offTableTimer >= OffTableSettleDelay)
+                {
+                    ForceSettle();
+                    return;
                 }
             }
 
@@ -104,9 +132,9 @@ namespace Game.Billiards.Physics
             }
             else
             {
-                // Khi không còn quả nào di chuyển trên ngưỡng
+                // Cú đánh thường: dừng ngay sau settleDuration (0.25s) mượt mà, không chờ 3s
                 settleTimer += Time.fixedDeltaTime;
-                if (settleTimer >= physicsConfig.SettleDuration)
+                if (settleTimer >= physicsConfig.SettleDuration && !cueBallOffTable)
                 {
                     if (!AreAllBallsResting)
                     {

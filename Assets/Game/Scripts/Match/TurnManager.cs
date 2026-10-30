@@ -53,6 +53,11 @@ namespace Game.Billiards.Match
             networkMatchManager = netMgr;
         }
 
+        public void RaiseTurnChanged(int newPlayerIndex)
+        {
+            OnTurnChanged?.Invoke(newPlayerIndex);
+        }
+
         private void SubscribeEvents()
         {
             if (stateManager != null)
@@ -122,6 +127,9 @@ namespace Game.Billiards.Match
             if (ballInHandController != null) ballInHandController.CancelBallInHand();
         }
 
+        /// <summary>Cú đánh vừa được đánh giá có phải cú khai cuộc (tính trước khi turnSequence tăng) — Master gửi kèm cho Client.</summary>
+        public bool LastShotWasBreak { get; private set; }
+
         private void Update()
         {
             if (isTimerRunning && stateManager != null && stateManager.CurrentPhase == MatchPhase.Aiming)
@@ -173,8 +181,23 @@ namespace Game.Billiards.Match
             isTimerRunning = false;
         }
 
+        /// <summary>Trừ thời gian trễ mạng khỏi đồng hồ đang chạy (không bao giờ xuống dưới 1s để tránh hết giờ ngay).</summary>
+        public void CompensateShotTimer(float elapsedSeconds)
+        {
+            if (!isTimerRunning || elapsedSeconds <= 0f) return;
+            remainingShotTime = Mathf.Max(1f, remainingShotTime - elapsedSeconds);
+            OnShotTimerTick?.Invoke(remainingShotTime, totalShotTime);
+        }
+
         private void HandleShotClockExpired()
         {
+            // Trong trận Online: Client không tự ý quyết định hết giờ đánh để tránh lệch pha do ping/fps
+            if (networkMatchManager != null && networkMatchManager.IsOnlineMatch && !networkMatchManager.IsMaster)
+            {
+                StopShotTimer();
+                return;
+            }
+
             StopShotTimer();
             Debug.LogWarning("[TurnManager] Hết giờ đánh (Shot Clock Expired)! Chuyển lượt và đối thủ nhận Ball-in-Hand.");
 
@@ -190,6 +213,7 @@ namespace Game.Billiards.Match
                 foul = FoulType.ShotClockExpired
             };
             LastShotResult = timeoutResult;
+            LastShotWasBreak = (stateManager.State.turnSequence == 0);
             OnShotEvaluated?.Invoke(timeoutResult);
 
             stateManager.State.SwitchTurn();
@@ -199,6 +223,12 @@ namespace Game.Billiards.Match
             if (ballInHandController != null)
             {
                 ballInHandController.EnterBallInHand(false);
+            }
+
+            // Master Client trong trận Online: Broadcast kết quả hết giờ và snapshot tọa độ bi cho Client
+            if (networkMatchManager != null && networkMatchManager.IsOnlineMatch && networkMatchManager.IsMaster)
+            {
+                networkMatchManager.BroadcastTurnOutcome(timeoutResult);
             }
         }
 
@@ -242,6 +272,7 @@ namespace Game.Billiards.Match
             ShotResult rawResult = eventCollector.BuildShotResult();
             ShotResult finalResult = ruleEngine.EvaluateShot(lastExecutedCommand, rawResult, stateManager.State, ballManager);
             LastShotResult = finalResult;
+            LastShotWasBreak = (stateManager.State.turnSequence == 0);
 
             OnShotEvaluated?.Invoke(finalResult);
 

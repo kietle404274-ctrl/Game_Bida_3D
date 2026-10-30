@@ -16,6 +16,7 @@ namespace Game.Billiards.Network
         public const string PROP_P2_READY = "p2r";
         public const string PROP_P1_NAME = "p1n";
         public const string PROP_P2_NAME = "p2n";
+        public const string PROP_RACK_BALLS = "rb";
 
         // Room States
         public const string STATE_WAITING = "Waiting";
@@ -30,6 +31,14 @@ namespace Game.Billiards.Network
         public const byte EVENT_CALL_SHOT = 105;
         public const byte EVENT_SURRENDER = 106;
         public const byte EVENT_STATS_SYNC = 107;
+        public const byte EVENT_RACK_SYNC = 108;
+        public const byte EVENT_AIM_SYNC = 109;
+        public const byte EVENT_BALL_IN_HAND_CONFIRMED = 110;
+        public const byte EVENT_NEXT_RACK = 111;
+        public const byte EVENT_REMATCH = 112;
+        public const byte EVENT_BALL_IN_HAND_PREVIEW = 113;
+        public const byte EVENT_SHOT_REJECTED = 114;      // Master -> Client: lệnh đánh bị từ chối
+        public const byte EVENT_SURRENDER_REQUEST = 115;  // Client -> Master: xin đầu hàng (Master quyết định)
 
         // Helper sinh mã phòng ngẫu nhiên (VD: "POOL-8821")
         public static string GenerateRoomId()

@@ -53,19 +53,19 @@ namespace Game.Billiards.UI
                 switch (group)
                 {
                     case PlayerGroup.Open:
-                        groupText.text = "BÀN MỞ (OPEN)";
+                        groupText.text = LocalizationManager.Get("group_open");
                         groupText.color = Color.white;
                         break;
                     case PlayerGroup.Solids:
-                        groupText.text = "BI TRƠN (SOLIDS 1-7)";
+                        groupText.text = LocalizationManager.Get("group_solids");
                         groupText.color = new Color(1f, 0.8f, 0.2f, 1f);
                         break;
                     case PlayerGroup.Stripes:
-                        groupText.text = "BI SỌC (STRIPES 9-15)";
+                        groupText.text = LocalizationManager.Get("group_stripes");
                         groupText.color = new Color(0.3f, 0.7f, 1f, 1f);
                         break;
                     case PlayerGroup.EightBall:
-                        groupText.text = "BI SỐ 8 (EIGHT BALL)";
+                        groupText.text = LocalizationManager.Get("group_eight_ball");
                         groupText.color = new Color(1f, 0.84f, 0f, 1f);
                         break;
                 }

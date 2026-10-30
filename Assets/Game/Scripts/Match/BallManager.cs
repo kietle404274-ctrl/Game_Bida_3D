@@ -165,7 +165,7 @@ namespace Game.Billiards.Match
         /// - Bi cái tại Head Spot
         /// - Triệt tiêu 100% hiện tượng tự lăn bằng cách khóa Kinematic đến khi cơ thủ thực hiện cú đánh
         /// </summary>
-        public void ResetRack()
+        public void ResetRack(int[] customRackBallNumbers = null)
         {
             if (tableWrapper == null || physicsConfig == null) return;
 
@@ -187,8 +187,10 @@ namespace Game.Billiards.Match
                 balls[0].SetKinematic(true);
             }
 
-            // 2. Chuẩn bị danh sách số bi cho dàn 15 quả theo WPA
-            int[] rackBallNumbers = GenerateWpaRackBallNumbers();
+            // 2. Chuẩn bị danh sách số bi cho dàn 15 quả theo WPA (từ tham số custom hoặc sinh mới)
+            int[] rackBallNumbers = (customRackBallNumbers != null && customRackBallNumbers.Length == 15)
+                ? customRackBallNumbers
+                : GenerateWpaRackBallNumbersStatic();
 
             int ballIndex = 0;
             for (int row = 0; row < 5; row++)
@@ -206,7 +208,7 @@ namespace Game.Billiards.Match
                     int number = rackBallNumbers[ballIndex];
                     if (number >= 1 && number <= 15 && balls[number] != null)
                     {
-                        balls[number].ResetTo(ballPos, UnityEngine.Random.rotation);
+                        balls[number].ResetTo(ballPos, Quaternion.Euler(0f, number * 24f, 0f));
                         // Khóa Kinematic cho 15 bi mục tiêu để triệt tiêu 100% hiện tượng tự lăn trước khi đánh
                         balls[number].SetKinematic(true);
                     }
@@ -234,15 +236,16 @@ namespace Game.Billiards.Match
             }
         }
 
-        private int[] GenerateWpaRackBallNumbers()
+        public static int[] GenerateWpaRackBallNumbersStatic(int? seed = null)
         {
+            var rng = seed.HasValue ? new System.Random(seed.Value) : new System.Random();
             // Danh sách các bi trơn (1..7) và sọc (9..15)
             List<int> solids = new List<int> { 1, 2, 3, 4, 5, 6, 7 };
             List<int> stripes = new List<int> { 9, 10, 11, 12, 13, 14, 15 };
 
             // Trộn ngẫu nhiên
-            Shuffle(solids);
-            Shuffle(stripes);
+            ShuffleList(solids, rng);
+            ShuffleList(stripes, rng);
 
             // Mảng 15 quả theo thứ tự hàng:
             // Index 0: Row 0 Apex
@@ -266,7 +269,7 @@ namespace Game.Billiards.Match
             List<int> remaining = new List<int>();
             remaining.AddRange(solids);
             remaining.AddRange(stripes);
-            Shuffle(remaining);
+            ShuffleList(remaining, rng);
 
             int remIdx = 0;
             for (int i = 0; i < 15; i++)
@@ -280,11 +283,11 @@ namespace Game.Billiards.Match
             return rack;
         }
 
-        private void Shuffle(List<int> list)
+        private static void ShuffleList(List<int> list, System.Random rng)
         {
             for (int i = list.Count - 1; i > 0; i--)
             {
-                int rnd = UnityEngine.Random.Range(0, i + 1);
+                int rnd = rng.Next(0, i + 1);
                 int temp = list[i];
                 list[i] = list[rnd];
                 list[rnd] = temp;

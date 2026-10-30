@@ -98,18 +98,18 @@ namespace Game.Billiards.Core
                 useWpaRules = true
             };
 
-            playerAName = string.IsNullOrEmpty(playerName) ? "Cơ Thủ" : playerName;
+            playerAName = string.IsNullOrEmpty(playerName) ? LocalizationManager.Get("default_player_name") : playerName;
             switch (difficulty)
             {
                 case AIDifficulty.Easy:
-                    playerBName = "AI (Dễ)";
+                    playerBName = LocalizationManager.Get("ai_easy_name");
                     break;
                 case AIDifficulty.Hard:
-                    playerBName = "AI (Khó)";
+                    playerBName = LocalizationManager.Get("ai_hard_name");
                     break;
                 case AIDifficulty.Normal:
                 default:
-                    playerBName = "AI (Bình Thường)";
+                    playerBName = LocalizationManager.Get("ai_normal_name");
                     break;
             }
 
@@ -134,15 +134,29 @@ namespace Game.Billiards.Core
         {
             if (Application.isPlaying)
             {
-                SceneManager.LoadScene("Lobby");
+                // Online: rời phòng Photon để đối thủ nhận OnPlayerLeftRoom (thoát giữa trận = thua trận, Rule 124)
+                if (currentGameMode == GameMode.OnlinePvP && Photon.Pun.PhotonNetwork.InRoom)
+                {
+                    Photon.Pun.PhotonNetwork.LeaveRoom();
+                }
+
+                // Màn hình tải bất đồng bộ khi thoát về sảnh
+                Game.Billiards.UI.LoadingScreen.ShowForLobby();
             }
         }
 
         public void LoadGameplayScene()
         {
-            if (Application.isPlaying)
+            if (!Application.isPlaying) return;
+
+            if (currentGameMode == GameMode.OnlinePvP)
             {
-                SceneManager.LoadScene("Gameplay");
+                // Online: scene Gameplay do Photon tải đồng bộ (PhotonNetwork.LoadLevel). Màn hình tải theo dõi tiến độ và chờ cả hai máy.
+                Game.Billiards.UI.LoadingScreen.ShowForOnlineMatch();
+            }
+            else
+            {
+                Game.Billiards.UI.LoadingScreen.ShowForOfflineMatch();
             }
         }
 

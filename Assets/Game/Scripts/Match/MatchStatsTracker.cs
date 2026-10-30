@@ -315,6 +315,7 @@ namespace Game.Billiards.Match
             {
                 case FoulType.CueBallScratch: Stats.Add(player, StatId.FoulScratch); break;
                 case FoulType.WrongBallFirst: Stats.Add(player, StatId.FoulWrongBall); break;
+                case FoulType.NoBallHit: Stats.Add(player, StatId.FoulOther); break;
                 case FoulType.NoRailAfterContact: Stats.Add(player, StatId.FoulNoRail); break;
                 case FoulType.BallDrivenOffTable: Stats.Add(player, StatId.FoulOffTable); break;
                 case FoulType.ShotClockExpired: Stats.Add(player, StatId.FoulTimeout); break;

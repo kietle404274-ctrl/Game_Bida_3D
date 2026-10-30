@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using Game.Billiards.Core;
 
 namespace Game.Billiards.UI
 {
@@ -45,7 +46,7 @@ namespace Game.Billiards.UI
 
         public void ShowToast(string title, string message, Color? customBgColor = null, float duration = -1f)
         {
-            if (toastRoot == null) return;
+            if (toastRoot == null || !gameObject.activeInHierarchy) return;
 
             if (activeToastCoroutine != null)
             {
@@ -57,22 +58,22 @@ namespace Game.Billiards.UI
 
         public void ShowFoulToast(string foulName, string description)
         {
-            ShowToast($"PHẠM LỖI: {foulName}", $"{description}\nĐối thủ nhận quyền Ball-in-Hand!", foulColor, 3.0f);
+            ShowToast($"{LocalizationManager.Get("foul_badge")}: {foulName}", $"{description}\n{LocalizationManager.Get("foul_sub")}", foulColor, 3.0f);
         }
 
         public void ShowTurnToast(string playerName)
         {
-            ShowToast("LƯỢT ĐÁNH MỚI", $"Đến lượt thi đấu của: {playerName}", normalColor, 2.0f);
+            ShowToast(LocalizationManager.Get("turn_new_turn"), LocalizationManager.Format("turn_playing_now", playerName), normalColor, 2.0f);
         }
 
         public void ShowGroupAssignedToast(string playerName, string groupName)
         {
-            ShowToast("XÁC ĐỊNH NHÓM BI", $"{playerName} đã chọn nhóm: {groupName}", normalColor, 3.0f);
+            ShowToast(LocalizationManager.Get("group_open"), LocalizationManager.Format("turn_group_assigned", playerName, groupName), normalColor, 3.0f);
         }
 
         public void ShowWinToast(string winnerName, string details)
         {
-            ShowToast("CHIẾN THẮNG!", $"{winnerName} - {details}", winColor, 4.0f);
+            ShowToast(LocalizationManager.Get("win_badge"), $"{winnerName} - {details}", winColor, 4.0f);
         }
 
         private IEnumerator ToastRoutine(string title, string message, Color bgColor, float duration)

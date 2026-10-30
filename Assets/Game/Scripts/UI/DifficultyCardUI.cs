@@ -113,6 +113,14 @@ namespace Game.Billiards.UI
             selected = value;
         }
 
+        public void SetTitle(string newTitle)
+        {
+            if (title != null && !string.IsNullOrEmpty(newTitle))
+            {
+                title.text = newTitle;
+            }
+        }
+
         private static Color Dim(Color c, float k)
         {
             return new Color(c.r * k, c.g * k, c.b * k, 1f);

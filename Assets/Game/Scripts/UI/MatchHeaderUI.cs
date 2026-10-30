@@ -19,11 +19,36 @@ namespace Game.Billiards.UI
         [SerializeField] private Color warningTimerColor = new Color(1f, 0.25f, 0.2f, 1f);
         [SerializeField] private float warningThresholdSeconds = 5.0f;
 
+        private int cachedRackNumber = 1;
+        private int cachedScoreA = 0;
+        private int cachedScoreB = 0;
+        private RaceTarget cachedRaceTarget = RaceTarget.RaceTo5;
+
+        private void OnEnable()
+        {
+            LocalizationManager.OnLanguageChanged += HandleLanguageChanged;
+        }
+
+        private void OnDisable()
+        {
+            LocalizationManager.OnLanguageChanged -= HandleLanguageChanged;
+        }
+
+        private void HandleLanguageChanged()
+        {
+            UpdateRackAndScore(cachedRackNumber, cachedScoreA, cachedScoreB, cachedRaceTarget);
+        }
+
         public void UpdateRackAndScore(int rackNumber, int playerAWins, int playerBWins, RaceTarget raceTarget)
         {
+            cachedRackNumber = rackNumber;
+            cachedScoreA = playerAWins;
+            cachedScoreB = playerBWins;
+            cachedRaceTarget = raceTarget;
+
             if (rackNumberText != null)
             {
-                rackNumberText.text = $"RACE TO {(int)raceTarget}  •  VÁN {rackNumber}";
+                rackNumberText.text = LocalizationManager.Format("header_race_rack", (int)raceTarget, rackNumber);
             }
 
             if (scoreRaceText != null)

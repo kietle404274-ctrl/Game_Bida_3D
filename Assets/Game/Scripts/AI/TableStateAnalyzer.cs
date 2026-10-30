@@ -57,51 +57,67 @@ namespace Game.Billiards.AI
             return targets;
         }
 
+        /// <summary>
+        /// Trả về tọa độ chuẩn xác của tâm cửa miệng lỗ (Pocket Mouth Center) trên mặt nỉ bàn bida.
+        /// Nằm chính xác tại trung điểm của 2 mũi băng mép lỗ trên mặt nỉ:
+        /// - Lỗ góc Foot (0, 1): X = -1.040m, Z = ±0.470m (nằm chính giữa mũi băng ngắn và mũi băng dài)
+        /// - Lỗ góc Head (4, 5): X = +1.030m, Z = ±0.470m
+        /// - Lỗ giữa Side (2, 3): X = 0.000m, Z = ±0.495m (ngay trên mép nỉ giữa 2 má lỗ dài)
+        /// Khi bi đi thẳng vào tâm cửa miệng lỗ, bi sẽ lọt qua khe hở giữa 2 mũi băng với biên độ an toàn
+        /// tối đa và không bao giờ bị va vào má vát cao su.
+        /// </summary>
         public static Vector3[] GetPocketPositions(TableWrapper tableWrapper)
         {
             Vector3[] pockets = new Vector3[6];
+            float y = (tableWrapper != null) ? tableWrapper.ClothSurfaceY : 0.835f;
 
-            if (tableWrapper != null && tableWrapper.Pockets != null && tableWrapper.Pockets.Length >= 6)
-            {
-                for (int i = 0; i < 6; i++)
-                {
-                    var p = tableWrapper.Pockets[i];
-                    if (p != null)
-                    {
-                        pockets[i] = p.transform.position;
-                    }
-                    else
-                    {
-                        pockets[i] = GetDefaultPocketPosition(i, tableWrapper);
-                    }
-                }
-            }
-            else
-            {
-                for (int i = 0; i < 6; i++)
-                {
-                    pockets[i] = GetDefaultPocketPosition(i, tableWrapper);
-                }
-            }
+            // Tọa độ tâm cửa miệng lỗ (Pocket Mouth Center) chính xác trên mặt nỉ:
+            pockets[0] = new Vector3(-1.040f, y, 0.470f);  // Pocket 0: Foot Left (-X, +Z)
+            pockets[1] = new Vector3(-1.040f, y, -0.470f); // Pocket 1: Foot Right (-X, -Z)
+            pockets[2] = new Vector3(0.000f, y, 0.495f);   // Pocket 2: Mid Left (+Z)
+            pockets[3] = new Vector3(0.000f, y, -0.495f);  // Pocket 3: Mid Right (-Z)
+            pockets[4] = new Vector3(1.030f, y, 0.470f);   // Pocket 4: Head Left (+X, +Z)
+            pockets[5] = new Vector3(1.030f, y, -0.470f);  // Pocket 5: Head Right (+X, -Z)
 
             return pockets;
         }
 
-        private static Vector3 GetDefaultPocketPosition(int pocketId, TableWrapper table)
+        /// <summary>
+        /// Vector hướng vào trong lòng lỗ (Inward Pocket Direction).
+        /// </summary>
+        public static Vector3 GetPocketInwardNormal(int pocketId)
         {
-            float halfW = (table != null) ? table.PlayableHalfWidth : 0.56f;
-            float halfL = (table != null) ? table.PlayableHalfLength : 1.12f;
-            float y = (table != null) ? table.ClothSurfaceY : 0.835f;
-
             switch (pocketId)
             {
-                case 0: return new Vector3(-halfL, y, halfW);  // Foot Left
-                case 1: return new Vector3(-halfL, y, -halfW); // Foot Right
-                case 2: return new Vector3(0f, y, halfW);      // Mid Left
-                case 3: return new Vector3(0f, y, -halfW);     // Mid Right
-                case 4: return new Vector3(halfL, y, halfW);   // Head Left
-                case 5: return new Vector3(halfL, y, -halfW);  // Head Right
-                default: return new Vector3(0f, y, 0f);
+                case 0: return new Vector3(-0.7071f, 0f, 0.7071f);  // Foot Left (-X, +Z)
+                case 1: return new Vector3(-0.7071f, 0f, -0.7071f); // Foot Right (-X, -Z)
+                case 2: return new Vector3(0f, 0f, 1f);             // Mid Left (+Z)
+                case 3: return new Vector3(0f, 0f, -1f);            // Mid Right (-Z)
+                case 4: return new Vector3(0.7071f, 0f, 0.7071f);   // Head Left (+X, +Z)
+                case 5: return new Vector3(0.7071f, 0f, -0.7071f);  // Head Right (+X, -Z)
+                default: return Vector3.forward;
+            }
+        }
+
+        /// <summary>
+        /// Kiểm tra góc vào miệng lỗ (Pocket Acceptance Angle):
+        /// Ngăn AI cố tình bắn vào mép/má lỗ ở những góc cắt bi không thể lọt.
+        /// </summary>
+        public static bool IsPocketAngleAcceptable(int pocketId, Vector3 targetDir)
+        {
+            Vector3 inward = GetPocketInwardNormal(pocketId);
+            float dot = Vector3.Dot(targetDir, inward);
+
+            if (pocketId == 2 || pocketId == 3)
+            {
+                // Lỗ giữa (Side Pocket): Chỉ chấp nhận góc vào <= 48 độ so với trục vuông góc thành bàn (dot >= 0.67)
+                // Nếu góc quá chéo, má vát của 2 mũi băng dài sẽ chặn bi lại.
+                return dot >= 0.67f;
+            }
+            else
+            {
+                // Lỗ góc (Corner Pocket): Chỉ chấp nhận góc vào <= 65 độ so với trục phân giác (dot >= 0.42)
+                return dot >= 0.42f;
             }
         }
     }

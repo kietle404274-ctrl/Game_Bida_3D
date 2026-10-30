@@ -61,6 +61,7 @@ namespace Game.Billiards.AI
                     bestSafetyScore = safetyScore;
                     bestSafety = new ShotCandidate
                     {
+                        shotType = AIShotType.Safety,
                         targetBallNumber = ballNum,
                         targetPocketId = -1,
                         targetBallPosition = targetPos,

@@ -31,6 +31,10 @@ namespace Game.Billiards.Audio
         [Tooltip("Âm thanh tương tác nút bấm UI")]
         [SerializeField] private AudioClip buttonClickClip;
 
+        [Header("Music")]
+        [Tooltip("Nhạc nền của trò chơi")]
+        [SerializeField] private AudioClip backgroundMusicClip;
+
         [Header("Pitch Variation Settings")]
         [Range(0.8f, 1.2f)]
         [SerializeField] private float minPitch = 0.94f;
@@ -46,6 +50,7 @@ namespace Game.Billiards.Audio
         public AudioClip FoulClip => foulClip;
         public AudioClip WinFanfareClip => winFanfareClip;
         public AudioClip ButtonClickClip => buttonClickClip;
+        public AudioClip BackgroundMusicClip => backgroundMusicClip;
 
         public float MinPitch => minPitch;
         public float MaxPitch => maxPitch;

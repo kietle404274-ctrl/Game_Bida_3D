@@ -10598,9 +10598,9 @@ MonoBehaviour:
   cueController: {fileID: 700000041}
   cameraDirector: {fileID: 1667188190}
   ballInHandController: {fileID: 700000017}
-  thinkDurationSeconds: 1
-  aimWanderMinSeconds: 2
-  aimWanderMaxSeconds: 3
+  thinkDurationSeconds: 0.35
+  aimWanderMinSeconds: 0.5
+  aimWanderMaxSeconds: 0.9
   debugForceFoul: 0
 --- !u!114 &700000025
 MonoBehaviour:
@@ -25804,7 +25804,7 @@ MonoBehaviour:
   SMAAQuality: 2
   dithering: 1
   stopNaNs: 1
-  taaSharpenStrength: 0.5
+  taaSharpenStrength: 0.75
   TAAQuality: 1
   taaHistorySharpening: 0.35
   taaAntiFlicker: 0.5

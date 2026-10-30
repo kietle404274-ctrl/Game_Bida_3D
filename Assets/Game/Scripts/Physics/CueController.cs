@@ -27,6 +27,7 @@ namespace Game.Billiards.Physics
         [SerializeField] private float strokeDuration = 0.08f;
 
         private bool isAiming = true;
+        private float userElevationDeg = 0f;
         private bool isStriking = false;
         private float currentPower01 = 0f;
         private Vector3 currentAimDirection = Vector3.forward;
@@ -117,6 +118,17 @@ namespace Game.Billiards.Physics
         }
 
         public bool IsStriking => isStriking;
+        public float UserElevationDeg => userElevationDeg;
+        public Vector3 CurrentAimDirection => currentAimDirection;
+
+        /// <summary>
+        /// Góc nâng cơ do người chơi chốt (độ, 0 = cơ nằm bình thường). Cơ luôn nâng ít nhất cueElevationAngle.
+        /// Áp dụng ở lần UpdateAim tiếp theo.
+        /// </summary>
+        public void SetElevation(float degrees)
+        {
+            userElevationDeg = Mathf.Clamp(degrees, 0f, 90f);
+        }
 
         public void SetAimingState(bool aiming)
         {
@@ -149,7 +161,7 @@ namespace Game.Billiards.Physics
             Vector3 ballPos = cueBallTarget.position;
 
             // Nâng cao đuôi cơ một góc cueElevationAngle để cơ tự nhiên trên bàn
-            Quaternion elevationRot = Quaternion.AngleAxis(cueElevationAngle, Vector3.Cross(Vector3.up, currentAimDirection));
+            Quaternion elevationRot = Quaternion.AngleAxis(Mathf.Max(cueElevationAngle, userElevationDeg), Vector3.Cross(Vector3.up, currentAimDirection));
             Vector3 cueOffset = elevationRot * backward * distance;
 
             cueStickRoot.position = ballPos + cueOffset;
@@ -174,8 +186,10 @@ namespace Game.Billiards.Physics
         {
             isStriking = true;
             Vector3 startPos = cueStickRoot.position;
+            // Đẩy dọc theo trục cơ (cơ có thể đang nâng cao) để đầu cơ chạm đúng mặt bi
+            Vector3 strokeAxis = cueStickRoot.forward;
             Vector3 targetImpactPos = cueBallTarget != null
-                ? cueBallTarget.position - (currentAimDirection * 0.02855f)
+                ? cueBallTarget.position - (strokeAxis * 0.02855f)
                 : startPos + (currentAimDirection * (baseDistance + currentPower01 * maxPullback));
 
             float elapsed = 0f;
@@ -194,6 +208,7 @@ namespace Game.Billiards.Physics
 
             // Ẩn cơ khi bóng bắt đầu lăn
             yield return new WaitForSeconds(0.04f);
+            userElevationDeg = 0f;
             SetAimingState(false);
             isStriking = false;
         }

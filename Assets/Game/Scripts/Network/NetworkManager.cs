@@ -4,6 +4,7 @@ using Photon.Pun;
 using Photon.Realtime;
 using ExitGames.Client.Photon;
 using Game.Billiards.Core;
+using Game.Billiards.UI;
 
 namespace Game.Billiards.Network
 {
@@ -33,11 +34,35 @@ namespace Game.Billiards.Network
         {
             if (Instance != null && Instance != this)
             {
-                Destroy(gameObject);
+                // Nếu gắn chung GameObject với các UI Controller khác (như LobbySystems),
+                // chỉ huỷ component NetworkManager thừa này, giữ nguyên GameObject để các UI controller khác hoạt động.
+                if (GetComponent<LobbyUIController>() != null || GetComponent<OnlineRoomUI>() != null)
+                {
+                    Destroy(this);
+                }
+                else
+                {
+                    Destroy(gameObject);
+                }
+                return;
+            }
+
+            // Nếu đang gắn chung GameObject với các component thuộc scene:
+            // Tách riêng NetworkManager sang GameObject độc lập để DontDestroyOnLoad không kéo theo LobbySystems/LobbyUIController!
+            if (GetComponent<LobbyUIController>() != null || GetComponent<OnlineRoomUI>() != null)
+            {
+                GameObject netGo = new GameObject("NetworkManager");
+                NetworkManager newNet = netGo.AddComponent<NetworkManager>();
+                newNet.autoConnectOnStart = this.autoConnectOnStart;
+                Instance = newNet;
+                DontDestroyOnLoad(netGo);
+                PhotonNetwork.AutomaticallySyncScene = true;
+                Destroy(this);
                 return;
             }
 
             Instance = this;
+            if (transform.parent != null) transform.SetParent(null);
             DontDestroyOnLoad(gameObject);
 
             PhotonNetwork.AutomaticallySyncScene = true;
@@ -51,16 +76,50 @@ namespace Game.Billiards.Network
             }
         }
 
+        /// <summary>Khóa Custom Property của Player lưu chỉ số avatar.</summary>
+        public const string PLAYER_PROP_AVATAR = "av";
+
+        /// <summary>Áp tên + avatar từ PlayerProfile (đặt ở Cài đặt) lên người chơi cục bộ trên Photon.</summary>
+        public void ApplyLocalProfile()
+        {
+            PhotonNetwork.NickName = PlayerProfile.Name;
+            PhotonNetwork.LocalPlayer.SetCustomProperties(new ExitGames.Client.Photon.Hashtable
+            {
+                { PLAYER_PROP_AVATAR, AvatarLibrary.Wrap(PlayerProfile.AvatarIndex) }
+            });
+        }
+
+        /// <summary>Avatar của người chơi 1 (chủ phòng) hoặc người chơi 2 (khách); -1 nếu chưa có.</summary>
+        public int GetPlayerAvatar(bool player1)
+        {
+            if (!PhotonNetwork.InRoom) return -1;
+            foreach (var p in PhotonNetwork.PlayerList)
+            {
+                if (p.IsMasterClient != player1) continue;
+                if (p.CustomProperties.TryGetValue(PLAYER_PROP_AVATAR, out object v) && v is int idx) return AvatarLibrary.Wrap(idx);
+                return 0;
+            }
+            return -1;
+        }
+
         public void Connect(string playerName = "Cơ Thủ")
         {
             if (PhotonNetwork.IsConnected)
             {
                 PhotonNetwork.NickName = playerName;
+                PhotonNetwork.LocalPlayer.SetCustomProperties(new ExitGames.Client.Photon.Hashtable
+                {
+                    { PLAYER_PROP_AVATAR, AvatarLibrary.Wrap(PlayerProfile.AvatarIndex) }
+                });
                 OnConnectedToMasterServer?.Invoke();
                 return;
             }
 
-            PhotonNetwork.NickName = string.IsNullOrEmpty(playerName) ? "Cơ Thủ" : playerName;
+            PhotonNetwork.NickName = string.IsNullOrEmpty(playerName) ? LocalizationManager.Get("default_player_name") : playerName;
+            PhotonNetwork.LocalPlayer.SetCustomProperties(new ExitGames.Client.Photon.Hashtable
+            {
+                { PLAYER_PROP_AVATAR, AvatarLibrary.Wrap(PlayerProfile.AvatarIndex) }
+            });
             PhotonNetwork.GameVersion = NetworkConstants.GAME_VERSION;
             Debug.Log($"[NetworkManager] Đang kết nối tới máy chủ Photon (Version: {NetworkConstants.GAME_VERSION}, Player: {PhotonNetwork.NickName})...");
             PhotonNetwork.ConnectUsingSettings();
@@ -70,7 +129,7 @@ namespace Game.Billiards.Network
         {
             if (!PhotonNetwork.IsConnectedAndReady)
             {
-                OnRoomCreateFailed?.Invoke("Chưa kết nối tới máy chủ Photon!");
+                OnRoomCreateFailed?.Invoke(LocalizationManager.Get("net_not_connected"));
                 return;
             }
 
@@ -129,13 +188,13 @@ namespace Game.Billiards.Network
         {
             if (!PhotonNetwork.IsConnectedAndReady)
             {
-                OnRoomJoinFailed?.Invoke("Chưa kết nối tới máy chủ Photon!");
+                OnRoomJoinFailed?.Invoke(LocalizationManager.Get("net_not_connected"));
                 return;
             }
 
             if (string.IsNullOrEmpty(roomId))
             {
-                OnRoomJoinFailed?.Invoke("Mã phòng không được để trống!");
+                OnRoomJoinFailed?.Invoke(LocalizationManager.Get("net_room_empty"));
                 return;
             }
 
@@ -196,10 +255,12 @@ namespace Game.Billiards.Network
                 return;
             }
 
-            // Đóng phòng và đổi trạng thái
+            // Đóng phòng, lưu dàn bi ban đầu và đổi trạng thái
+            int[] initialRack = Game.Billiards.Match.BallManager.GenerateWpaRackBallNumbersStatic();
             var props = new ExitGames.Client.Photon.Hashtable
             {
-                { NetworkConstants.PROP_ROOM_STATE, NetworkConstants.STATE_IN_MATCH }
+                { NetworkConstants.PROP_ROOM_STATE, NetworkConstants.STATE_IN_MATCH },
+                { NetworkConstants.PROP_RACK_BALLS, initialRack }
             };
             PhotonNetwork.CurrentRoom.SetCustomProperties(props);
             PhotonNetwork.CurrentRoom.IsOpen = false;
@@ -247,8 +308,8 @@ namespace Game.Billiards.Network
 
         public string GetPlayer2Name()
         {
-            if (!PhotonNetwork.InRoom) return "Đang đợi...";
-            if (PhotonNetwork.CurrentRoom.PlayerCount < 2) return "Đang đợi đối thủ...";
+            if (!PhotonNetwork.InRoom) return LocalizationManager.Get("net_waiting");
+            if (PhotonNetwork.CurrentRoom.PlayerCount < 2) return LocalizationManager.Get("net_waiting_opponent");
 
             var props = PhotonNetwork.CurrentRoom.CustomProperties;
             if (props.TryGetValue(NetworkConstants.PROP_P2_NAME, out object val) && !string.IsNullOrEmpty(val?.ToString()))
@@ -343,6 +404,15 @@ namespace Game.Billiards.Network
             }
 
             OnRemotePlayerLeft?.Invoke(otherPlayer);
+        }
+
+        public override void OnPlayerPropertiesUpdate(Player targetPlayer, ExitGames.Client.Photon.Hashtable changedProps)
+        {
+            // Avatar của người chơi đổi/đến muộn -> làm mới giao diện phòng
+            if (changedProps != null && changedProps.ContainsKey(PLAYER_PROP_AVATAR))
+            {
+                OnRoomPropertiesChanged?.Invoke();
+            }
         }
 
         public override void OnRoomPropertiesUpdate(ExitGames.Client.Photon.Hashtable propertiesThatChanged)

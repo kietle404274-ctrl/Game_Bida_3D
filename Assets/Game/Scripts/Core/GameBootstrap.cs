@@ -19,14 +19,15 @@ namespace Game.Billiards.Core
             StartCoroutine(BootRoutine());
         }
 
+        [Tooltip("Thời gian tối thiểu hiển thị màn hình khởi động (giây) để thanh tải chạy mượt")]
+        [SerializeField] private float minLoadSeconds = 3.5f;
+
         private IEnumerator BootRoutine()
         {
-            if (splashDelaySeconds > 0f)
-            {
-                yield return new WaitForSeconds(splashDelaySeconds);
-            }
-
-            SceneManager.LoadScene(targetInitialScene);
+            // Màn hình khởi động mới: ảnh nghệ thuật + thanh tải động theo tiến độ tải scene thật
+            Game.Billiards.UI.BootSplashUI splash = Game.Billiards.UI.BootSplashUI.Create();
+            splash.Begin(targetInitialScene, Mathf.Max(minLoadSeconds, splashDelaySeconds));
+            yield break;
         }
     }
 }

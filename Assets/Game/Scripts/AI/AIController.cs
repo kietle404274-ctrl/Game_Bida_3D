@@ -27,10 +27,10 @@ namespace Game.Billiards.AI
         [SerializeField] private BallInHandController ballInHandController;
 
         [Header("Pacing")]
-        [SerializeField] private float thinkDurationSeconds = 1.0f;
+        [SerializeField] private float thinkDurationSeconds = 0.35f;
         [Tooltip("Thời gian AI loay hoay ngắm (ngẫu nhiên trong khoảng này) trước khi đánh")]
-        [SerializeField] private float aimWanderMinSeconds = 2.0f;
-        [SerializeField] private float aimWanderMaxSeconds = 3.0f;
+        [SerializeField] private float aimWanderMinSeconds = 0.6f;
+        [SerializeField] private float aimWanderMaxSeconds = 1.0f;
 
         [Header("Debug")]
         [Tooltip("Bật để AI cố tình đánh bi cái xuống lỗ (scratch) mỗi lượt — dùng test đặt bi. Trong lúc chơi bấm F9 để bật/tắt.")]
@@ -48,6 +48,10 @@ namespace Game.Billiards.AI
         private void Awake()
         {
             ApplyDifficultyProfile();
+            // Ép buộc giới hạn nhịp độ tối đa để không bao giờ bị scene serialization cũ (1s suy nghĩ + 2-3s ngắm) ghi đè
+            thinkDurationSeconds = Mathf.Min(thinkDurationSeconds, 0.35f);
+            aimWanderMinSeconds = Mathf.Min(aimWanderMinSeconds, 0.5f);
+            aimWanderMaxSeconds = Mathf.Min(aimWanderMaxSeconds, 0.9f);
         }
 
         private void Update()
@@ -97,6 +101,10 @@ namespace Game.Billiards.AI
         private void ApplyDifficultyProfile()
         {
             currentProfile = AIDifficultyProfile.GetProfile(difficulty);
+            if (currentProfile != null)
+            {
+                Debug.Log($"[AIController] Đã nạp Profile độ khó: {currentProfile.displayName} (difficulty={difficulty}, MaxCutAngle={currentProfile.maxCutAngleDegrees}°, AimNoise={currentProfile.aimNoiseDegrees}°, PowerNoise={currentProfile.powerNoiseFraction:P0}, UsePositionPlay={currentProfile.usePositionPlay}, wPosition={currentProfile.wPosition}, AllowKick={currentProfile.allowKickShots}, AllowCombo={currentProfile.allowComboShots}, AllowBank={currentProfile.allowBankShots})");
+            }
         }
 
         private void SubscribeEvents()
@@ -248,16 +256,16 @@ namespace Game.Billiards.AI
 
         private IEnumerator AIAimingAndShotRoutine()
         {
-            bool isBreakNow = matchStateManager.State.turnSequence == 0 || matchStateManager.CurrentPhase == MatchPhase.BreakSetup;
+            // Mọi lượt của AI (kể cả cú phá bi) dùng camera góc nhìn đối thủ (thấy toàn bàn)
             if (cameraDirector != null)
-            {
-                // Cú phá bi: giữ camera đầu bàn nhìn vào dàn bi; các lượt thường: camera cuối bàn thấy toàn bàn
-                if (isBreakNow) cameraDirector.SwitchToAimCamera();
-                else cameraDirector.SwitchToOpponentCamera();
-            }
+                cameraDirector.SwitchToOpponentCamera();
 
             // Suy nghĩ trước khi ra quyết định
             yield return new WaitForSeconds(thinkDurationSeconds);
+
+            // Đặt lại camera đối thủ phòng khi intro dàn bi/handler khác đã chuyển về camera ngắm
+            if (cameraDirector != null && cameraDirector.CurrentState != CameraState.OpponentView)
+                cameraDirector.SwitchToOpponentCamera();
 
             if (!IsMyTurn() || (matchStateManager.CurrentPhase != MatchPhase.Aiming && matchStateManager.CurrentPhase != MatchPhase.BreakSetup))
             {
@@ -291,19 +299,57 @@ namespace Game.Billiards.AI
                     currentProfile
                 );
 
-                // Tạo phương án An Toàn (Safety)
-                var safetyCandidate = SafetyShotGenerator.GenerateBestSafety(
-                    cuePos, 
-                    matchStateManager.State, 
-                    ballManager, 
-                    tableWrapper, 
-                    currentProfile
-                );
-
                 List<ShotCandidate> allCandidates = new List<ShotCandidate>(potCandidates);
-                if (safetyCandidate != null)
+
+                // Thêm phương án đánh bi mượn (Combo Shots) nếu cấp độ cho phép
+                if (currentProfile != null && currentProfile.allowComboShots)
                 {
-                    allCandidates.Add(safetyCandidate);
+                    var comboCandidates = ShotCandidateGenerator.GenerateComboCandidates(
+                        cuePos,
+                        matchStateManager.State,
+                        ballManager,
+                        tableWrapper,
+                        currentProfile
+                    );
+                    if (comboCandidates != null && comboCandidates.Count > 0)
+                    {
+                        allCandidates.AddRange(comboCandidates);
+                    }
+                }
+
+                // Thêm phương án đánh bi mục tiêu dội băng vào lỗ (Bank Shots) nếu được phép
+                if (currentProfile != null && currentProfile.allowBankShots)
+                {
+                    var bankCandidates = ShotCandidateGenerator.GenerateBankCandidates(
+                        cuePos,
+                        matchStateManager.State,
+                        ballManager,
+                        tableWrapper,
+                        currentProfile
+                    );
+                    if (bankCandidates != null && bankCandidates.Count > 0)
+                    {
+                        allCandidates.AddRange(bankCandidates);
+                    }
+                }
+
+                // 4. Tuyệt đối KHÔNG DÙNG SAFETY SHOT (Chế độ Full Công):
+                // Nếu có bất kỳ cửa ăn bi nào (Ăn thẳng, Combo, Bắn băng) -> AI sẽ luôn tấn công dồn dập!
+                // Chỉ khi bị giấu bi hoàn toàn (0 cửa ăn) -> Mới dùng Kick Shot 1 băng để cứu bóng hợp lệ
+                ShotCandidate kickCandidate = null;
+                if (allCandidates.Count == 0 && currentProfile != null && currentProfile.allowKickShots)
+                {
+                    kickCandidate = KickShotPlanner.FindBestKickShot(
+                        cuePos,
+                        matchStateManager.State,
+                        ballManager,
+                        tableWrapper,
+                        currentProfile
+                    );
+                    if (kickCandidate != null)
+                    {
+                        allCandidates.Add(kickCandidate);
+                    }
                 }
 
                 chosenCandidate = UtilityEvaluator.SelectBestCandidate(allCandidates, currentProfile);
@@ -311,7 +357,12 @@ namespace Game.Billiards.AI
                 // Fallback nếu không tìm được ứng viên nào hợp lệ
                 if (chosenCandidate == null)
                 {
-                    chosenCandidate = safetyCandidate ?? GenerateFallbackShot(cuePos);
+                    chosenCandidate = kickCandidate ?? GenerateFallbackShot(cuePos);
+                }
+
+                if (chosenCandidate != null)
+                {
+                    Debug.Log($"[AIController] Decision: type={chosenCandidate.shotType}, target={chosenCandidate.targetBallNumber}, pocket={chosenCandidate.targetPocketId}, utility={chosenCandidate.finalUtilityScore:F2}, power={chosenCandidate.estimatedPower01:F2}");
                 }
             }
 
@@ -386,7 +437,7 @@ namespace Game.Billiards.AI
             }
 
             // Dừng ngắn trước khi hạ cơ đánh
-            yield return new WaitForSeconds(0.25f);
+            yield return new WaitForSeconds(0.15f);
 
             // 5. Thực thi cú đánh qua ShotExecutor (dùng chung pipeline với người chơi theo Rule A09)
             if (cueController != null)
@@ -423,15 +474,16 @@ namespace Game.Billiards.AI
             breakDir = breakDir.normalized;
 
             // Random nhẹ góc break theo profile
-            float breakPower = UnityEngine.Random.Range(0.85f, 0.98f);
+            float breakPower = UnityEngine.Random.Range(0.85f, 0.95f);
 
             return new ShotCandidate
             {
+                shotType = AIShotType.Break,
                 targetBallNumber = 1,
                 targetPocketId = -1,
                 aimDirection = breakDir,
                 estimatedPower01 = breakPower,
-                estimatedSpin = new Vector2(0f, 0.15f), // Topspin nhẹ
+                estimatedSpin = new Vector2(0f, 0.12f), // Topspin nhẹ
                 isSafety = false,
                 isLegalBreak = true,
                 finalUtilityScore = 1.0f
@@ -440,16 +492,48 @@ namespace Game.Billiards.AI
 
         private ShotCandidate GenerateFallbackShot(Vector3 cuePos)
         {
-            Vector3 forwardDir = Vector3.forward;
+            // 1. Thử tìm cú đánh kick shot qua băng chạm bi hợp lệ
+            if (currentProfile != null && currentProfile.allowKickShots && matchStateManager != null && ballManager != null && tableWrapper != null)
+            {
+                var kick = KickShotPlanner.FindBestKickShot(cuePos, matchStateManager.State, ballManager, tableWrapper, currentProfile);
+                if (kick != null) return kick;
+            }
+
+            // 2. Tìm bi hợp lệ gần nhất để ngắm trực diện với lực nhỏ (0.22) tránh văng bi và bảo đảm chạm luật
+            int bestTarget = -1;
+            Vector3 bestAimDir = Vector3.forward;
+            if (matchStateManager != null && ballManager != null)
+            {
+                var legalBalls = TableStateAnalyzer.GetLegalTargetBalls(matchStateManager.State, ballManager);
+                float closestDistSq = float.MaxValue;
+
+                foreach (int bNum in legalBalls)
+                {
+                    var b = ballManager.GetBall(bNum);
+                    if (b == null || b.IsPocketed) continue;
+
+                    Vector3 diff = b.transform.position - cuePos;
+                    diff.y = 0f;
+                    float distSq = diff.sqrMagnitude;
+                    if (distSq < closestDistSq && distSq > 0.001f)
+                    {
+                        closestDistSq = distSq;
+                        bestAimDir = diff.normalized;
+                        bestTarget = bNum;
+                    }
+                }
+            }
+
             return new ShotCandidate
             {
-                targetBallNumber = -1,
+                shotType = AIShotType.Safety,
+                targetBallNumber = bestTarget,
                 targetPocketId = -1,
-                aimDirection = forwardDir,
-                estimatedPower01 = 0.35f,
+                aimDirection = bestAimDir,
+                estimatedPower01 = 0.22f,
                 estimatedSpin = Vector2.zero,
-                isSafety = false,
-                finalUtilityScore = 0.1f
+                isSafety = true,
+                finalUtilityScore = 0.15f
             };
         }
     }

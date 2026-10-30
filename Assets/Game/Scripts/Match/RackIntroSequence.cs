@@ -312,7 +312,7 @@ namespace Game.Billiards.Match
             hint.alignment = TextAnchor.MiddleRight;
             hint.color = new Color(1f, 1f, 1f, 0f);
             hint.raycastTarget = false;
-            hint.text = "NHẤN SPACE ĐỂ BỎ QUA  ▶▶";
+            hint.text = LocalizationManager.Get("rack_intro_skip");
             var rt = hint.rectTransform;
             rt.anchorMin = new Vector2(1f, 0f);
             rt.anchorMax = new Vector2(1f, 0f);

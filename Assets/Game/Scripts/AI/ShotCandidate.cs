@@ -4,9 +4,24 @@ using Game.Billiards.Core;
 
 namespace Game.Billiards.AI
 {
+    public enum AIShotType
+    {
+        DirectPot,
+        Combination,
+        Bank,
+        Kick,
+        Safety,
+        Break
+    }
+
     [Serializable]
     public class ShotCandidate
     {
+        [Header("Tactical Shot Classification")]
+        public AIShotType shotType = AIShotType.DirectPot;
+        public int intermediateBallNumber = -1; // Bi A chạm đầu tiên trong cú combo
+        public Vector3 predictedCueStopPos; // Vị trí bi cái dự kiến dừng lại sau cú đánh
+
         [Header("Target & Goal")]
         public int targetBallNumber = -1;
         public int targetPocketId = -1;
@@ -52,11 +67,12 @@ namespace Game.Billiards.AI
 
                 // Thêm sai số lực
                 float powerNoise = UnityEngine.Random.Range(-profile.powerNoiseFraction, profile.powerNoiseFraction);
-                finalPower = Mathf.Clamp(finalPower + powerNoise, 0.05f, 1.0f);
+                float maxAllowed = (targetPocketId >= 0) ? 0.70f : 1.0f;
+                finalPower = Mathf.Clamp(finalPower + powerNoise, 0.08f, maxAllowed);
             }
 
-            int calledBall = isSafety || isLegalBreak ? -1 : targetBallNumber;
-            int calledPocket = isSafety || isLegalBreak ? -1 : targetPocketId;
+            int calledBall = (isSafety || isLegalBreak || targetPocketId < 0) ? -1 : targetBallNumber;
+            int calledPocket = (isSafety || isLegalBreak || targetPocketId < 0) ? -1 : targetPocketId;
 
             return new ShotCommand(
                 shooterActorId: actorId,
@@ -67,6 +83,11 @@ namespace Game.Billiards.AI
                 calledPocketId: calledPocket,
                 calledSafety: isSafety
             );
+        }
+
+        public ShotCandidate Clone()
+        {
+            return (ShotCandidate)this.MemberwiseClone();
         }
     }
 }

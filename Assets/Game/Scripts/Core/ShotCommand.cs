@@ -30,7 +30,10 @@ namespace Game.Billiards.Core
         [Tooltip("Số thứ tự lượt đánh (Turn sequence)")]
         public int turnSequence;
 
-        public ShotCommand(int shooterActorId, Vector3 direction, float power01, Vector2 cueContact01, int calledBallNumber = -1, int calledPocketId = -1, bool calledSafety = false, int turnSequence = 0)
+        [Tooltip("Góc nâng cơ so với mặt phẳng bàn (độ). 0 = đánh bình thường, lớn hơn ngưỡng = nhảy bi")]
+        public float cueElevationDeg;
+
+        public ShotCommand(int shooterActorId, Vector3 direction, float power01, Vector2 cueContact01, int calledBallNumber = -1, int calledPocketId = -1, bool calledSafety = false, int turnSequence = 0, float cueElevationDeg = 0f)
         {
             this.shooterActorId = shooterActorId;
             this.direction = new Vector3(direction.x, 0f, direction.z).normalized;
@@ -40,6 +43,7 @@ namespace Game.Billiards.Core
             this.calledPocketId = calledPocketId;
             this.calledSafety = calledSafety;
             this.turnSequence = turnSequence;
+            this.cueElevationDeg = Mathf.Clamp(cueElevationDeg, 0f, 90f);
         }
     }
 }

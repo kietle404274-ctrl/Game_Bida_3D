@@ -75,7 +75,11 @@ namespace Game.Billiards.UI
             if (pocketDropdown == null) return;
 
             pocketDropdown.ClearOptions();
-            List<string> options = new List<string>(pocketNames);
+            List<string> options = new List<string>();
+            for (int i = 0; i < 6; i++)
+            {
+                options.Add(LocalizationManager.GetPocketName(i));
+            }
             pocketDropdown.AddOptions(options);
         }
 
@@ -226,7 +230,7 @@ namespace Game.Billiards.UI
                     inputController.SetCallShot(ballNum, pocketId);
                     if (statusSummaryText != null)
                     {
-                        statusSummaryText.text = $"GỌI: Bi {ballNum} vào {pocketNames[pocketId]}";
+                        statusSummaryText.text = $"GỌI: Bi {ballNum} -> {LocalizationManager.GetPocketName(pocketId)}";
                         statusSummaryText.color = Color.white;
                     }
 

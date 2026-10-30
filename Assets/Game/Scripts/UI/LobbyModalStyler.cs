@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using Game.Billiards.Core;
 
 namespace Game.Billiards.UI
 {
@@ -65,7 +66,7 @@ namespace Game.Billiards.UI
             img.raycastTarget = false;
         }
 
-        private static void StyleSectionLabel(Text t)
+        public static void StyleSectionLabel(Text t)
         {
             string s = t.text ?? "";
             int paren = s.IndexOf('(');
@@ -111,6 +112,8 @@ namespace Game.Billiards.UI
             if (fx == null) fx = f.gameObject.AddComponent<InputFocusOutline>();
             fx.Init(f, frame, FieldLine, AccentGreen);
 
+            if (f.GetComponent<InputCaretFix>() == null) f.gameObject.AddComponent<InputCaretFix>();
+
             f.selectionColor = new Color(Accent.r, Accent.g, Accent.b, 0.45f);
             f.caretColor = Color.white;
             if (f.textComponent != null)
@@ -128,7 +131,7 @@ namespace Game.Billiards.UI
 
         // ------------------------------------------------------------------ dropdown
 
-        private static void StyleDropdown(Dropdown d)
+        public static void StyleDropdown(Dropdown d)
         {
             Image bg = d.GetComponent<Image>();
             if (bg != null)
@@ -398,7 +401,7 @@ namespace Game.Billiards.UI
             Place(modal.transform, "BtnClose", -280f, 44f, 520f);
 
             Text diffLabel = FindText(modal.transform, "DiffLabel");
-            if (diffLabel != null) diffLabel.text = "ĐỘ KHÓ";
+            if (diffLabel != null) diffLabel.text = LocalizationManager.Get("diff_level_header");
 
             HorizontalLayoutGroup hz = modal.transform.Find("DiffButtons")?.GetComponent<HorizontalLayoutGroup>();
             if (hz != null)
@@ -412,18 +415,18 @@ namespace Game.Billiards.UI
             }
 
             StyleModal(modal, Accent);
-            if (diffLabel != null) diffLabel.text = "ĐỘ KHÓ";
+            if (diffLabel != null) diffLabel.text = LocalizationManager.Get("diff_level_header");
             Text title = FindText(modal.transform, "Title");
-            if (title != null) title.text = "CẤU HÌNH ĐẤU VỚI AI";
+            if (title != null) title.text = LocalizationManager.Get("diff_title");
 
             // Nút bắt đầu: nhấn xanh lá
             Button start = modal.transform.Find("BtnStartMatch")?.GetComponent<Button>();
             if (start != null) TintHudButton(start, new Color(0.08f, 0.38f, 0.24f, 0.98f), AccentGreen);
 
             DifficultyCardUI[] cards = new DifficultyCardUI[3];
-            cards[0] = MakeCard(easy, AccentGreen, "DỄ", 1);
-            cards[1] = MakeCard(normal, AccentBlue, "TRUNG BÌNH", 2);
-            cards[2] = MakeCard(hard, AccentRed, "KHÓ", 3);
+            cards[0] = MakeCard(easy, AccentGreen, LocalizationManager.Get("diff_easy"), 1);
+            cards[1] = MakeCard(normal, AccentBlue, LocalizationManager.Get("diff_normal"), 2);
+            cards[2] = MakeCard(hard, AccentRed, LocalizationManager.Get("diff_hard"), 3);
             return cards;
         }
 

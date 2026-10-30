@@ -79,6 +79,41 @@ namespace Game.Billiards.Match
             }
         }
 
+        /// <summary>
+        /// Client online: áp kết thúc ván do Master thông báo. Tỉ số đã được Master gửi (gồm ván vừa thắng) nên KHÔNG cộng điểm lại,
+        /// chỉ ghi người thắng, cập nhật bảng điểm và phát sự kiện kết thúc ván/trận như RecordRackWin.
+        /// </summary>
+        public void ApplyRackEndFromMaster(int winnerIndex)
+        {
+            lastRackWinnerIndex = winnerIndex;
+            OnRackScoreChanged?.Invoke(matchState.playerARackWins, matchState.playerBRackWins);
+
+            int targetWins = (int)matchState.settings.raceTarget;
+            if (matchState.playerARackWins >= targetWins || matchState.playerBRackWins >= targetWins)
+            {
+                SetPhase(MatchPhase.MatchResult);
+                OnMatchWon?.Invoke(winnerIndex);
+            }
+            else
+            {
+                SetPhase(MatchPhase.RackResult);
+                OnRackEnded?.Invoke(winnerIndex == 0 ? RackOutcome.PlayerAWins : RackOutcome.PlayerBWins);
+            }
+        }
+
+        /// <summary>Xử thắng toàn bộ trận đấu ngay lập tức (dành cho trường hợp đối thủ rời trận hoặc đầu hàng trận đấu).</summary>
+        public void RecordMatchWon(int winnerIndex)
+        {
+            lastRackWinnerIndex = winnerIndex;
+            int targetWins = (int)matchState.settings.raceTarget;
+            if (winnerIndex == 0) matchState.playerARackWins = targetWins;
+            else matchState.playerBRackWins = targetWins;
+
+            OnRackScoreChanged?.Invoke(matchState.playerARackWins, matchState.playerBRackWins);
+            SetPhase(MatchPhase.MatchResult);
+            OnMatchWon?.Invoke(winnerIndex);
+        }
+
         public void StartNextRack()
         {
             matchState.rackNumber++;

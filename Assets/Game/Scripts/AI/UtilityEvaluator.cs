@@ -11,13 +11,13 @@ namespace Game.Billiards.AI
             if (candidate == null) return -999f;
             if (profile == null) profile = AIDifficultyProfile.NormalProfile;
 
+            // Full công: tập trung 100% vào ăn bi, khoảng cách gần lỗ, góc cắt, độ thoáng và điều bi
             float score = 
                 (profile.wPot * candidate.potFeasibility)
               + (profile.wAngle * candidate.angleScore)
               + (profile.wDistance * candidate.distanceScore)
               + (profile.wClearance * candidate.clearanceScore)
               + (profile.wPosition * candidate.cueBallPositionScore)
-              + (profile.wSafety * candidate.safetyScore)
               - (profile.wRisk * candidate.foulRisk);
 
             candidate.finalUtilityScore = score;
@@ -38,26 +38,19 @@ namespace Game.Billiards.AI
             // Sắp xếp theo thứ tự giảm dần của finalUtilityScore
             candidates.Sort((a, b) => b.finalUtilityScore.CompareTo(a.finalUtilityScore));
 
-            // Chọn candidate theo profile cấp độ khó
+            // Chọn candidate tốt nhất theo cấp độ
             switch (profile.difficulty)
             {
                 case AIDifficulty.Easy:
-                    // Easy: Chọn ngẫu nhiên trong top 3 candidate (nếu có) để tạo cảm giác tự nhiên, đôi khi chọn cú đánh phụ
-                    int poolSizeEasy = Mathf.Min(3, candidates.Count);
+                    // Easy: Chọn trong top 2 candidate
+                    int poolSizeEasy = Mathf.Min(2, candidates.Count);
                     int pickedIndexEasy = UnityEngine.Random.Range(0, poolSizeEasy);
                     return candidates[pickedIndexEasy];
 
                 case AIDifficulty.Normal:
-                    // Normal: 80% chọn top 1, 20% chọn top 2
-                    if (candidates.Count >= 2 && UnityEngine.Random.value < 0.2f)
-                    {
-                        return candidates[1];
-                    }
-                    return candidates[0];
-
                 case AIDifficulty.Hard:
                 default:
-                    // Hard: Luôn chọn candidate có Utility Score cao nhất
+                    // Normal & Hard: Luôn chọn phương án ăn bi ngon nhất, tối ưu nhất
                     return candidates[0];
             }
         }

@@ -22,6 +22,7 @@ namespace Game.Billiards.UI
         [SerializeField] private SettingsUI settingsUI;
         [SerializeField] private ResultUI resultUI;
         [SerializeField] private CueBallContactSelector contactSelector;
+        [SerializeField] private TurnSlideBannerUI turnSlideBanner;
 
         [Header("System References")]
         [SerializeField] private MatchStateManager matchStateManager;
@@ -53,6 +54,7 @@ namespace Game.Billiards.UI
         public SettingsUI Settings => settingsUI;
         public ResultUI Result => resultUI;
         public Button RulesButton => rulesButton;
+        public TurnSlideBannerUI TurnSlideBanner => turnSlideBanner;
 
         /// <summary>Các nút HUD (Hướng dẫn / Luật / Menu) cho hiệu ứng trượt vào khi bắt đầu trận.</summary>
         public System.Collections.Generic.IEnumerable<Button> EntranceButtons()
@@ -78,6 +80,57 @@ namespace Game.Billiards.UI
                 canvas.transform.localScale = Vector3.one;
             }
             FindSubPanelsIfMissing();
+
+            LocalizationManager.OnLanguageChanged -= UpdateActionButtonsOnly;
+            LocalizationManager.OnLanguageChanged += UpdateActionButtonsOnly;
+            UpdateActionButtonsOnly();
+        }
+
+        public void UpdateActionButtonsOnly()
+        {
+            SetHudButtonLabel(helpButton, LocalizationManager.Get("hud_help"), "H");
+            SetHudButtonLabel(rulesButton, LocalizationManager.Get("hud_rules"), "R");
+            SetHudButtonLabel(settingsButton, LocalizationManager.Get("hud_settings"), "ESC");
+        }
+
+        private static void SetHudButtonLabel(Button btn, string label, string keyHint = null)
+        {
+            if (btn == null) return;
+
+            // Ưu tiên tìm đúng GameObject "Label" của Button
+            Transform lbl = btn.transform.Find("Label");
+            Text labelText = lbl != null ? lbl.GetComponent<Text>() : null;
+
+            // Nếu không có child tên "Label", tìm Text con không phải là icon chữ "Q" (?)
+            if (labelText == null)
+            {
+                foreach (var t in btn.GetComponentsInChildren<Text>(true))
+                {
+                    if (t != null && t.gameObject.name != "Q")
+                    {
+                        labelText = t;
+                        break;
+                    }
+                }
+            }
+
+            if (labelText == null) labelText = btn.GetComponentInChildren<Text>(true);
+
+            if (labelText != null)
+            {
+                if (!string.IsNullOrEmpty(keyHint))
+                    labelText.text = label + "  <size=11><color=#FFC933>[" + keyHint + "]</color></size>";
+                else
+                    labelText.text = label;
+            }
+
+            // Đảm bảo icon dấu hỏi chấm '?' của nút Help không bị ghi đè nhầm
+            Transform qTrans = btn.transform.Find("Icon/Circle/Q");
+            if (qTrans != null)
+            {
+                Text qText = qTrans.GetComponent<Text>();
+                if (qText != null && qText.text != "?") qText.text = "?";
+            }
         }
 
         private void FindSubPanelsIfMissing()
@@ -105,6 +158,7 @@ namespace Game.Billiards.UI
             if (settingsUI == null) settingsUI = GetComponentInChildren<SettingsUI>(true);
             if (resultUI == null) resultUI = GetComponentInChildren<ResultUI>(true);
             if (contactSelector == null) contactSelector = FindObjectOfType<CueBallContactSelector>();
+            if (turnSlideBanner == null) turnSlideBanner = GetComponentInChildren<TurnSlideBannerUI>(true);
         }
 
         public void Initialize(MatchStateManager stateMgr, TurnManager tManager, PlayerInputController inputCtrl, BallManager bManager, BallMovementMonitor monitor, CueBallContactSelector cSelector = null)
@@ -154,11 +208,13 @@ namespace Game.Billiards.UI
 
             EnsureGameplayCanvasVisible();
 
-            if (eventToast != null && matchStateManager != null && matchStateManager.State != null)
+            if (turnSlideBanner == null) turnSlideBanner = TurnSlideBannerUI.Ensure(this);
+            if (turnSlideBanner != null && matchStateManager != null && matchStateManager.State != null)
             {
                 int cur = matchStateManager.State.currentPlayerIndex;
                 string pName = matchStateManager.State.players[cur].displayName;
-                eventToast.ShowToast("TRẬN ĐẤU BẮT ĐẦU!", $"LƯỢT BẮN: {pName} KHAI CUỘC (BREAK SHOT)!", new Color(0.06f, 0.73f, 0.51f, 0.95f), 3.0f);
+                bool isLocalPlayer = (cur == GetLocalPlayerIndex());
+                turnSlideBanner.ShowTurn(isLocalPlayer, pName);
             }
         }
 
@@ -251,10 +307,16 @@ namespace Game.Billiards.UI
                 movementMonitor.OnAllBallsSettled -= HandleAllBallsSettled;
                 movementMonitor.OnAllBallsSettled += HandleAllBallsSettled;
             }
+
+            LocalizationManager.OnLanguageChanged -= RefreshAllUI;
+            LocalizationManager.OnLanguageChanged += RefreshAllUI;
         }
 
         private void OnDestroy()
         {
+            LocalizationManager.OnLanguageChanged -= RefreshAllUI;
+            LocalizationManager.OnLanguageChanged -= UpdateActionButtonsOnly;
+
             if (matchStateManager != null)
             {
                 matchStateManager.OnPhaseChanged -= HandlePhaseChanged;
@@ -294,6 +356,7 @@ namespace Game.Billiards.UI
                     case "rules": if (rulesUI != null) rulesUI.Hide(); break;
                     case "settings": if (settingsUI != null) settingsUI.Hide(); break;
                     case "spin": if (contactSelector != null) contactSelector.SetOpen(false); break;
+                    case "elevation": if (CueElevationSelector.Instance != null) CueElevationSelector.Instance.SetOpen(false); break;
                     case "stats": if (statsPanel != null) statsPanel.Hide(); break;
                     default: if (settingsUI != null) settingsUI.Toggle(); break;
                 }
@@ -315,42 +378,64 @@ namespace Game.Billiards.UI
             }
         }
 
+        /// <summary>Chỉ số người chơi hiển thị ở thẻ TRÁI: Online = người chơi tại máy này; Offline = Player A (0).</summary>
+        private int LeftPlayerIndex
+        {
+            get
+            {
+                var session = GameSession.Instance;
+                if (session != null && session.CurrentGameMode == GameMode.OnlinePvP)
+                {
+                    var net = FindObjectOfType<Network.NetworkMatchManager>();
+                    if (net != null && net.IsOnlineMatch) return net.LocalPlayerIndex == 1 ? 1 : 0;
+                }
+                return 0;
+            }
+        }
+
+        private int RightPlayerIndex => 1 - LeftPlayerIndex;
+
+        private static int WinsOfPlayer(MatchState s, int idx) => idx == 0 ? s.playerARackWins : s.playerBRackWins;
+        private static PlayerGroup GroupOfPlayer(MatchState s, int idx) => idx == 0 ? s.playerAGroup : s.playerBGroup;
+
         public void RefreshAllUI()
         {
             if (matchStateManager == null || matchStateManager.State == null) return;
 
             MatchState state = matchStateManager.State;
+            int li = LeftPlayerIndex;
+            int ri = RightPlayerIndex;
 
-            // 1. Cập nhật Player Left (Player A)
+            // 1. Thẻ trái: người chơi tại máy này (Offline luôn là Player A)
             if (playerLeftPanel != null)
             {
-                playerLeftPanel.SetPlayerInfo(state.players[0].displayName);
-                playerLeftPanel.SetScore(state.playerARackWins);
-                playerLeftPanel.SetGroup(state.playerAGroup);
-                playerLeftPanel.SetTurnActive(state.currentPlayerIndex == 0);
+                playerLeftPanel.SetPlayerInfo(state.players[li].displayName);
+                playerLeftPanel.SetScore(WinsOfPlayer(state, li));
+                playerLeftPanel.SetGroup(GroupOfPlayer(state, li));
+                playerLeftPanel.SetTurnActive(state.currentPlayerIndex == li);
                 if (playerLeftPanel.BallTracker != null)
                 {
                     playerLeftPanel.BallTracker.UpdateBallsStatus(ballManager);
                 }
             }
 
-            // 2. Cập nhật Player Right (Player B / AI)
+            // 2. Thẻ phải: đối thủ (Player B / AI / người chơi online còn lại)
             if (playerRightPanel != null)
             {
-                playerRightPanel.SetPlayerInfo(state.players[1].displayName);
-                playerRightPanel.SetScore(state.playerBRackWins);
-                playerRightPanel.SetGroup(state.playerBGroup);
-                playerRightPanel.SetTurnActive(state.currentPlayerIndex == 1);
+                playerRightPanel.SetPlayerInfo(state.players[ri].displayName);
+                playerRightPanel.SetScore(WinsOfPlayer(state, ri));
+                playerRightPanel.SetGroup(GroupOfPlayer(state, ri));
+                playerRightPanel.SetTurnActive(state.currentPlayerIndex == ri);
                 if (playerRightPanel.BallTracker != null)
                 {
                     playerRightPanel.BallTracker.UpdateBallsStatus(ballManager);
                 }
             }
 
-            // 3. Cập nhật Header
+            // 3. Cập nhật Header (tỉ số theo thứ tự thẻ trái - thẻ phải)
             if (matchHeader != null)
             {
-                matchHeader.UpdateRackAndScore(state.rackNumber, state.playerARackWins, state.playerBRackWins, state.settings.raceTarget);
+                matchHeader.UpdateRackAndScore(state.rackNumber, WinsOfPlayer(state, li), WinsOfPlayer(state, ri), state.settings.raceTarget);
 
             }
 
@@ -359,6 +444,11 @@ namespace Game.Billiards.UI
             {
                 callShotUI.RefreshCallShotOptions();
             }
+
+            // 5. Cập nhật nhãn nút HUD & Intro banner
+            UpdateActionButtonsOnly();
+            if (matchStartTitleText != null) matchStartTitleText.text = LocalizationManager.Get("match_start_title");
+            if (matchStartReadyButton != null) SetHudButtonLabel(matchStartReadyButton, LocalizationManager.Get("match_start_btn"));
         }
 
         private void HandleTurnChanged(int newPlayerIndex)
@@ -368,17 +458,20 @@ namespace Game.Billiards.UI
             MatchState state = matchStateManager.State;
             string currentPlayerName = state.players[newPlayerIndex].displayName;
 
-            if (playerLeftPanel != null) playerLeftPanel.SetTurnActive(newPlayerIndex == 0);
-            if (playerRightPanel != null) playerRightPanel.SetTurnActive(newPlayerIndex == 1);
+            if (playerLeftPanel != null) playerLeftPanel.SetTurnActive(newPlayerIndex == LeftPlayerIndex);
+            if (playerRightPanel != null) playerRightPanel.SetTurnActive(newPlayerIndex == RightPlayerIndex);
 
             if (callShotUI != null)
             {
                 callShotUI.RefreshCallShotOptions();
             }
 
-            if (eventToast != null)
+            // Banner trượt màu xanh lam từ góc trên bên trái dưới hub tên
+            if (turnSlideBanner == null) turnSlideBanner = TurnSlideBannerUI.Ensure(this);
+            if (turnSlideBanner != null)
             {
-                eventToast.ShowTurnToast(currentPlayerName);
+                bool isLocalPlayer = (newPlayerIndex == GetLocalPlayerIndex());
+                turnSlideBanner.ShowTurn(isLocalPlayer, currentPlayerName);
             }
         }
 
@@ -401,12 +494,14 @@ namespace Game.Billiards.UI
             if (matchStateManager == null) return;
             MatchState state = matchStateManager.State;
 
-            if (playerLeftPanel != null) playerLeftPanel.SetScore(scoreA);
-            if (playerRightPanel != null) playerRightPanel.SetScore(scoreB);
+            int leftScore = LeftPlayerIndex == 0 ? scoreA : scoreB;
+            int rightScore = LeftPlayerIndex == 0 ? scoreB : scoreA;
+            if (playerLeftPanel != null) playerLeftPanel.SetScore(leftScore);
+            if (playerRightPanel != null) playerRightPanel.SetScore(rightScore);
 
             if (matchHeader != null)
             {
-                matchHeader.UpdateRackAndScore(state.rackNumber, scoreA, scoreB, state.settings.raceTarget);
+                matchHeader.UpdateRackAndScore(state.rackNumber, leftScore, rightScore, state.settings.raceTarget);
             }
         }
 
@@ -416,13 +511,48 @@ namespace Game.Billiards.UI
             MatchState state = matchStateManager.State;
 
             int winner = (outcome == RackOutcome.PlayerAWins) ? 0 : 1;
-            string winnerName = state.players[winner].displayName;
+            int localIdx = GetLocalPlayerIndex();
+            bool isLocalWinner = (winner == localIdx);
 
-            // Banner thắng ván nhanh rồi tự chuyển sang ván mới (không cần bấm nút)
-            FoulPopupUI.ShowWin($"{winnerName.ToUpper()}   {state.playerARackWins} - {state.playerBRackWins}", 2.0f);
+            string scoreText = LocalizationManager.Format("score_subtitle", state.playerARackWins, state.playerBRackWins);
+
+            // Banner thắng/thua ván: Thắng = Xanh lá ("BẠN THẮNG VÁN NÀY"), Thua = Đỏ ("BẠN THUA VÁN NÀY :((")
+            if (isLocalWinner)
+            {
+                FoulPopupUI.ShowRackWin(LocalizationManager.Get("rack_you_won"), scoreText, 2.2f);
+            }
+            else
+            {
+                FoulPopupUI.ShowRackLose(LocalizationManager.Get("rack_you_lost"), scoreText, 2.2f);
+            }
+
             HudModalState.ForceOpen("result");
             if (autoNextRackRoutine != null) StopCoroutine(autoNextRackRoutine);
             autoNextRackRoutine = StartCoroutine(AutoNextRackRoutine());
+        }
+
+        /// <summary>Xác định chỉ số của người chơi tại máy này (0 hoặc 1) hỗ trợ cả Offline và Online PvP.</summary>
+        private int GetLocalPlayerIndex()
+        {
+            var session = GameSession.Instance;
+            if (session != null && session.CurrentGameMode == GameMode.OnlinePvP)
+            {
+                var net = FindObjectOfType<Network.NetworkMatchManager>();
+                if (net != null) return net.LocalPlayerIndex;
+            }
+
+            if (matchStateManager != null && matchStateManager.State != null)
+            {
+                var players = matchStateManager.State.players;
+                if (players != null)
+                {
+                    for (int i = 0; i < players.Length; i++)
+                    {
+                        if (!players[i].isAI) return i;
+                    }
+                }
+            }
+            return 0;
         }
 
         private Coroutine autoNextRackRoutine;
@@ -445,6 +575,18 @@ namespace Game.Billiards.UI
         {
             RefreshAllUI();
             HudEntranceAnimator.Replay(this);
+
+            if (matchStateManager != null && matchStateManager.State != null)
+            {
+                int cur = matchStateManager.State.currentPlayerIndex;
+                string pName = matchStateManager.State.players[cur].displayName;
+                if (turnSlideBanner == null) turnSlideBanner = TurnSlideBannerUI.Ensure(this);
+                if (turnSlideBanner != null)
+                {
+                    bool isLocalPlayer = (cur == GetLocalPlayerIndex());
+                    turnSlideBanner.ShowTurn(isLocalPlayer, pName);
+                }
+            }
         }
 
         private void HandleMatchWon(int winnerIndex)
@@ -456,16 +598,58 @@ namespace Game.Billiards.UI
 
             if (eventToast != null)
             {
-                eventToast.ShowWinToast(winnerName, "VÔ ĐỊCH TOÀN BỘ TRẬN ĐẤU!");
+                eventToast.ShowWinToast(winnerName, LocalizationManager.Get("hud_match_champion"));
             }
 
             // Màn hình kết thúc trận mới (thống kê + nút Chơi lại / Về sảnh); dùng popup cũ nếu chưa có màn hình thống kê
             if (statsPanel != null && resultUI != null)
             {
-                statsPanel.ShowMatchResult(
-                    winnerIndex,
-                    () => { statsPanel.CloseResult(); resultUI.Rematch(); },
-                    () => { statsPanel.CloseResult(); resultUI.ReturnToLobby(); });
+                var net = FindObjectOfType<Network.NetworkMatchManager>();
+                bool online = net != null && net.IsOnlineMatch;
+
+                if (online && net.LocalDisconnected)
+                {
+                    // Máy này mất kết nối: thua cả trận, chỉ cho Về sảnh
+                    statsPanel.ShowMatchResult(
+                        winnerIndex,
+                        null,
+                        () => { statsPanel.CloseResult(); resultUI.ReturnToLobby(); },
+                        lobbyOnly: true,
+                        title: LocalizationManager.Get("net_lose_disconnect"));
+                }
+                else if (online && net.OpponentLeft)
+                {
+                    // Đối thủ đã rời trận: bảng thông số chỉ còn nút Về sảnh ở giữa, không có Chơi lại
+                    statsPanel.ShowMatchResult(
+                        winnerIndex,
+                        null,
+                        () => { statsPanel.CloseResult(); resultUI.ReturnToLobby(); },
+                        lobbyOnly: true);
+                }
+                else if (online)
+                {
+                    // Online: chỉ chủ phòng bấm Chơi lại (phát EVENT_REMATCH cho Client); Client chờ chủ phòng
+                    bool isMaster = net.IsMaster;
+                    statsPanel.ShowMatchResult(
+                        winnerIndex,
+                        () =>
+                        {
+                            if (!isMaster || net.OpponentLeft) return;
+                            net.BroadcastRematch();
+                            statsPanel.CloseResult();
+                            resultUI.Rematch();
+                        },
+                        () => { statsPanel.CloseResult(); resultUI.ReturnToLobby(); },
+                        rematchEnabled: isMaster,
+                        rematchLabel: isMaster ? null : LocalizationManager.Get("result_waiting_host"));
+                }
+                else
+                {
+                    statsPanel.ShowMatchResult(
+                        winnerIndex,
+                        () => { statsPanel.CloseResult(); resultUI.Rematch(); },
+                        () => { statsPanel.CloseResult(); resultUI.ReturnToLobby(); });
+                }
             }
             else if (resultUI != null)
             {
@@ -478,9 +662,9 @@ namespace Game.Billiards.UI
             if (matchStateManager == null) return;
             MatchState state = matchStateManager.State;
 
-            // Cập nhật nhóm bi nếu vừa được gán
-            if (playerLeftPanel != null) playerLeftPanel.SetGroup(state.playerAGroup);
-            if (playerRightPanel != null) playerRightPanel.SetGroup(state.playerBGroup);
+            // Cập nhật nhóm bi nếu vừa được gán (thẻ trái = người chơi tại máy này)
+            if (playerLeftPanel != null) playerLeftPanel.SetGroup(GroupOfPlayer(state, LeftPlayerIndex));
+            if (playerRightPanel != null) playerRightPanel.SetGroup(GroupOfPlayer(state, RightPlayerIndex));
 
             // Cập nhật trạng thái bi còn lại trong Ball Tracker
             if (playerLeftPanel != null && playerLeftPanel.BallTracker != null)
@@ -496,6 +680,38 @@ namespace Game.Billiards.UI
             if (result.HasFoul)
             {
                 FoulPopupUI.Show(result.foul);
+            }
+            else
+            {
+                // Kiểm tra cú phá bi khai cuộc (turnSequence == 0 trước khi increment)
+                bool isBreakShot = (state.turnSequence == 0);
+                int pocketedObjectCount = 0;
+                if (result.pocketedBalls != null)
+                {
+                    for (int i = 0; i < result.pocketedBalls.Count; i++)
+                    {
+                        int b = result.pocketedBalls[i];
+                        if (b >= 1 && b <= 15)
+                        {
+                            pocketedObjectCount++;
+                        }
+                    }
+                }
+
+                // Hiển thị thông báo khi phá bi có bi vào lỗ cho CẢ người chơi và đối thủ
+                if (isBreakShot && pocketedObjectCount > 0)
+                {
+                    bool isLocalShooter = (state.currentPlayerIndex == GetLocalPlayerIndex());
+                    string nextTurnSubtitle = isLocalShooter
+                        ? LocalizationManager.Get("turn_your_turn")
+                        : LocalizationManager.Format("turn_banner_opponent_sub_simple", state.players[state.currentPlayerIndex].displayName);
+
+                    FoulPopupUI.ShowBreakSuccess(
+                        LocalizationManager.Get("break_ball_pocketed_title"),
+                        nextTurnSubtitle,
+                        2.4f
+                    );
+                }
             }
         }
 
@@ -515,8 +731,8 @@ namespace Game.Billiards.UI
         private void HandleShotTimerTick(float remaining, float total)
         {
             int cur = matchStateManager != null ? matchStateManager.CurrentPlayerIndex : 0;
-            PlayerPanelUI active = cur == 0 ? playerLeftPanel : playerRightPanel;
-            PlayerPanelUI other = cur == 0 ? playerRightPanel : playerLeftPanel;
+            PlayerPanelUI active = cur == LeftPlayerIndex ? playerLeftPanel : playerRightPanel;
+            PlayerPanelUI other = cur == LeftPlayerIndex ? playerRightPanel : playerLeftPanel;
             if (active != null) active.SetTimer(remaining, total);
             if (other != null) other.ClearTimer();
         }
@@ -531,19 +747,21 @@ namespace Game.Billiards.UI
             switch (foul)
             {
                 case FoulType.CueBallScratch:
-                    return "Bi cái đã rơi xuống lỗ (Scratch).";
+                    return LocalizationManager.Get("foul_scratch");
                 case FoulType.WrongBallFirst:
-                    return "Bi cái chạm sai bi mục tiêu hoặc không chạm bi nào.";
+                    return LocalizationManager.Get("foul_wrong_ball");
+                case FoulType.NoBallHit:
+                    return LocalizationManager.Get("foul_no_ball_hit");
                 case FoulType.NoRailAfterContact:
-                    return "Không có bi nào chạm băng hoặc vào lỗ sau tiếp xúc.";
+                    return LocalizationManager.Get("foul_no_rail");
                 case FoulType.IllegalBreak:
-                    return "Khai cuộc không đủ 4 bi chạm băng hoặc không có bi vào lỗ.";
+                    return LocalizationManager.Get("foul_illegal_break");
                 case FoulType.BallDrivenOffTable:
-                    return "Có bi bị đánh văng ra khỏi bàn thi đấu.";
+                    return LocalizationManager.Get("foul_off_table");
                 case FoulType.ShotClockExpired:
-                    return "Hết thời gian đánh cho phép.";
+                    return LocalizationManager.Get("foul_timeout");
                 default:
-                    return "Phạm quy theo luật WPA 8-Ball.";
+                    return LocalizationManager.Get("foul_generic");
             }
         }
 
@@ -561,8 +779,8 @@ namespace Game.Billiards.UI
                 if (matchStateManager != null && matchStateManager.State != null)
                 {
                     var s = matchStateManager.State;
-                    string p1 = s.players.Length > 0 ? s.players[0].displayName : "CƠ THỦ 1 (BẠN)";
-                    string p2 = s.players.Length > 1 ? s.players[1].displayName : "CƠ THỦ 2 (AI)";
+                    string p1 = s.players.Length > 0 ? s.players[0].displayName : LocalizationManager.Get("hud_default_p1");
+                    string p2 = s.players.Length > 1 ? s.players[1].displayName : LocalizationManager.Get("hud_default_p2");
                     string breaker = s.currentPlayerIndex == 0 ? p1 : p2;
 
                     if (matchStartVersusText != null)
@@ -571,7 +789,7 @@ namespace Game.Billiards.UI
                     }
                     if (matchStartDetailsText != null)
                     {
-                        matchStartDetailsText.text = $"THỂ THỨC: RACE TO {(int)s.settings.raceTarget} (CHẠM {(int)s.settings.raceTarget})\nLUẬT THI ĐẤU: WPA 8-BALL QUỐC TẾ\nQUYỀN KHAI CUỘC: <b>{breaker.ToUpper()}</b>";
+                        matchStartDetailsText.text = $"{LocalizationManager.Format("match_start_format", (int)s.settings.raceTarget)}\n{LocalizationManager.Get("match_start_rules")}\n{LocalizationManager.Format("match_start_breaker", breaker.ToUpper())}";
                     }
                 }
             }
@@ -599,7 +817,7 @@ namespace Game.Billiards.UI
             {
                 int cur = matchStateManager.State.currentPlayerIndex;
                 string pName = matchStateManager.State.players[cur].displayName;
-                eventToast.ShowToast("TRẬN ĐẤU BẮT ĐẦU!", $"LƯỢT BẮN: {pName} KHAI CUỘC (BREAK SHOT)!", new Color(0.06f, 0.73f, 0.51f, 0.95f), 3.0f);
+                eventToast.ShowToast(LocalizationManager.Get("match_start_title"), $"{LocalizationManager.Get("turn_new_turn")}: {pName}!", new Color(0.06f, 0.73f, 0.51f, 0.95f), 3.0f);
             }
         }
     }

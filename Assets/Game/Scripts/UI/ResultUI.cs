@@ -44,40 +44,76 @@ namespace Game.Billiards.UI
         {
             HudModalState.ForceOpen("result"); if (resultModalRoot != null) resultModalRoot.SetActive(true);
 
-            string winnerName = (winnerIndex == 0) ? "CƠ THỦ 1 (PLAYER A)" : "CƠ THỦ 2 (PLAYER B / AI)";
+            string winnerName = (winnerIndex == 0) ? LocalizationManager.Get("hud_default_p1") : LocalizationManager.Get("hud_default_p2");
             if (matchStateManager != null && matchStateManager.State != null)
             {
                 winnerName = matchStateManager.State.players[winnerIndex].displayName;
             }
 
-            if (titleText != null) titleText.text = "KẾT THÚC VÁN ĐẤU (RACK END)";
-            if (winnerNameText != null) winnerNameText.text = $"{winnerName} CHIẾN THẮNG VÁN!";
-            if (scoreSummaryText != null) scoreSummaryText.text = $"TỈ SỐ HIỆN TẠI: {playerAScore} - {playerBScore} (Race to {(int)raceTarget})";
-            if (detailsText != null) detailsText.text = "Nhấn Ván Tiếp Theo để tiếp tục xếp bi và thi đấu ván mới.";
+            if (titleText != null) titleText.text = LocalizationManager.Get("result_rack_end_title");
+            if (winnerNameText != null) winnerNameText.text = LocalizationManager.Format("result_rack_win_text", winnerName);
+            if (scoreSummaryText != null) scoreSummaryText.text = LocalizationManager.Format("result_current_score", playerAScore, playerBScore, (int)raceTarget);
+            if (detailsText != null) detailsText.text = LocalizationManager.Get("result_next_rack_desc");
 
-            if (nextRackButton != null) nextRackButton.gameObject.SetActive(true);
+            var net = FindObjectOfType<Network.NetworkMatchManager>();
+            bool isOnline = (net != null && net.IsOnlineMatch);
+            bool isClient = isOnline && !net.IsMaster;
+
+            if (nextRackButton != null)
+            {
+                nextRackButton.gameObject.SetActive(true);
+                Text t = nextRackButton.GetComponentInChildren<Text>();
+                if (t != null)
+                {
+                    t.text = isClient ? LocalizationManager.Get("result_waiting_host") : LocalizationManager.Get("hud_next_rack");
+                }
+                nextRackButton.interactable = !isClient;
+            }
             if (rematchButton != null) rematchButton.gameObject.SetActive(false);
-            if (returnToLobbyButton != null) returnToLobbyButton.gameObject.SetActive(true);
+            if (returnToLobbyButton != null)
+            {
+                returnToLobbyButton.gameObject.SetActive(true);
+                Text t = returnToLobbyButton.GetComponentInChildren<Text>();
+                if (t != null) t.text = LocalizationManager.Get("hud_return_lobby");
+            }
         }
 
         public void ShowMatchResult(int winnerIndex, int finalScoreA, int finalScoreB)
         {
             HudModalState.ForceOpen("result"); if (resultModalRoot != null) resultModalRoot.SetActive(true);
 
-            string winnerName = (winnerIndex == 0) ? "CƠ THỦ 1 (PLAYER A)" : "CƠ THỦ 2 (PLAYER B / AI)";
+            string winnerName = (winnerIndex == 0) ? LocalizationManager.Get("hud_default_p1") : LocalizationManager.Get("hud_default_p2");
             if (matchStateManager != null && matchStateManager.State != null)
             {
                 winnerName = matchStateManager.State.players[winnerIndex].displayName;
             }
 
-            if (titleText != null) titleText.text = "TRẬN ĐẤU KẾT THÚC (MATCH OVER)";
-            if (winnerNameText != null) winnerNameText.text = $"🏆 {winnerName} CHIẾN THẮNG CHUNG CUỘC! 🏆";
-            if (scoreSummaryText != null) scoreSummaryText.text = $"TỈ SỐ CHUNG CUỘC: {finalScoreA} - {finalScoreB}";
-            if (detailsText != null) detailsText.text = "Chúc mừng nhà vô địch đã đạt đủ số ván thắng theo thể thức Race-to!";
+            if (titleText != null) titleText.text = LocalizationManager.Get("result_match_end_title");
+            if (winnerNameText != null) winnerNameText.text = LocalizationManager.Format("result_match_winner", winnerName);
+            if (scoreSummaryText != null) scoreSummaryText.text = LocalizationManager.Format("result_final_score", finalScoreA, finalScoreB);
+            if (detailsText != null) detailsText.text = LocalizationManager.Get("result_congrats");
+
+            var net = FindObjectOfType<Network.NetworkMatchManager>();
+            bool isOnline = (net != null && net.IsOnlineMatch);
+            bool isClient = isOnline && !net.IsMaster;
 
             if (nextRackButton != null) nextRackButton.gameObject.SetActive(false);
-            if (rematchButton != null) rematchButton.gameObject.SetActive(true);
-            if (returnToLobbyButton != null) returnToLobbyButton.gameObject.SetActive(true);
+            if (rematchButton != null)
+            {
+                rematchButton.gameObject.SetActive(true);
+                Text t = rematchButton.GetComponentInChildren<Text>();
+                if (t != null)
+                {
+                    t.text = isClient ? LocalizationManager.Get("result_waiting_host") : LocalizationManager.Get("hud_rematch");
+                }
+                rematchButton.interactable = !isClient;
+            }
+            if (returnToLobbyButton != null)
+            {
+                returnToLobbyButton.gameObject.SetActive(true);
+                Text t = returnToLobbyButton.GetComponentInChildren<Text>();
+                if (t != null) t.text = LocalizationManager.Get("hud_return_lobby");
+            }
         }
 
         public void Hide()
@@ -88,6 +124,12 @@ namespace Game.Billiards.UI
 
         private void OnNextRackClicked()
         {
+            var net = FindObjectOfType<Network.NetworkMatchManager>();
+            if (net != null && net.IsOnlineMatch)
+            {
+                if (!net.IsMaster) return; // Chỉ chủ phòng mới có quyền bấm chuyển ván
+                net.BroadcastNextRack();
+            }
             AdvanceToNextRack();
         }
 
@@ -96,7 +138,10 @@ namespace Game.Billiards.UI
         {
             Hide();
             HudModalState.ForceOpen("result");
-            if (ballManager != null)
+            // Client online: dàn bi mới do Master đồng bộ (EVENT_RACK_SYNC); tự xếp ngẫu nhiên ở đây có thể ghi đè dàn bi đó
+            var netMgr = FindObjectOfType<Network.NetworkMatchManager>();
+            bool onlineClient = netMgr != null && netMgr.IsOnlineMatch && !netMgr.IsMaster;
+            if (ballManager != null && !onlineClient)
             {
                 ballManager.ResetRack();
             }
@@ -110,8 +155,29 @@ namespace Game.Billiards.UI
             });
         }
 
+        /// <summary>Client nhận lệnh chuyển ván từ Master: đóng popup, phát hoạt cảnh intro (dàn bi được Master đồng bộ qua EVENT_RACK_SYNC).</summary>
+        public void AdvanceToNextRackFromMaster()
+        {
+            Hide();
+            HudModalState.ForceOpen("result");
+            PlayIntroThen(() =>
+            {
+                HudModalState.Release("result");
+                if (matchStateManager != null)
+                {
+                    matchStateManager.StartNextRack();
+                }
+            });
+        }
+
         private void OnRematchClicked()
         {
+            var net = FindObjectOfType<Network.NetworkMatchManager>();
+            if (net != null && net.IsOnlineMatch)
+            {
+                if (!net.IsMaster) return; // Chỉ chủ phòng mới có quyền bấm đấu lại
+                net.BroadcastRematch();
+            }
             Rematch();
         }
 
@@ -123,6 +189,21 @@ namespace Game.Billiards.UI
             {
                 ballManager.ResetRack();
             }
+            PlayIntroThen(() =>
+            {
+                if (matchStateManager != null)
+                {
+                    var st = matchStateManager.State;
+                    matchStateManager.Initialize(st.settings, st.players[0].displayName, st.players[1].displayName, st.players[1].isAI);
+                    matchStateManager.RaiseRackStarted();
+                }
+            });
+        }
+
+        /// <summary>Client nhận lệnh đấu lại từ Master.</summary>
+        public void RematchFromMaster()
+        {
+            Hide();
             PlayIntroThen(() =>
             {
                 if (matchStateManager != null)
@@ -162,7 +243,7 @@ namespace Game.Billiards.UI
             }
             else
             {
-                UnityEngine.SceneManagement.SceneManager.LoadScene("Lobby");
+                Game.Billiards.Core.GameSession.GetOrCreateInstance().LoadLobbyScene();
             }
         }
     }

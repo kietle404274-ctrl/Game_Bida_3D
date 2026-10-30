@@ -188,10 +188,10 @@ namespace Game.Billiards.Editor
                     return false;
                 }
 
-                // 2. Không chạm bất kỳ bi nào (firstContactBall = -1) -> Lỗi WrongBallFirst
+                // 2. Không chạm bất kỳ bi nào (firstContactBall = -1) -> Lỗi NoBallHit
                 ShotResult rawNoHit = new ShotResult { firstContactBall = -1 };
                 ShotResult evalNoHit = ruleEngine.EvaluateShot(cmd, rawNoHit, matchState, ballManager);
-                if (evalNoHit.foul != FoulType.WrongBallFirst)
+                if (evalNoHit.foul != FoulType.NoBallHit)
                 {
                     Debug.LogError("[Test 3 FAILED] Đánh trượt không chạm bi nào không bị phạt foul!");
                     foreach (var b in balls) UnityEngine.Object.DestroyImmediate(b);
