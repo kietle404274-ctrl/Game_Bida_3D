@@ -249,8 +249,11 @@ namespace Game.Billiards.UI
         }
 
         /// <summary>
-        /// Quét một hình cầu bán kính bằng bi cái dọc hướng ngắm, trả về vật cản đầu tiên là bi khác hoặc băng bàn.
-        /// Bỏ qua trigger (lỗ), bi cái và các bề mặt gần như nằm ngang (mặt nỉ).
+        /// Tính giao điểm đầu tiên dọc hướng ngắm:
+        /// - Với các bi mục tiêu trên bàn: giải giao điểm hình học phẳng XZ chính xác với khoảng cách tâm đúng bằng 2R
+        ///   (không dùng bán kính thu nhỏ 0.98R để tránh lệch góc cắt và tránh bỏ sót các góc cắt mỏng 82°-90°).
+        /// - Với thành băng bàn: quét SphereCastAll để lấy điểm chạm băng gần nhất.
+        /// Trả về vật cản nào có khoảng cách gần hơn.
         /// </summary>
         private bool FindFirstHit(Vector3 origin, Vector3 dir, float radius, BallController cueBall,
             out float distance, out BallController targetBall, out Vector3 normal)
@@ -259,37 +262,89 @@ namespace Game.Billiards.UI
             targetBall = null;
             normal = Vector3.zero;
 
+            // 1. Tìm giao điểm chính xác với các quả bi mục tiêu (khoảng cách tâm đúng bằng 2R trên mặt phẳng XZ)
+            float bestBallDist = float.MaxValue;
+            BallController bestBall = null;
+            float twoR = radius * 2f;
+            float twoRSq = twoR * twoR;
+
+            var allBalls = ballManager != null ? ballManager.AllBalls : null;
+            if (allBalls != null)
+            {
+                for (int i = 0; i < allBalls.Length; i++)
+                {
+                    var b = allBalls[i];
+                    if (b == null || b == cueBall || b.IsPocketed || !b.gameObject.activeInHierarchy)
+                        continue;
+
+                    Vector3 bPos = b.transform.position;
+                    Vector3 toBall = new Vector3(bPos.x - origin.x, 0f, bPos.z - origin.z);
+                    float proj = Vector3.Dot(toBall, dir);
+                    if (proj <= 0f)
+                        continue;
+
+                    float perpSq = toBall.sqrMagnitude - proj * proj;
+                    if (perpSq >= twoRSq)
+                        continue;
+
+                    float hitDist = proj - Mathf.Sqrt(Mathf.Max(0f, twoRSq - perpSq));
+                    if (hitDist >= 0f && hitDist < bestBallDist && hitDist <= maxDistance)
+                    {
+                        bestBallDist = hitDist;
+                        bestBall = b;
+                    }
+                }
+            }
+
+            // 2. Tìm giao điểm đầu tiên với thành băng bàn (bỏ qua các bi, trigger lỗ và mặt nỉ)
+            float bestCushionDist = float.MaxValue;
+            Vector3 bestCushionNormal = Vector3.zero;
+
             RaycastHit[] hits = UnityEngine.Physics.SphereCastAll(origin, radius * 0.98f, dir, maxDistance,
                 ~0, QueryTriggerInteraction.Ignore);
-            if (hits == null || hits.Length == 0) return false;
-
-            Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
-
-            for (int i = 0; i < hits.Length; i++)
+            if (hits != null && hits.Length > 0)
             {
-                var h = hits[i];
-                if (h.collider == null) continue;
+                Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
 
-                var ball = h.collider.GetComponentInParent<BallController>();
-                if (ball != null)
+                for (int i = 0; i < hits.Length; i++)
                 {
-                    if (ball == cueBall || ball.IsPocketed) continue;
-                    distance = h.distance;
-                    targetBall = ball;
-                    normal = h.normal;
-                    return true;
+                    var h = hits[i];
+                    if (h.collider == null) continue;
+
+                    // Đã giải giao điểm chính xác 2R cho bi ở bước 1 nên bỏ qua collider của bi tại đây
+                    if (h.collider.GetComponentInParent<BallController>() != null) continue;
+
+                    // Bỏ qua mặt nỉ / sàn (pháp tuyến hướng lên)
+                    if (Mathf.Abs(h.normal.y) > 0.6f) continue;
+                    if (h.distance <= 0.0001f) continue;
+
+                    // Chỉ nhận va chạm khi tia ngắm thực sự lao vào bề mặt (hướng ngược pháp tuyến: dot < 0).
+                    // Bỏ qua các bề mặt mở rộng xuôi theo hướng tia ngắm (như má vát mở rộng của lỗ góc).
+                    if (Vector3.Dot(dir, h.normal) >= -0.05f) continue;
+
+                    bestCushionDist = h.distance;
+                    bestCushionNormal = h.normal;
+                    break;
                 }
+            }
 
-                // Bỏ qua mặt nỉ / sàn (pháp tuyến hướng lên)
-                if (Mathf.Abs(h.normal.y) > 0.6f) continue;
-                if (h.distance <= 0.0001f) continue;
+            // 3. Chọn vật cản gần hơn giữa Bi mục tiêu và Băng bàn
+            if (bestBall != null && bestBallDist <= bestCushionDist)
+            {
+                distance = bestBallDist;
+                targetBall = bestBall;
+                Vector3 ghost = origin + dir * bestBallDist;
+                Vector3 targetCenter = bestBall.transform.position;
+                Vector3 n = new Vector3(ghost.x - targetCenter.x, 0f, ghost.z - targetCenter.z);
+                normal = n.sqrMagnitude > 1e-10f ? n.normalized : -dir;
+                return true;
+            }
 
-                // Chỉ nhận va chạm khi tia ngắm thực sự lao vào bề mặt (hướng ngược pháp tuyến: dot < 0).
-                // Bỏ qua các bề mặt mở rộng xuôi theo hướng tia ngắm (như má vát mở rộng của lỗ góc).
-                if (Vector3.Dot(dir, h.normal) >= -0.05f) continue;
-
-                distance = h.distance;
-                normal = h.normal;
+            if (bestCushionDist <= maxDistance)
+            {
+                distance = bestCushionDist;
+                targetBall = null;
+                normal = bestCushionNormal;
                 return true;
             }
 

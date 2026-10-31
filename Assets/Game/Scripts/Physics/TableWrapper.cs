@@ -51,6 +51,7 @@ namespace Game.Billiards.Physics
             if (Mathf.Abs(headStringX) > 0.52f) headStringX = 0.502f;
             if (Mathf.Abs(footSpot.x) > 0.52f) footSpot = new Vector3(-0.502f, clothSurfaceY + 0.02855f, 0f);
             if (Mathf.Abs(headSpot.x) > 0.52f) headSpot = new Vector3(0.502f, clothSurfaceY + 0.02855f, 0f);
+            if (cornerMouthRetreat > 0.005f) cornerMouthRetreat = 0.002f;
 
             EnsureClothBedCollider();
         }
@@ -58,9 +59,9 @@ namespace Game.Billiards.Physics
         [Tooltip("Độ nảy của mặt nỉ khi bi hạ cánh sau cú nhảy (bi lăn thường bị khóa trục Y nên không bị ảnh hưởng)")]
         [SerializeField] private float clothBounce = 0.25f;
 
-        [Tooltip("Đoạn (m) lùi mũi băng ở 4 lỗ góc ra xa lỗ để nới miệng lỗ. 0.017 -> miệng ~10.5cm (model 3D gốc ~8.1cm). Tăng để lỗ dễ vào hơn.")]
+        [Tooltip("Đoạn (m) lùi điểm bắt đầu vát góc (p1) so với mũi băng 3D. Giữ nhỏ (0.002m) để mặt băng thẳng khớp 100% với model 3D, không cản bi chạy sát băng.")]
         [Range(0f, 0.03f)]
-        [SerializeField] private float cornerMouthRetreat = 0.017f;
+        [SerializeField] private float cornerMouthRetreat = 0.002f;
 
         public void EnsureClothBedCollider()
         {
@@ -94,12 +95,17 @@ namespace Game.Billiards.Physics
                 bedGo.transform.localPosition = new Vector3(0f, clothSurfaceY - 0.01f, 0f);
                 var box = bedGo.AddComponent<BoxCollider>();
                 box.size = new Vector3(playableHalfLength * 2f + 0.15f, 0.02f, playableHalfWidth * 2f + 0.15f);
+                box.contactOffset = 0.0002f;
                 box.sharedMaterial = clothMat;
             }
             else
             {
                 var box = existingBed.GetComponent<BoxCollider>();
-                if (box != null) box.sharedMaterial = clothMat;
+                if (box != null)
+                {
+                    box.contactOffset = 0.0002f;
+                    box.sharedMaterial = clothMat;
+                }
             }
 
             // 2. Tạo hệ thống BoxCollider thành băng vuông góc phẳng (chuẩn cao su băng giải đấu: bounciness 0.78, friction 0.12)
@@ -153,11 +159,13 @@ namespace Game.Billiards.Physics
 
             // Tọa độ mép mũi băng cao su 3D thực tế của model bàn (Visual Cushion Nose)
             // Đo đạc thực tế từ mesh 3D: Foot X = -1.0724m, Head X = +1.0603m, Side Z = ±0.5023m
+            if (cornerMouthRetreat > 0.005f) cornerMouthRetreat = 0.002f;
             float yCenter = clothSurfaceY + 0.02855f;
             float boxH = 0.12f;
             float thick = 0.06f; // Độ dày 6cm đảm bảo mũi băng nối liền chính xác với má vát lỗ góc
-            // Lùi mũi băng ở 4 lỗ góc ra xa lỗ một đoạn a để miệng lỗ đủ rộng (model 3D chỉ hở ~8.1cm giữa 2 mũi băng)
+            // Giữ điểm đầu mũi băng (a = cornerMouthRetreat = 2mm) sát với góc vát 3D để bi đi sát băng không bị vấp má vát sớm
             float a = cornerMouthRetreat;
+            float aThroat = Mathf.Max(a, 0.010f); // Mở rộng đáy cổ lỗ góc thêm 10mm để tạo phễu đón bi mượt mà
             float shortSpanZ = 0.8934f - 2f * a; // Chiều dài tiếp xúc băng ngắn (nối liền 2 mũi vát lỗ góc tại Z = ±(0.4467 - a))
 
             // Vật liệu tiếp xúc lòng lỗ và thành giữ bi (giảm nảy để bi rơi êm ái vào lỗ)
@@ -204,40 +212,44 @@ namespace Game.Billiards.Physics
                 new Vector3(sideLen, boxH, thick), cushionMat);
 
             // 5. Má băng vát tại 4 lỗ góc (Corner Pocket Facings / Jaws)
-            // Khớp chính xác 100% với 2 mép vát mũi băng 3D tại mỗi lỗ góc
-            // Ngăn chặn hoàn toàn hiện tượng bi xuyên qua mép băng khi bắn sượt mép lỗ
+            // Điểm p1 lùi nhẹ 0.5mm (0.0005m) vào trong thân băng so với mặt phẳng băng chính để triệt tiêu hoàn toàn
+            // hiện tượng gờ nối (ghost vertex) khi bi lăn sát băng đi qua điểm chuyển tiếp vào miệng lỗ.
             float facingThickness = 0.030f;
 
-            // Lỗ góc 0: FootLeft (-X, +Z)
-            // Mỗi má vát được dịch nguyên đoạn đi a dọc theo băng (ra xa lỗ) để khớp với băng đã bị cắt ngắn, không hở khe
-            Vector2 shFootPos = new Vector2(0f, -a);   // băng ngắn, lỗ ở +Z
-            Vector2 shFootNeg = new Vector2(0f, a);    // băng ngắn, lỗ ở -Z
-            Vector2 shSideFoot = new Vector2(a, 0f);   // băng dài phía Foot (-X)
-            Vector2 shSideHead = new Vector2(-a, 0f);  // băng dài phía Head (+X)
+            // Độ dịch tại điểm mũi p1 (a) và điểm đáy họng lỗ p2 (aThroat)
+            Vector2 shFootPos1 = new Vector2(0f, -a);
+            Vector2 shFootPos2 = new Vector2(0f, -aThroat);
+            Vector2 shFootNeg1 = new Vector2(0f, a);
+            Vector2 shFootNeg2 = new Vector2(0f, aThroat);
+            Vector2 shSideFoot1 = new Vector2(a, 0f);
+            Vector2 shSideFoot2 = new Vector2(aThroat, 0f);
+            Vector2 shSideHead1 = new Vector2(-a, 0f);
+            Vector2 shSideHead2 = new Vector2(-aThroat, 0f);
 
-            CreateFacingBox(rootGo, "Facing_Pocket0_Foot", new Vector2(-1.0724f, 0.4467f) + shFootPos, new Vector2(-1.1294f, 0.4944f) + shFootPos, new Vector2(-0.642f, -0.767f), yCenter, boxH, facingThickness, cushionMat);
-            CreateFacingBox(rootGo, "Facing_Pocket0_Side", new Vector2(-1.0140f, 0.5023f) + shSideFoot, new Vector2(-1.0635f, 0.5596f) + shSideFoot, new Vector2(0.757f, 0.654f), yCenter, boxH, facingThickness, cushionMat);
+            // Lỗ góc 0: FootLeft (-X, +Z) - lùi p1 3.5mm vào thân băng (-1.0759 / +0.5058) để vượt ngoài tổng contactOffset bi+băng (3.0mm)
+            CreateFacingBox(rootGo, "Facing_Pocket0_Foot", new Vector2(-1.0759f, 0.4467f) + shFootPos1, new Vector2(-1.1329f, 0.4944f) + shFootPos2, new Vector2(-0.642f, -0.767f), yCenter, boxH, facingThickness, cushionMat);
+            CreateFacingBox(rootGo, "Facing_Pocket0_Side", new Vector2(-1.0140f, 0.5058f) + shSideFoot1, new Vector2(-1.0635f, 0.5631f) + shSideFoot2, new Vector2(0.757f, 0.654f), yCenter, boxH, facingThickness, cushionMat);
 
             // Lỗ góc 1: FootRight (-X, -Z)
-            CreateFacingBox(rootGo, "Facing_Pocket1_Foot", new Vector2(-1.0724f, -0.4467f) + shFootNeg, new Vector2(-1.1294f, -0.4944f) + shFootNeg, new Vector2(-0.642f, 0.767f), yCenter, boxH, facingThickness, cushionMat);
-            CreateFacingBox(rootGo, "Facing_Pocket1_Side", new Vector2(-1.0140f, -0.5023f) + shSideFoot, new Vector2(-1.0635f, -0.5596f) + shSideFoot, new Vector2(0.757f, -0.654f), yCenter, boxH, facingThickness, cushionMat);
+            CreateFacingBox(rootGo, "Facing_Pocket1_Foot", new Vector2(-1.0759f, -0.4467f) + shFootNeg1, new Vector2(-1.1329f, -0.4944f) + shFootNeg2, new Vector2(-0.642f, 0.767f), yCenter, boxH, facingThickness, cushionMat);
+            CreateFacingBox(rootGo, "Facing_Pocket1_Side", new Vector2(-1.0140f, -0.5058f) + shSideFoot1, new Vector2(-1.0635f, -0.5631f) + shSideFoot2, new Vector2(0.757f, -0.654f), yCenter, boxH, facingThickness, cushionMat);
 
             // Lỗ góc 4: HeadLeft (+X, +Z)
-            CreateFacingBox(rootGo, "Facing_Pocket4_Head", new Vector2(1.0603f, 0.4467f) + shFootPos, new Vector2(1.1173f, 0.4944f) + shFootPos, new Vector2(0.642f, -0.767f), yCenter, boxH, facingThickness, cushionMat);
-            CreateFacingBox(rootGo, "Facing_Pocket4_Side", new Vector2(1.0020f, 0.5023f) + shSideHead, new Vector2(1.0515f, 0.5596f) + shSideHead, new Vector2(-0.757f, 0.654f), yCenter, boxH, facingThickness, cushionMat);
+            CreateFacingBox(rootGo, "Facing_Pocket4_Head", new Vector2(1.0638f, 0.4467f) + shFootPos1, new Vector2(1.1208f, 0.4944f) + shFootPos2, new Vector2(0.642f, -0.767f), yCenter, boxH, facingThickness, cushionMat);
+            CreateFacingBox(rootGo, "Facing_Pocket4_Side", new Vector2(1.0020f, 0.5058f) + shSideHead1, new Vector2(1.0515f, 0.5631f) + shSideHead2, new Vector2(-0.757f, 0.654f), yCenter, boxH, facingThickness, cushionMat);
 
             // Lỗ góc 5: HeadRight (+X, -Z)
-            CreateFacingBox(rootGo, "Facing_Pocket5_Head", new Vector2(1.0603f, -0.4467f) + shFootNeg, new Vector2(1.1173f, -0.4944f) + shFootNeg, new Vector2(0.642f, 0.767f), yCenter, boxH, facingThickness, cushionMat);
-            CreateFacingBox(rootGo, "Facing_Pocket5_Side", new Vector2(1.0020f, -0.5023f) + shSideHead, new Vector2(1.0515f, -0.5596f) + shSideHead, new Vector2(-0.757f, -0.654f), yCenter, boxH, facingThickness, cushionMat);
+            CreateFacingBox(rootGo, "Facing_Pocket5_Head", new Vector2(1.0638f, -0.4467f) + shFootNeg1, new Vector2(1.1208f, -0.4944f) + shFootNeg2, new Vector2(0.642f, 0.767f), yCenter, boxH, facingThickness, cushionMat);
+            CreateFacingBox(rootGo, "Facing_Pocket5_Side", new Vector2(1.0020f, -0.5058f) + shSideHead1, new Vector2(1.0515f, -0.5631f) + shSideHead2, new Vector2(-0.757f, -0.654f), yCenter, boxH, facingThickness, cushionMat);
 
             // Má lỗ giữa (Side Pocket Jaws)
-            // Dời ra ngoài 12mm để góc thấp nhất của má không còn lấn vào mặt bàn (z = ±0.5023)
-            float jawZ = 0.543f;
-            CreateRotatedBox(rootGo, "Jaw_SideLeft_Foot", new Vector3(-0.067f, yCenter, jawZ), new Vector3(0f, 18f, 0f), new Vector3(0.04f, boxH, 0.07f), cushionMat);
-            CreateRotatedBox(rootGo, "Jaw_SideLeft_Head", new Vector3(0.055f, yCenter, jawZ), new Vector3(0f, -18f, 0f), new Vector3(0.04f, boxH, 0.07f), cushionMat);
-
-            CreateRotatedBox(rootGo, "Jaw_SideRight_Foot", new Vector3(-0.067f, yCenter, -jawZ), new Vector3(0f, -18f, 0f), new Vector3(0.04f, boxH, 0.07f), cushionMat);
-            CreateRotatedBox(rootGo, "Jaw_SideRight_Head", new Vector3(0.055f, yCenter, -jawZ), new Vector3(0f, 18f, 0f), new Vector3(0.04f, boxH, 0.07f), cushionMat);
+            // Nối từ điểm cuối của băng dài (X = -0.0760m và X = +0.0640m, lùi 3.5mm tại Z = ±0.5058m)
+            // mở vào họng lỗ giữa (Z = ±0.5589m), toàn bộ bề dày hộp nằm gọn trong thân băng (normalIntoRail).
+            float sideJawThickness = 0.025f;
+            CreateFacingBox(rootGo, "Jaw_SideLeft_Foot",  new Vector2(-0.0760f,  0.5058f), new Vector2(-0.0575f,  0.5589f), new Vector2(-0.950f,  0.313f), yCenter, boxH, sideJawThickness, cushionMat);
+            CreateFacingBox(rootGo, "Jaw_SideLeft_Head",  new Vector2( 0.0640f,  0.5058f), new Vector2( 0.0454f,  0.5589f), new Vector2( 0.950f,  0.313f), yCenter, boxH, sideJawThickness, cushionMat);
+            CreateFacingBox(rootGo, "Jaw_SideRight_Foot", new Vector2(-0.0760f, -0.5058f), new Vector2(-0.0575f, -0.5589f), new Vector2(-0.950f, -0.313f), yCenter, boxH, sideJawThickness, cushionMat);
+            CreateFacingBox(rootGo, "Jaw_SideRight_Head", new Vector2( 0.0640f, -0.5058f), new Vector2( 0.0454f, -0.5589f), new Vector2( 0.950f, -0.313f), yCenter, boxH, sideJawThickness, cushionMat);
 
             // 6. Thành giữ bi & lòng lỗ (Pocket Liners / Backstops)
             // Đảm bảo mọi quả bi lọt vào miệng lỗ đều bị giữ lại trong lòng lỗ, không bao giờ văng xuyên thành bàn
@@ -288,6 +300,7 @@ namespace Game.Billiards.Physics
             go.transform.localPosition = pos;
             var box = go.AddComponent<BoxCollider>();
             box.size = size;
+            box.contactOffset = 0.0002f;
             box.sharedMaterial = mat;
         }
 
@@ -299,6 +312,7 @@ namespace Game.Billiards.Physics
             go.transform.localEulerAngles = eulerAngles;
             var box = go.AddComponent<BoxCollider>();
             box.size = size;
+            box.contactOffset = 0.0002f;
             box.sharedMaterial = mat;
         }
 
@@ -308,10 +322,24 @@ namespace Game.Billiards.Physics
             float length = tangent.magnitude;
             if (length < 0.001f) return;
 
+            Vector2 tUnit = tangent / length;
+            // Pháp tuyến vuông góc tuyệt đối với đoạn thẳng (p1, p2) và hướng vào trong thân băng
+            Vector2 normal = new Vector2(-tUnit.y, tUnit.x);
+            if (Vector2.Dot(normal, normalIntoRail) < 0f)
+            {
+                normal = -normal;
+            }
+
             Vector2 mid = (p1 + p2) * 0.5f;
-            Vector2 normal = normalIntoRail.normalized;
             Vector3 center = new Vector3(mid.x + normal.x * (thickness * 0.5f), yCenter, mid.y + normal.y * (thickness * 0.5f));
-            float rotY = Mathf.Atan2(tangent.x, tangent.y) * Mathf.Rad2Deg;
+            float rotY = Mathf.Atan2(tUnit.x, tUnit.y) * Mathf.Rad2Deg;
+
+            // Đảm bảo trục +X cục bộ (transform.right) luôn hướng ra ngoài mặt va chạm (-normal)
+            Vector2 rightXZ = new Vector2(tUnit.y, -tUnit.x);
+            if (Vector2.Dot(rightXZ, -normal) < 0f)
+            {
+                rotY += 180f;
+            }
 
             CreateRotatedBox(parent, name, center, new Vector3(0f, rotY, 0f), new Vector3(thickness, boxH, length), mat);
         }

@@ -255,7 +255,16 @@ namespace Game.Billiards.Match
             if (isActive) HideCueStick();
 
             if (!isActive) { arrowsWanted = false; SetArrowsVisible(false); ApplyCueBallTint(false); return; }
-            if ((InputBlockedPredicate != null && InputBlockedPredicate()) || Game.Billiards.UI.HudModalState.IsModalOpen) { arrowsWanted = false; SetArrowsVisible(false); ApplyCueBallTint(false); return; }
+            if ((InputBlockedPredicate != null && InputBlockedPredicate())
+                || Game.Billiards.UI.HudModalState.IsModalOpen
+                || Game.Billiards.UI.OnlineChatUI.IsChatOpen
+                || Game.Billiards.UI.OnlineChatUI.IsTyping)
+            {
+                arrowsWanted = false;
+                SetArrowsVisible(false);
+                ApplyCueBallTint(false);
+                return;
+            }
 
             // Lưu ý: không xoay góc nhìn bằng chuột khi đặt bi — camera top-down giữ nguyên hướng
 

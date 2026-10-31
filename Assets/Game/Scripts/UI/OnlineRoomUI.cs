@@ -150,6 +150,7 @@ namespace Game.Billiards.UI
                 NetworkManager.Instance.OnRemotePlayerJoined += HandleRemotePlayerChanged;
                 NetworkManager.Instance.OnRemotePlayerLeft += HandleRemotePlayerChanged;
                 NetworkManager.Instance.OnRoomPropertiesChanged += RefreshRoomUI;
+                NetworkManager.Instance.OnDisconnectedFromServer += HandleDisconnectedFromServer;
             }
         }
 
@@ -166,6 +167,7 @@ namespace Game.Billiards.UI
                 NetworkManager.Instance.OnRemotePlayerJoined -= HandleRemotePlayerChanged;
                 NetworkManager.Instance.OnRemotePlayerLeft -= HandleRemotePlayerChanged;
                 NetworkManager.Instance.OnRoomPropertiesChanged -= RefreshRoomUI;
+                NetworkManager.Instance.OnDisconnectedFromServer -= HandleDisconnectedFromServer;
             }
         }
 
@@ -319,7 +321,13 @@ namespace Game.Billiards.UI
         {
             if (connectOverlay == null || onlineRootPanel == null || !onlineRootPanel.activeInHierarchy) return;
 
-            bool connected = NetworkManager.Instance == null || NetworkManager.Instance.IsConnected;
+            ClientState state = PhotonNetwork.NetworkClientState;
+            bool isTransitioningToRoom = state == ClientState.Joining
+                || state == ClientState.Authenticating
+                || state == ClientState.ConnectingToGameServer
+                || state == ClientState.DisconnectingFromMasterServer;
+
+            bool connected = NetworkManager.Instance == null || NetworkManager.Instance.IsConnected || isTransitioningToRoom;
             if (connected)
             {
                 if (connectOverlay.activeSelf) { connectOverlay.SetActive(false); UpdateConnectionStatusUI(); }
@@ -391,22 +399,40 @@ namespace Game.Billiards.UI
                 useWpaRules = true
             };
 
-            if (connectionStatusText != null) connectionStatusText.text = LocalizationManager.Get("online_creating");
+            if (connectionStatusText != null)
+            {
+                connectionStatusText.gameObject.SetActive(true);
+                connectionStatusText.text = LocalizationManager.Get("online_creating");
+            }
             NetworkManager.Instance.CreateRoom("", settings);
         }
 
         private void OnJoinRoomClicked()
         {
-            string code = (joinRoomCodeInput != null) ? joinRoomCodeInput.text.Trim() : "";
+            string rawCode = (joinRoomCodeInput != null) ? joinRoomCodeInput.text.Trim() : "";
+            string code = NetworkManager.NormalizeRoomId(rawCode);
             if (string.IsNullOrEmpty(code))
             {
-                if (connectionStatusText != null) connectionStatusText.text = $"<color=red>{LocalizationManager.Get("online_id_invalid")}</color>";
+                if (connectionStatusText != null)
+                {
+                    connectionStatusText.gameObject.SetActive(true);
+                    connectionStatusText.text = $"<color=red>{LocalizationManager.Get("online_id_invalid")}</color>";
+                }
                 return;
+            }
+
+            if (joinRoomCodeInput != null)
+            {
+                joinRoomCodeInput.SetTextWithoutNotify(code);
             }
 
             if (NetworkManager.Instance != null) NetworkManager.Instance.ApplyLocalProfile();
 
-            if (connectionStatusText != null) connectionStatusText.text = LocalizationManager.Format("online_joining", code);
+            if (connectionStatusText != null)
+            {
+                connectionStatusText.gameObject.SetActive(true);
+                connectionStatusText.text = LocalizationManager.Format("online_joining", code);
+            }
             NetworkManager.Instance.JoinRoom(code);
         }
 
@@ -445,6 +471,7 @@ namespace Game.Billiards.UI
 
         private void HandleRoomJoined(string roomName)
         {
+            if (connectionStatusText != null) connectionStatusText.gameObject.SetActive(false);
             ShowRoomSubPanel();
         }
 
@@ -452,6 +479,7 @@ namespace Game.Billiards.UI
         {
             if (connectionStatusText != null)
             {
+                connectionStatusText.gameObject.SetActive(true);
                 connectionStatusText.text = $"<color=red>{LocalizationManager.Format("online_join_failed", msg)}</color>";
             }
         }
@@ -460,6 +488,7 @@ namespace Game.Billiards.UI
         {
             if (connectionStatusText != null)
             {
+                connectionStatusText.gameObject.SetActive(true);
                 connectionStatusText.text = $"<color=red>{LocalizationManager.Format("online_create_failed", msg)}</color>";
             }
         }
@@ -467,6 +496,12 @@ namespace Game.Billiards.UI
         private void HandleRoomLeft()
         {
             ShowLobbySubPanel();
+        }
+
+        private void HandleDisconnectedFromServer(DisconnectCause cause)
+        {
+            ShowLobbySubPanel();
+            UpdateConnectionStatusUI();
         }
 
         private void HandleRemotePlayerChanged(Player p)

@@ -55,6 +55,8 @@ namespace Game.Billiards.Core
             { "settings_title", new[] { "CÀI ĐẶT", "SETTINGS", "PARAMÈTRES", "AJUSTES", "設定", "설정", "设置" } },
             { "settings_master", new[] { "ÂM LƯỢNG TỔNG", "MASTER VOLUME", "VOLUME PRINCIPAL", "VOLUMEN PRINCIPAL", "マスター音量", "마스터 볼륨", "主音量" } },
             { "settings_music", new[] { "ÂM LƯỢNG NHẠC", "MUSIC VOLUME", "MUSIQUE", "MÚSICA", "BGM音量", "배경음악", "音乐音量" } },
+            { "music_track_1", new[] { "Nhạc nền 1", "BGM Track 1", "Musique 1", "Música 1", "BGM 1", "배경음악 1", "背景音乐 1" } },
+            { "music_track_2", new[] { "Nhạc nền 2", "BGM Track 2", "Musique 2", "Música 2", "BGM 2", "배경음악 2", "背景音乐 2" } },
             { "settings_sfx", new[] { "HIỆU ỨNG ÂM THANH", "SOUND EFFECTS", "EFFETS SONORES", "EFECTOS DE SONIDO", "SE音量", "효과음", "音效音量" } },
             { "settings_language", new[] { "NGÔN NGỮ (LANGUAGE)", "LANGUAGE (NGÔN NGỮ)", "LANGUE (LANGUAGE)", "IDIOMA (LANGUAGE)", "言語 (LANGUAGE)", "언어 (LANGUAGE)", "语言 (LANGUAGE)" } },
             { "settings_close", new[] { "ĐÓNG", "CLOSE", "FERMER", "CERRAR", "閉じる", "닫기", "关闭" } },
@@ -409,6 +411,8 @@ namespace Game.Billiards.Core
             { "stats_opponent_left", new[] { "ĐỐI THỦ ĐÃ RỜI TRẬN ĐẤU", "OPPONENT LEFT THE MATCH", "L'ADVERSAIRE A QUITTÉ LE MATCH", "EL OPONENTE ABANDONÓ LA PARTIDA", "対戦相手が退出しました", "상대방이 경기를 떠났습니다", "对手已离开比赛" } },
             { "net_win_disconnect", new[] { "Đối thủ ({0}) đã mất kết nối! Bạn giành chiến thắng trận đấu.", "Opponent ({0}) disconnected! You win the match.", "L'adversaire ({0}) s'est déconnecté ! Victoire.", "¡Oponente ({0}) desconectado! Ganas la partida.", "対戦相手({0})の接続が切断されました！あなたの勝利です。", "상대방({0}) 연결이 끊겼습니다! 당신이 승리했습니다.", "对手（{0}）断开连接！您赢得了比赛。" } },
             { "net_lose_disconnect", new[] { "Bạn đã bị ngắt kết nối khỏi máy chủ! Trận đấu kết thúc.", "You were disconnected from server! Match over.", "Déconnecté du serveur ! Fin du match.", "¡Te has desconectado del servidor! Fin de la partida.", "サーバーから切断されました！試合を終了します。", "서버와의 연결이 끊어졌습니다! 경기가 종료됩니다.", "与服务器断开连接！比赛结束。" } },
+            { "net_weak_syncing", new[] { "Mạng yếu - Đang đồng bộ...", "Weak signal - Synchronizing...", "Signal faible - Synchronisation...", "Señal débil - Sincronizando...", "通信不安定 - 同期中...", "네트워크 불안정 - 동기화 중...", "网络信号弱 - 正在同步..." } },
+            { "net_connection_unstable", new[] { "Mất kết nối mạng - Đang kiểm tra...", "Connection lost - Checking...", "Connexion perdue - Vérification...", "Conexión perdida - Comprobando...", "接続が切れました - 確認中...", "네트워크 연결 끊김 - 확인 중...", "网络连接断开 - 正在检测..." } },
             { "online_join_failed", new[] { "Vào phòng thất bại: {0}", "Failed to join room: {0}", "Échec de connexion au salon : {0}", "Fallo al unirse a la sala: {0}", "ルーム参加に失敗しました: {0}", "방 참가 실패: {0}", "加入房间失败：{0}" } },
             { "online_create_failed", new[] { "Tạo phòng thất bại: {0}", "Failed to create room: {0}", "Échec de création du salon : {0}", "Fallo al crear la sala: {0}", "ルーム作成に失敗しました: {0}", "방 생성 실패: {0}", "创建房间失败：{0}" } },
             { "net_not_connected", new[] { "Chưa kết nối tới máy chủ Photon!", "Not connected to Photon server!", "Non connecté au serveur Photon !", "¡No conectado al servidor Photon!", "Photonサーバーに未接続です！", "Photon 서버에 연결되지 않았습니다!", "尚未连接到服务器！" } },
@@ -417,7 +421,23 @@ namespace Game.Billiards.Core
             { "net_waiting_opponent", new[] { "Đang đợi đối thủ...", "Waiting for opponent...", "En attente d'un adversaire...", "Esperando oponente...", "対戦相手を待っています...", "상대방 대기 중...", "等待对手..." } },
             { "result_waiting_host", new[] { "CHỜ CHỦ PHÒNG...", "WAITING FOR HOST...", "EN ATTENTE DE L'HÔTE...", "ESPERANDO AL ANFITRIÓN...", "ホスト待機中...", "호스트 대기 중...", "等待房主..." } },
             { "call_safety_opponent", new[] { "Đối thủ chọn đánh An Toàn (Safety)", "Opponent declared Safety", "L'adversaire a joué la sécurité", "El oponente declaró seguridad", "相手がセーフティを選択", "상대가 세이프티를 선언함", "对手声明安全球" } },
-            { "call_shot_opponent_format", new[] { "Đối thủ gọi: Bi {0} -> {1}", "Opponent called: Ball {0} -> {1}", "Appel adverse: Bille {0} -> {1}", "Llamada rival: Bola {0} -> {1}", "相手のコール: 球 {0} -> {1}", "상대 콜: 공 {0} -> {1}", "对手指定: {0}号球 -> {1}" } }
+            { "call_shot_opponent_format", new[] { "Đối thủ gọi: Bi {0} -> {1}", "Opponent called: Ball {0} -> {1}", "Appel adverse: Bille {0} -> {1}", "Llamada rival: Bola {0} -> {1}", "相手のコール: 球 {0} -> {1}", "상대 콜: 공 {0} -> {1}", "对手指定: {0}号球 -> {1}" } },
+
+            // ===== ONLINE REALTIME CHAT & VOICE CHAT =====
+            { "chat_title", new[] { "TRÒ CHUYỆN", "LIVE CHAT", "DISCUSSION", "CHAT EN VIVO", "チャット", "실시간 채팅", "实时聊天" } },
+            { "chat_placeholder", new[] { "Nhập tin nhắn...", "Type a message...", "Écrire un message...", "Escribe un mensaje...", "メッセージを入力...", "메시지 입력...", "输入消息..." } },
+            { "chat_send", new[] { "GỬI", "SEND", "ENVOYER", "ENVIAR", "送信", "전송", "发送" } },
+            { "chat_hint_collapsed", new[] { "Nhấn [0] để chat", "Press [0] to chat", "Touche [0] pour discuter", "Pulsa [0] para chatear", "[0]でチャット", "[0] 키로 채팅", "按 [0] 键聊天" } },
+            { "chat_you", new[] { "Bạn", "You", "Vous", "Tú", "あなた", "나", "你" } },
+            { "help_chat", new[] { "Trò chuyện Online", "Online chat", "Chat en ligne", "Chat en línea", "チャット開閉", "실시간 채팅", "在线聊天" } },
+            { "voice_mic_short", new[] { "MIC", "MIC", "MIC", "MIC", "マイク", "마이크", "麦克风" } },
+            { "voice_speaker_short", new[] { "LOA", "SPK", "HP", "ALT", "スピーカー", "스피커", "扬声器" } },
+            { "voice_on_short", new[] { "BẬT", "ON", "ON", "ON", "ON", "켜짐", "开" } },
+            { "voice_off_short", new[] { "TẮT", "OFF", "OFF", "OFF", "OFF", "꺼짐", "关" } },
+            { "settings_mic_vol", new[] { "ÂM LƯỢNG MIC", "MIC VOLUME", "VOLUME MICRO", "VOLUMEN MICRÓFONO", "マイク音量", "마이크 볼륨", "麦克风音量" } },
+            { "settings_speaker_vol", new[] { "ÂM LƯỢNG LOA THOẠI", "VOICE SPEAKER VOLUME", "VOLUME ÉCOUTE", "VOLUMEN ALTAVOZ VOZ", "ボイス音量", "음성 스피커 볼륨", "语音扬声器音量" } },
+            { "help_mic", new[] { "Bật / tắt Mic đàm thoại", "Toggle Voice Mic", "Activer / couper micro", "Alternar micrófono", "マイク ON/OFF", "마이크 켜기/끄기", "开关麦克风" } },
+            { "help_speaker", new[] { "Bật / tắt Loa đàm thoại", "Toggle Voice Speaker", "Activer / couper audio voix", "Alternar altavoz voz", "スピーカー ON/OFF", "스피커 켜기/끄기", "开关语音扬声器" } }
         };
 
         static LocalizationManager()

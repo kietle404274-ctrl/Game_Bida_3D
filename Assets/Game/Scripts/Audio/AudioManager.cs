@@ -17,6 +17,7 @@ namespace Game.Billiards.Audio
         [SerializeField] private AudioSource sfxMainSource;
         [SerializeField] private AudioSource uiSource;
         [SerializeField] private AudioSource musicSource;
+        private AudioSource timerSource;
 
         [Header("SFX Polyphony Pool")]
         [SerializeField] private int sfxPoolSize = 6;
@@ -26,6 +27,13 @@ namespace Game.Billiards.Audio
         private float masterVolume = 1.0f;
         private float sfxVolume = 1.0f;
         private float musicVolume = 0.8f;
+        private int selectedMusicTrack = 0;
+
+        // Theo dõi năng lượng âm thanh game (BGM + SFX) để khử vọng vào Mic & tự động giảm nhạc nền (Auto-Ducking) khi đàm thoại
+        private float voiceDuckFactor = 0f; // 0: bình thường, 1: đang đàm thoại (giảm nhạc nền để ưu tiên giọng nói)
+        private float sfxImpulseEnvelope = 0f;
+        private float lastSfxImpulseTime = -10f;
+        private readonly float[] musicProbeBuf = new float[128];
 
         private float lastButtonClickTime = -1f;
         private static readonly List<RaycastResult> raycastResults = new List<RaycastResult>();
@@ -33,6 +41,9 @@ namespace Game.Billiards.Audio
         public float MasterVolume => masterVolume;
         public float SFXVolume => sfxVolume;
         public float MusicVolume => musicVolume;
+        public int SelectedMusicTrack => selectedMusicTrack;
+        public float SfxImpulseEnvelope => sfxImpulseEnvelope;
+        public float LastSfxImpulseTime => lastSfxImpulseTime;
         public AudioLibrary Library => audioLibrary;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -116,6 +127,13 @@ namespace Game.Billiards.Audio
                 musicSource.loop = true;
             }
 
+            if (timerSource == null)
+            {
+                timerSource = gameObject.AddComponent<AudioSource>();
+                timerSource.playOnAwake = false;
+                timerSource.loop = false;
+            }
+
             // Tạo pool AudioSource cho các va chạm bi đồng thời
             sfxPool.Clear();
             for (int i = 0; i < sfxPoolSize; i++)
@@ -128,6 +146,11 @@ namespace Game.Billiards.Audio
 
         private void Update()
         {
+            if (sfxImpulseEnvelope > 0f)
+            {
+                sfxImpulseEnvelope = Mathf.MoveTowards(sfxImpulseEnvelope, 0f, Time.unscaledDeltaTime * 4.2f);
+            }
+
             // Tự động phát âm thanh khi click vào bất kỳ nút bấm UI nào (Button, Toggle)
             if (UnityEngine.Input.GetMouseButtonDown(0))
             {
@@ -155,7 +178,12 @@ namespace Game.Billiards.Audio
 
         public void PlayMusic(AudioClip clip = null)
         {
-            AudioClip targetClip = clip != null ? clip : (audioLibrary != null ? audioLibrary.BackgroundMusicClip : null);
+            if (audioLibrary == null)
+            {
+                audioLibrary = Resources.Load<AudioLibrary>("DefaultAudioLibrary");
+            }
+
+            AudioClip targetClip = clip != null ? clip : (audioLibrary != null ? audioLibrary.GetMusicClip(selectedMusicTrack) : null);
             if (targetClip == null) return;
 
             if (musicSource == null)
@@ -169,10 +197,21 @@ namespace Game.Billiards.Audio
                 return; // Đang phát bài này rồi
             }
 
+            float musicDuck = Mathf.Lerp(1.0f, 0.18f, voiceDuckFactor);
+            musicSource.Stop();
             musicSource.clip = targetClip;
+            musicSource.time = 0f;
             musicSource.loop = true;
-            musicSource.volume = musicVolume * masterVolume;
+            musicSource.volume = musicVolume * masterVolume * musicDuck;
             musicSource.Play();
+        }
+
+        public void SetMusicTrack(int trackIndex)
+        {
+            selectedMusicTrack = Mathf.Clamp(trackIndex, 0, 1);
+            PlayerPrefs.SetInt("Music_Track", selectedMusicTrack);
+            PlayerPrefs.Save();
+            PlayMusic();
         }
 
         public void StopMusic()
@@ -195,6 +234,7 @@ namespace Game.Billiards.Audio
             masterVolume = PlayerPrefs.GetFloat("Volume_Master", 1.0f);
             musicVolume = PlayerPrefs.GetFloat("Volume_Music", 0.8f);
             sfxVolume = PlayerPrefs.GetFloat("Volume_SFX", 1.0f);
+            selectedMusicTrack = Mathf.Clamp(PlayerPrefs.GetInt("Music_Track", 0), 0, 1);
 
             ApplyVolumes();
         }
@@ -202,13 +242,67 @@ namespace Game.Billiards.Audio
         private void ApplyVolumes()
         {
             AudioListener.volume = masterVolume;
-            if (musicSource != null) musicSource.volume = musicVolume * masterVolume;
-            if (sfxMainSource != null) sfxMainSource.volume = sfxVolume * masterVolume;
-            if (uiSource != null) uiSource.volume = sfxVolume * masterVolume;
+            float musicDuck = Mathf.Lerp(1.0f, 0.18f, voiceDuckFactor);
+            float sfxDuck = Mathf.Lerp(1.0f, 0.55f, voiceDuckFactor);
+
+            if (musicSource != null) musicSource.volume = musicVolume * masterVolume * musicDuck;
+            if (sfxMainSource != null) sfxMainSource.volume = sfxVolume * masterVolume * sfxDuck;
+            if (uiSource != null) uiSource.volume = sfxVolume * masterVolume * sfxDuck;
+            if (timerSource != null) timerSource.volume = sfxVolume * masterVolume * sfxDuck;
 
             foreach (var src in sfxPool)
             {
-                if (src != null) src.volume = sfxVolume * masterVolume;
+                if (src != null) src.volume = sfxVolume * masterVolume * sfxDuck;
+            }
+        }
+
+        /// <summary>
+        /// Điều chỉnh mức giảm âm lượng nhạc nền & SFX khi đang đàm thoại (0 = không giảm, 1 = giảm tối đa khi có người nói).
+        /// Giúp giọng nói nghe to, rõ ràng và ngăn tiếng nhạc nền dội ngược vào Microphone.
+        /// </summary>
+        public void SetVoiceDuckingFactor(float duck01)
+        {
+            float clamped = Mathf.Clamp01(duck01);
+            if (Mathf.Abs(voiceDuckFactor - clamped) < 0.01f) return;
+            voiceDuckFactor = clamped;
+            ApplyVolumes();
+        }
+
+        /// <summary>
+        /// Đo mức năng lượng âm thanh (BGM + SFX) hiện tại của game đang phát ra loa để bộ lọc Mic khử tiếng game.
+        /// </summary>
+        public float GetCurrentGameAudioLevel()
+        {
+            float musicRms = 0f;
+            if (musicSource != null && musicSource.isPlaying && musicSource.volume > 0.001f)
+            {
+                try
+                {
+                    musicSource.GetOutputData(musicProbeBuf, 0);
+                    float sumSq = 0f;
+                    for (int i = 0; i < musicProbeBuf.Length; i++)
+                    {
+                        float s = musicProbeBuf[i];
+                        sumSq += s * s;
+                    }
+                    musicRms = Mathf.Sqrt(sumSq / musicProbeBuf.Length) * musicSource.volume;
+                }
+                catch
+                {
+                    musicRms = musicSource.volume * 0.12f;
+                }
+            }
+
+            return Mathf.Clamp01(musicRms + sfxImpulseEnvelope);
+        }
+
+        private void RegisterSfxImpulse(float rawVol)
+        {
+            lastSfxImpulseTime = Time.unscaledTime;
+            float effective = Mathf.Clamp01(rawVol * masterVolume * Mathf.Lerp(1.0f, 0.55f, voiceDuckFactor));
+            if (effective > sfxImpulseEnvelope)
+            {
+                sfxImpulseEnvelope = effective;
             }
         }
 
@@ -248,8 +342,10 @@ namespace Game.Billiards.Audio
             if (isBreak && audioLibrary.BreakShotClip != null)
             {
                 var breakSrc = GetNextSfxSource();
+                float breakVol = Mathf.Lerp(0.6f, 1.0f, Mathf.Clamp01(power01)) * sfxVolume;
+                RegisterSfxImpulse(breakVol);
                 breakSrc.pitch = UnityEngine.Random.Range(0.99f, 1.01f);
-                breakSrc.PlayOneShot(audioLibrary.BreakShotClip, Mathf.Lerp(0.6f, 1.0f, Mathf.Clamp01(power01)) * sfxVolume);
+                breakSrc.PlayOneShot(audioLibrary.BreakShotClip, breakVol);
                 return;
             }
 
@@ -258,6 +354,7 @@ namespace Game.Billiards.Audio
             var src = GetNextSfxSource();
             float p = Mathf.Clamp01(power01);
             float vol = Mathf.Lerp(0.30f, 1.0f, Mathf.Pow(p, 0.8f)) * sfxVolume;
+            RegisterSfxImpulse(vol);
             src.pitch = UnityEngine.Random.Range(0.97f, 1.03f) * Mathf.Lerp(0.96f, 1.04f, p);
             src.PlayOneShot(audioLibrary.CueHitClip, vol);
         }
@@ -269,6 +366,7 @@ namespace Game.Billiards.Audio
 
             float norm = Mathf.Clamp01(relativeSpeed / 6.0f);
             float vol = Mathf.Lerp(0.12f, 1.0f, Mathf.Pow(norm, 0.7f)) * sfxVolume;
+            RegisterSfxImpulse(vol);
 
             var src = GetNextSfxSource();
             src.pitch = UnityEngine.Random.Range(0.97f, 1.03f);
@@ -282,6 +380,7 @@ namespace Game.Billiards.Audio
 
             float norm = Mathf.Clamp01(speed / 5.0f);
             float vol = Mathf.Lerp(0.10f, 0.85f, Mathf.Pow(norm, 0.8f)) * sfxVolume;
+            RegisterSfxImpulse(vol);
 
             var src = GetNextSfxSource();
             src.pitch = UnityEngine.Random.Range(0.96f, 1.04f) * Mathf.Lerp(1.04f, 0.96f, norm);
@@ -291,6 +390,7 @@ namespace Game.Billiards.Audio
         public void PlayPocketDrop()
         {
             if (audioLibrary == null || audioLibrary.PocketDropClip == null) return;
+            RegisterSfxImpulse(sfxVolume);
 
             var src = GetNextSfxSource();
             src.pitch = UnityEngine.Random.Range(0.96f, 1.04f);
@@ -299,12 +399,18 @@ namespace Game.Billiards.Audio
 
         public void PlayPocket() => PlayPocketDrop();
 
+        /// <summary>
+        /// Phát âm thanh thông báo phạm lỗi bi (Tieng_Loi_Bi.mp3).
+        /// </summary>
         public void PlayFoul()
         {
             if (audioLibrary == null || audioLibrary.FoulClip == null) return;
 
+            StopTimerTick();
+            RegisterSfxImpulse(sfxVolume);
             if (sfxMainSource != null)
             {
+                sfxMainSource.Stop();
                 sfxMainSource.pitch = 1.0f;
                 sfxMainSource.PlayOneShot(audioLibrary.FoulClip, sfxVolume);
             }
@@ -313,11 +419,100 @@ namespace Game.Billiards.Audio
         public void PlayWinFanfare()
         {
             if (audioLibrary == null || audioLibrary.WinFanfareClip == null) return;
+            RegisterSfxImpulse(sfxVolume);
 
             if (sfxMainSource != null)
             {
                 sfxMainSource.pitch = 1.0f;
                 sfxMainSource.PlayOneShot(audioLibrary.WinFanfareClip, sfxVolume);
+            }
+        }
+
+        /// <summary>
+        /// Phát âm thanh thông báo thắng mỗi ván (Tieng_Ngon_Thi.mp3).
+        /// </summary>
+        public void PlayRackWin()
+        {
+            if (audioLibrary == null) return;
+            AudioClip clip = audioLibrary.RackWinClip != null ? audioLibrary.RackWinClip : audioLibrary.WinFanfareClip;
+            if (clip == null) return;
+
+            StopTimerTick();
+            RegisterSfxImpulse(sfxVolume);
+            if (sfxMainSource != null)
+            {
+                sfxMainSource.Stop();
+                sfxMainSource.pitch = 1.0f;
+                sfxMainSource.PlayOneShot(clip, sfxVolume);
+            }
+        }
+
+        /// <summary>
+        /// Phát âm thanh thông báo thua mỗi ván (Tieng_Meo_Khoc.mp3).
+        /// </summary>
+        public void PlayRackLose()
+        {
+            if (audioLibrary == null) return;
+            AudioClip clip = audioLibrary.RackLoseClip != null ? audioLibrary.RackLoseClip : audioLibrary.FoulClip;
+            if (clip == null) return;
+
+            StopTimerTick();
+            RegisterSfxImpulse(sfxVolume);
+            if (sfxMainSource != null)
+            {
+                sfxMainSource.Stop();
+                sfxMainSource.pitch = 1.0f;
+                sfxMainSource.PlayOneShot(clip, sfxVolume);
+            }
+        }
+
+        /// <summary>
+        /// Phát âm thanh chiến thắng cuối trận (Tieng_Win.mp3) khi hiện bảng thống kê kết thúc trận đấu.
+        /// </summary>
+        public void PlayMatchWin()
+        {
+            if (audioLibrary == null) return;
+            AudioClip clip = audioLibrary.MatchWinClip != null ? audioLibrary.MatchWinClip : audioLibrary.WinFanfareClip;
+            if (clip == null) return;
+
+            StopTimerTick();
+            RegisterSfxImpulse(sfxVolume);
+            if (sfxMainSource != null)
+            {
+                sfxMainSource.Stop();
+                sfxMainSource.pitch = 1.0f;
+                sfxMainSource.PlayOneShot(clip, sfxVolume);
+            }
+        }
+
+        /// <summary>
+        /// Phát âm thanh thua cuộc cuối trận (Tieng_Thua.mp3) khi hiện bảng thống kê kết thúc trận đấu.
+        /// </summary>
+        public void PlayMatchLose()
+        {
+            if (audioLibrary == null) return;
+            AudioClip clip = audioLibrary.MatchLoseClip != null ? audioLibrary.MatchLoseClip : audioLibrary.FoulClip;
+            if (clip == null) return;
+
+            StopTimerTick();
+            RegisterSfxImpulse(sfxVolume);
+            if (sfxMainSource != null)
+            {
+                sfxMainSource.Stop();
+                sfxMainSource.pitch = 1.0f;
+                sfxMainSource.PlayOneShot(clip, sfxVolume);
+            }
+        }
+
+        /// <summary>
+        /// Dừng ngay âm thanh kết quả ván/trận đang phát khi chuyển ván, bấm Đánh tiếp hoặc Về sảnh.
+        /// </summary>
+        public void StopMatchResultAudio()
+        {
+            StopTimerTick();
+            if (sfxMainSource != null)
+            {
+                sfxMainSource.Stop();
             }
         }
 
@@ -346,13 +541,37 @@ namespace Game.Billiards.Audio
 
         public void PlayTimerTick()
         {
+            AudioClip customTick = audioLibrary != null ? audioLibrary.TimerTickClip : null;
+            if (customTick != null)
+            {
+                if (timerSource == null)
+                {
+                    timerSource = gameObject.AddComponent<AudioSource>();
+                    timerSource.playOnAwake = false;
+                }
+                RegisterSfxImpulse(sfxVolume * 0.6f);
+                timerSource.Stop();
+                timerSource.pitch = 1.0f;
+                timerSource.volume = sfxVolume * masterVolume * Mathf.Lerp(1.0f, 0.55f, voiceDuckFactor);
+                timerSource.PlayOneShot(customTick, sfxVolume);
+                return;
+            }
+
             if (tickClip == null) tickClip = BuildTickClip();
 
             tickToggle = !tickToggle;
-            var src = uiSource != null ? uiSource : GetNextSfxSource();
+            var src = timerSource != null ? timerSource : (uiSource != null ? uiSource : GetNextSfxSource());
             if (src == null) return;
             src.pitch = tickToggle ? 1.0f : 0.78f;
             src.PlayOneShot(tickClip, 0.8f * sfxVolume);
+        }
+
+        public void StopTimerTick()
+        {
+            if (timerSource != null && timerSource.isPlaying)
+            {
+                timerSource.Stop();
+            }
         }
 
         private static AudioClip BuildTickClip()

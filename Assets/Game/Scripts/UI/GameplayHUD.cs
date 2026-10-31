@@ -55,6 +55,7 @@ namespace Game.Billiards.UI
         public ResultUI Result => resultUI;
         public Button RulesButton => rulesButton;
         public TurnSlideBannerUI TurnSlideBanner => turnSlideBanner;
+        public OnlineChatUI OnlineChat => onlineChat;
 
         /// <summary>Các nút HUD (Hướng dẫn / Luật / Menu) cho hiệu ứng trượt vào khi bắt đầu trận.</summary>
         public System.Collections.Generic.IEnumerable<Button> EntranceButtons()
@@ -65,6 +66,7 @@ namespace Game.Billiards.UI
         }
 
         private StatsPanelUI statsPanel;
+        private OnlineChatUI onlineChat;
 
         /// <summary>Gắn màn hình thống kê (tạo lúc runtime) để phím Tab / Esc điều khiển.</summary>
         public void SetStatsPanel(StatsPanelUI panel)
@@ -216,6 +218,11 @@ namespace Game.Billiards.UI
                 bool isLocalPlayer = (cur == GetLocalPlayerIndex());
                 turnSlideBanner.ShowTurn(isLocalPlayer, pName);
             }
+
+            if (onlineChat == null) onlineChat = OnlineChatUI.Ensure(this);
+            else onlineChat.RefreshModeVisibility();
+
+            NetworkStatusIndicatorUI.Ensure(this);
         }
 
         private void EnsureGameplayCanvasVisible()
@@ -347,8 +354,18 @@ namespace Game.Billiards.UI
 
         private void HandleKeyboardShortcuts()
         {
+            // Đang gõ chữ trong ô chat Online: tuyệt đối không kích hoạt phím tắt HUD (H, R, Tab, Esc)
+            if (OnlineChatUI.IsTyping) return;
+
             if (UnityEngine.Input.GetKeyDown(KeyCode.Escape))
             {
+                // Nếu khung chat đang mở rộng thì đóng khung chat trước
+                if (OnlineChatUI.IsChatOpen && onlineChat != null)
+                {
+                    onlineChat.SetExpanded(false);
+                    return;
+                }
+
                 // Esc đóng popup đang mở trước; nếu không có popup nào thì mở Menu
                 switch (HudModalState.Current)
                 {
@@ -361,6 +378,9 @@ namespace Game.Billiards.UI
                     default: if (settingsUI != null) settingsUI.Toggle(); break;
                 }
             }
+
+            // Khi khung chat đang mở rộng: không mở chồng các bảng Hướng dẫn / Thống kê / Luật bằng phím tắt
+            if (OnlineChatUI.IsChatOpen) return;
 
             if (UnityEngine.Input.GetKeyDown(KeyCode.H) || UnityEngine.Input.GetKeyDown(KeyCode.F1))
             {
@@ -410,6 +430,7 @@ namespace Game.Billiards.UI
             if (playerLeftPanel != null)
             {
                 playerLeftPanel.SetPlayerInfo(state.players[li].displayName);
+                playerLeftPanel.RefreshResolvedAvatar();
                 playerLeftPanel.SetScore(WinsOfPlayer(state, li));
                 playerLeftPanel.SetGroup(GroupOfPlayer(state, li));
                 playerLeftPanel.SetTurnActive(state.currentPlayerIndex == li);
@@ -423,6 +444,7 @@ namespace Game.Billiards.UI
             if (playerRightPanel != null)
             {
                 playerRightPanel.SetPlayerInfo(state.players[ri].displayName);
+                playerRightPanel.RefreshResolvedAvatar();
                 playerRightPanel.SetScore(WinsOfPlayer(state, ri));
                 playerRightPanel.SetGroup(GroupOfPlayer(state, ri));
                 playerRightPanel.SetTurnActive(state.currentPlayerIndex == ri);
@@ -534,10 +556,12 @@ namespace Game.Billiards.UI
         /// <summary>Xác định chỉ số của người chơi tại máy này (0 hoặc 1) hỗ trợ cả Offline và Online PvP.</summary>
         private int GetLocalPlayerIndex()
         {
+            var net = FindObjectOfType<Network.NetworkMatchManager>();
+            if (net != null && net.IsOnlineMatch) return net.LocalPlayerIndex;
+
             var session = GameSession.Instance;
             if (session != null && session.CurrentGameMode == GameMode.OnlinePvP)
             {
-                var net = FindObjectOfType<Network.NetworkMatchManager>();
                 if (net != null) return net.LocalPlayerIndex;
             }
 
@@ -594,6 +618,13 @@ namespace Game.Billiards.UI
             if (matchStateManager == null) return;
             MatchState state = matchStateManager.State;
 
+            // Hủy ngay bộ đếm tự chuyển sang ván mới (nếu có) để không ghi đè trạng thái kết thúc trận
+            if (autoNextRackRoutine != null)
+            {
+                StopCoroutine(autoNextRackRoutine);
+                autoNextRackRoutine = null;
+            }
+
             string winnerName = state.players[winnerIndex].displayName;
 
             if (eventToast != null)
@@ -601,12 +632,27 @@ namespace Game.Billiards.UI
                 eventToast.ShowWinToast(winnerName, LocalizationManager.Get("hud_match_champion"));
             }
 
+            var net = FindObjectOfType<Network.NetworkMatchManager>();
+            bool online = net != null && net.IsOnlineMatch;
+            int localIdx = GetLocalPlayerIndex();
+            bool isLocalWinner = (winnerIndex == localIdx) && !(online && net.LocalDisconnected);
+
+            // Phát âm thanh Tieng_Win nếu người chơi tại máy này thắng trận, ngược lại phát Tieng_Thua (hỗ trợ cả Offline & Online)
+            if (Audio.AudioManager.Instance != null)
+            {
+                if (isLocalWinner)
+                {
+                    Audio.AudioManager.Instance.PlayMatchWin();
+                }
+                else
+                {
+                    Audio.AudioManager.Instance.PlayMatchLose();
+                }
+            }
+
             // Màn hình kết thúc trận mới (thống kê + nút Chơi lại / Về sảnh); dùng popup cũ nếu chưa có màn hình thống kê
             if (statsPanel != null && resultUI != null)
             {
-                var net = FindObjectOfType<Network.NetworkMatchManager>();
-                bool online = net != null && net.IsOnlineMatch;
-
                 if (online && net.LocalDisconnected)
                 {
                     // Máy này mất kết nối: thua cả trận, chỉ cho Về sảnh
@@ -619,12 +665,17 @@ namespace Game.Billiards.UI
                 }
                 else if (online && net.OpponentLeft)
                 {
-                    // Đối thủ đã rời trận: bảng thông số chỉ còn nút Về sảnh ở giữa, không có Chơi lại
+                    // Đối thủ đã rời trận / mất kết nối: hiển thị rõ lý do thắng do đối thủ mất kết nối và chỉ hiện nút Về sảnh
+                    int oppIdx = 1 - localIdx;
+                    string oppName = !string.IsNullOrWhiteSpace(net.OpponentLeftName)
+                        ? net.OpponentLeftName
+                        : (state.players != null && oppIdx >= 0 && oppIdx < state.players.Length ? state.players[oppIdx].displayName : "Player");
                     statsPanel.ShowMatchResult(
                         winnerIndex,
                         null,
                         () => { statsPanel.CloseResult(); resultUI.ReturnToLobby(); },
-                        lobbyOnly: true);
+                        lobbyOnly: true,
+                        title: LocalizationManager.Format("net_win_disconnect", oppName));
                 }
                 else if (online)
                 {
@@ -676,8 +727,8 @@ namespace Game.Billiards.UI
                 playerRightPanel.BallTracker.UpdateBallsStatus(ballManager);
             }
 
-            // Thông báo lỗi nếu có
-            if (result.HasFoul)
+            // Thông báo lỗi nếu có (chỉ hiện khi ván chưa kết thúc; nếu ván kết thúc sẽ hiện banner thắng/thua ván)
+            if (result.HasFoul && !result.rackEnded)
             {
                 FoulPopupUI.Show(result.foul);
             }

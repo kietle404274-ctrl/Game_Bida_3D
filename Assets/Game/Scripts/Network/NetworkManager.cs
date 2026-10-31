@@ -24,8 +24,23 @@ namespace Game.Billiards.Network
         public event Action<Player> OnRemotePlayerJoined;
         public event Action<Player> OnRemotePlayerLeft;
         public event Action OnRoomPropertiesChanged;
+        public event Action<DisconnectCause> OnDisconnectedFromServer;
 
-        public bool IsConnected => PhotonNetwork.IsConnectedAndReady;
+        public const string DEFAULT_REGION = "asia";
+
+        private string pendingJoinRoomId;
+        private bool hasPendingCreateRoom;
+        private string pendingCreateRoomId;
+        private MatchSettings pendingCreateSettings;
+
+        /// <summary>
+        /// Chỉ trả về true khi đã thực sự ở trên MasterServer (sẵn sàng tạo/vào phòng) hoặc đang ở trong phòng.
+        /// Tránh trả về true sớm khi mới kết nối tới NameServer khiến lệnh JoinRoom/CreateRoom bị từ chối.
+        /// </summary>
+        public bool IsConnected => PhotonNetwork.IsConnectedAndReady
+            && (PhotonNetwork.NetworkClientState == ClientState.ConnectedToMasterServer
+                || PhotonNetwork.NetworkClientState == ClientState.JoinedLobby
+                || PhotonNetwork.InRoom);
         public bool IsInRoom => PhotonNetwork.InRoom;
         public bool IsMaster => PhotonNetwork.IsMasterClient;
         public string CurrentRoomName => PhotonNetwork.InRoom ? PhotonNetwork.CurrentRoom.Name : string.Empty;
@@ -102,38 +117,107 @@ namespace Game.Billiards.Network
             return -1;
         }
 
-        public void Connect(string playerName = "Cơ Thủ")
+        /// <summary>
+        /// Chuẩn hóa mã phòng người chơi nhập vào:
+        /// - Nếu chỉ nhập số (VD: "4842") hoặc thiếu dấu gạch ngang (VD: "POOL4842", "POOL 4842"),
+        ///   tự động chuyển thành chuẩn "POOL-4842".
+        /// </summary>
+        public static string NormalizeRoomId(string rawRoomId)
         {
-            if (PhotonNetwork.IsConnected)
+            if (string.IsNullOrWhiteSpace(rawRoomId)) return string.Empty;
+            string s = rawRoomId.Trim().ToUpperInvariant();
+
+            // Kiểm tra nếu toàn bộ là chữ số (VD: "4842") -> thêm tiền tố "POOL-"
+            bool allDigits = true;
+            for (int i = 0; i < s.Length; i++)
             {
-                PhotonNetwork.NickName = playerName;
-                PhotonNetwork.LocalPlayer.SetCustomProperties(new ExitGames.Client.Photon.Hashtable
+                if (!char.IsDigit(s[i]))
                 {
-                    { PLAYER_PROP_AVATAR, AvatarLibrary.Wrap(PlayerProfile.AvatarIndex) }
-                });
-                OnConnectedToMasterServer?.Invoke();
-                return;
+                    allDigits = false;
+                    break;
+                }
+            }
+            if (allDigits)
+            {
+                return $"POOL-{s}";
             }
 
-            PhotonNetwork.NickName = string.IsNullOrEmpty(playerName) ? LocalizationManager.Get("default_player_name") : playerName;
+            // Nếu bắt đầu bằng "POOL" nhưng dùng khoảng trắng, gạch dưới hoặc viết liền (VD: "POOL 4842", "POOL4842")
+            if (s.StartsWith("POOL") && !s.StartsWith("POOL-"))
+            {
+                string suffix = s.Substring(4).Trim(' ', '-', '_', ':');
+                if (!string.IsNullOrEmpty(suffix))
+                {
+                    return $"POOL-{suffix}";
+                }
+            }
+
+            return s;
+        }
+
+        public void Connect(string playerName = "Cơ Thủ")
+        {
+            string resolvedName = string.IsNullOrEmpty(playerName) ? LocalizationManager.Get("default_player_name") : playerName;
+            PhotonNetwork.NickName = resolvedName;
             PhotonNetwork.LocalPlayer.SetCustomProperties(new ExitGames.Client.Photon.Hashtable
             {
                 { PLAYER_PROP_AVATAR, AvatarLibrary.Wrap(PlayerProfile.AvatarIndex) }
             });
+
+            if (PhotonNetwork.IsConnected)
+            {
+                if (!string.IsNullOrEmpty(PhotonNetwork.CloudRegion) &&
+                    !PhotonNetwork.CloudRegion.StartsWith(DEFAULT_REGION, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.LogWarning($"[NetworkManager] Phát hiện lệch Region ({PhotonNetwork.CloudRegion} != {DEFAULT_REGION}), đang kết nối lại sang {DEFAULT_REGION}...");
+                    PhotonNetwork.Disconnect();
+                }
+                else
+                {
+                    if (IsConnected)
+                    {
+                        OnConnectedToMasterServer?.Invoke();
+                    }
+                    return;
+                }
+            }
+
+            // Cố định Region = "asia" và AppVersion = GAME_VERSION để mọi bản Build / Editor / máy khác nhau
+            // luôn kết nối vào cùng 1 cụm Master Server của Photon (tránh lệch BestRegion gây lỗi 32758 Game does not exist).
+            if (PhotonNetwork.PhotonServerSettings != null && PhotonNetwork.PhotonServerSettings.AppSettings != null)
+            {
+                PhotonNetwork.PhotonServerSettings.AppSettings.FixedRegion = DEFAULT_REGION;
+                PhotonNetwork.PhotonServerSettings.AppSettings.AppVersion = NetworkConstants.GAME_VERSION;
+            }
             PhotonNetwork.GameVersion = NetworkConstants.GAME_VERSION;
-            Debug.Log($"[NetworkManager] Đang kết nối tới máy chủ Photon (Version: {NetworkConstants.GAME_VERSION}, Player: {PhotonNetwork.NickName})...");
+
+            Debug.Log($"[NetworkManager] Đang kết nối tới máy chủ Photon (Region: {DEFAULT_REGION}, Version: {NetworkConstants.GAME_VERSION}, Player: {PhotonNetwork.NickName})...");
             PhotonNetwork.ConnectUsingSettings();
+            PhotonNetwork.GameVersion = NetworkConstants.GAME_VERSION;
         }
 
         public void CreateRoom(string customRoomId, MatchSettings settings)
         {
-            if (!PhotonNetwork.IsConnectedAndReady)
+            string roomId = string.IsNullOrEmpty(customRoomId) ? NetworkConstants.GenerateRoomId() : NormalizeRoomId(customRoomId);
+
+            // Nếu Photon đang trong quá trình chuyển tiếp tới MasterServer (VD: đang ở NameServer hoặc vừa rời phòng cũ),
+            // xếp hàng yêu cầu tạo phòng để tự động thực thi ngay khi OnConnectedToMaster hoàn tất!
+            if (!IsConnected)
             {
-                OnRoomCreateFailed?.Invoke(LocalizationManager.Get("net_not_connected"));
+                hasPendingCreateRoom = true;
+                pendingCreateRoomId = roomId;
+                pendingCreateSettings = settings;
+                pendingJoinRoomId = null;
+
+                if (!PhotonNetwork.IsConnected)
+                {
+                    Connect(PlayerProfile.Name);
+                }
+                Debug.Log($"[NetworkManager] Đang chờ kết nối MasterServer hoàn tất để tự động tạo phòng {roomId}...");
                 return;
             }
 
-            string roomId = string.IsNullOrEmpty(customRoomId) ? NetworkConstants.GenerateRoomId() : customRoomId.Trim().ToUpper();
+            hasPendingCreateRoom = false;
 
             RoomOptions options = new RoomOptions
             {
@@ -159,7 +243,7 @@ namespace Game.Billiards.Network
             options.CustomRoomProperties = customProps;
             options.CustomRoomPropertiesForLobby = new string[] { NetworkConstants.PROP_GAME_VERSION, NetworkConstants.PROP_ROOM_STATE };
 
-            Debug.Log($"[NetworkManager] Tạo phòng mới ID: {roomId} (Race to: {settings.raceTarget}, Timer: {settings.shotTimer})");
+            Debug.Log($"[NetworkManager] Tạo phòng mới ID: {roomId} (Region: {PhotonNetwork.CloudRegion}, Race to: {settings.raceTarget}, Timer: {settings.shotTimer})");
             PhotonNetwork.CreateRoom(roomId, options, TypedLobby.Default);
         }
 
@@ -186,20 +270,30 @@ namespace Game.Billiards.Network
 
         public void JoinRoom(string roomId)
         {
-            if (!PhotonNetwork.IsConnectedAndReady)
-            {
-                OnRoomJoinFailed?.Invoke(LocalizationManager.Get("net_not_connected"));
-                return;
-            }
-
-            if (string.IsNullOrEmpty(roomId))
+            string cleanId = NormalizeRoomId(roomId);
+            if (string.IsNullOrEmpty(cleanId))
             {
                 OnRoomJoinFailed?.Invoke(LocalizationManager.Get("net_room_empty"));
                 return;
             }
 
-            string cleanId = roomId.Trim().ToUpper();
-            Debug.Log($"[NetworkManager] Tham gia phòng ID: {cleanId}...");
+            // Nếu Photon đang kết nối dở (đang ở NameServer hoặc đang chuyển về MasterServer),
+            // lưu mã phòng lại và tự động JoinRoom ngay khi OnConnectedToMaster gọi về!
+            if (!IsConnected)
+            {
+                pendingJoinRoomId = cleanId;
+                hasPendingCreateRoom = false;
+
+                if (!PhotonNetwork.IsConnected)
+                {
+                    Connect(PlayerProfile.Name);
+                }
+                Debug.Log($"[NetworkManager] Đang chờ kết nối MasterServer hoàn tất để tự động vào phòng ID: {cleanId}...");
+                return;
+            }
+
+            pendingJoinRoomId = null;
+            Debug.Log($"[NetworkManager] Tham gia phòng ID: {cleanId} (Region: {PhotonNetwork.CloudRegion})...");
             PhotonNetwork.JoinRoom(cleanId);
         }
 
@@ -342,8 +436,20 @@ namespace Game.Billiards.Network
 
         public override void OnConnectedToMaster()
         {
-            Debug.Log("[NetworkManager] Kết nối thành công tới Photon Master Server!");
+            Debug.Log($"[NetworkManager] Kết nối thành công tới Photon Master Server (Region: {PhotonNetwork.CloudRegion}, Version: {PhotonNetwork.AppVersion})!");
             OnConnectedToMasterServer?.Invoke();
+
+            if (!string.IsNullOrEmpty(pendingJoinRoomId))
+            {
+                string targetRoom = pendingJoinRoomId;
+                pendingJoinRoomId = null;
+                JoinRoom(targetRoom);
+            }
+            else if (hasPendingCreateRoom)
+            {
+                hasPendingCreateRoom = false;
+                CreateRoom(pendingCreateRoomId, pendingCreateSettings);
+            }
         }
 
         public override void OnCreatedRoom()
@@ -392,18 +498,60 @@ namespace Game.Billiards.Network
         {
             Debug.Log($"[NetworkManager] Người chơi {otherPlayer.NickName} đã rời phòng.");
             
-            // Xóa slot Player 2 nếu rời phòng ở Lobby (Rule 126)
+            // Nếu đang ở phòng chờ (STATE_WAITING) và máy này là MasterClient (hoặc vừa được đôn lên làm MasterClient khi chủ phòng cũ thoát):
+            // Đặt lại P1 = chính mình (Host mới, mặc định Ready) và xóa trống slot P2 (Rule 126)
             if (PhotonNetwork.IsMasterClient && PhotonNetwork.InRoom)
             {
-                var updatedProps = new ExitGames.Client.Photon.Hashtable
+                bool isWaiting = true;
+                if (PhotonNetwork.CurrentRoom.CustomProperties != null &&
+                    PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(NetworkConstants.PROP_ROOM_STATE, out object stVal) &&
+                    stVal != null && stVal.ToString() != NetworkConstants.STATE_WAITING)
                 {
-                    { NetworkConstants.PROP_P2_NAME, "" },
-                    { NetworkConstants.PROP_P2_READY, false }
-                };
-                PhotonNetwork.CurrentRoom.SetCustomProperties(updatedProps);
+                    isWaiting = false;
+                }
+
+                if (isWaiting)
+                {
+                    var updatedProps = new ExitGames.Client.Photon.Hashtable
+                    {
+                        { NetworkConstants.PROP_P1_NAME, PhotonNetwork.NickName },
+                        { NetworkConstants.PROP_P1_READY, true },
+                        { NetworkConstants.PROP_P2_NAME, "" },
+                        { NetworkConstants.PROP_P2_READY, false }
+                    };
+                    PhotonNetwork.CurrentRoom.SetCustomProperties(updatedProps);
+                }
             }
 
             OnRemotePlayerLeft?.Invoke(otherPlayer);
+        }
+
+        public override void OnMasterClientSwitched(Player newMasterClient)
+        {
+            Debug.Log($"[NetworkManager] Chủ phòng chuyển sang: {newMasterClient?.NickName}");
+            if (PhotonNetwork.IsMasterClient && PhotonNetwork.InRoom)
+            {
+                bool isWaiting = true;
+                if (PhotonNetwork.CurrentRoom.CustomProperties != null &&
+                    PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(NetworkConstants.PROP_ROOM_STATE, out object stVal) &&
+                    stVal != null && stVal.ToString() != NetworkConstants.STATE_WAITING)
+                {
+                    isWaiting = false;
+                }
+
+                if (isWaiting)
+                {
+                    var updatedProps = new ExitGames.Client.Photon.Hashtable
+                    {
+                        { NetworkConstants.PROP_P1_NAME, PhotonNetwork.NickName },
+                        { NetworkConstants.PROP_P1_READY, true },
+                        { NetworkConstants.PROP_P2_NAME, "" },
+                        { NetworkConstants.PROP_P2_READY, false }
+                    };
+                    PhotonNetwork.CurrentRoom.SetCustomProperties(updatedProps);
+                }
+            }
+            OnRoomPropertiesChanged?.Invoke();
         }
 
         public override void OnPlayerPropertiesUpdate(Player targetPlayer, ExitGames.Client.Photon.Hashtable changedProps)
@@ -443,6 +591,10 @@ namespace Game.Billiards.Network
         public override void OnDisconnected(DisconnectCause cause)
         {
             Debug.LogWarning($"[NetworkManager] Mất kết nối tới Photon: {cause}");
+            pendingJoinRoomId = null;
+            hasPendingCreateRoom = false;
+            OnLeftCurrentRoom?.Invoke();
+            OnDisconnectedFromServer?.Invoke(cause);
         }
 
         #endregion

@@ -45,6 +45,18 @@ namespace Game.Billiards.Core
                 isLobbyDisplayMode = true;
                 DisableGameplayForLobby();
             }
+            else if (Photon.Pun.PhotonNetwork.InRoom)
+            {
+                var session = GameSession.GetOrCreateInstance();
+                if (session.CurrentGameMode != GameMode.OnlinePvP)
+                {
+                    var netMgr = Network.NetworkManager.Instance;
+                    MatchSettings settings = netMgr != null ? netMgr.ExtractSettingsFromRoomProperties() : MatchSettings.Default;
+                    string p1 = netMgr != null ? netMgr.GetPlayer1Name() : "Player 1";
+                    string p2 = netMgr != null ? netMgr.GetPlayer2Name() : "Player 2";
+                    session.StartOnlineMatch(settings, p1, p2, Photon.Pun.PhotonNetwork.IsMasterClient);
+                }
+            }
         }
 
         /// <summary>
@@ -334,6 +346,11 @@ namespace Game.Billiards.Core
                 if (networkMatchManager.IsOnlineMatch && aiController != null)
                 {
                     aiController.SetAIEnabled(false, 1);
+                }
+
+                if (gameplayHUD != null)
+                {
+                    UI.OnlineChatUI.Ensure(gameplayHUD);
                 }
             }
 

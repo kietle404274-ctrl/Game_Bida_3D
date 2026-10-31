@@ -366,6 +366,9 @@ namespace Game.Billiards.Input
             // Popup Hướng dẫn / Luật / Menu đang mở: không ngắm, chỉnh lực hay bắn
             if (UI.HudModalState.IsModalOpen) return;
 
+            // Khung Chat Online đang mở hoặc người chơi đang gõ chữ: khóa xoay camera, chỉnh lực, phím V và bắn
+            if (UI.OnlineChatUI.IsChatOpen || UI.OnlineChatUI.IsTyping) return;
+
             // Phím V: chuyển camera ngắm gần / xa (trạng thái giữ trong phiên chơi)
             if (UnityEngine.Input.GetKeyDown(KeyCode.V) && cameraDirector != null)
             {

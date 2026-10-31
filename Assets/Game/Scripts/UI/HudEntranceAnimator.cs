@@ -46,9 +46,17 @@ namespace Game.Billiards.UI
 
         public static HudEntranceAnimator Prepare(GameplayHUD hud)
         {
-            if (hud == null) return null;
+            if (hud == null || !Application.isPlaying) return null;
 
             var canvas = hud.GetComponentInParent<Canvas>();
+            if (canvas == null && hud.PowerBar != null) canvas = hud.PowerBar.GetComponentInParent<Canvas>();
+            if (canvas == null)
+            {
+                foreach (var c in Object.FindObjectsOfType<Canvas>(true))
+                {
+                    if (c != null && c.name == "GameplayCanvas") { canvas = c; break; }
+                }
+            }
             if (canvas == null) canvas = Object.FindObjectOfType<Canvas>();
             if (canvas == null) return null;
             var canvasRt = canvas.rootCanvas.transform as RectTransform;
@@ -62,6 +70,7 @@ namespace Game.Billiards.UI
 
             Canvas.ForceUpdateCanvases();
             CueElevationSelector.EnsureBuilt();
+            var chatUi = OnlineChatUI.Ensure(hud);
             Canvas.ForceUpdateCanvases();
 
             // Thanh tên / tỉ số phía trên: trượt xuống
@@ -82,6 +91,7 @@ namespace Game.Billiards.UI
                 else side.Add(vrt);
             }
             AddRect(side, hud.PowerBar);
+            if (chatUi != null) AddRect(side, chatUi);
 
             var buttons = new List<RectTransform>();
             foreach (var b in hud.EntranceButtons())

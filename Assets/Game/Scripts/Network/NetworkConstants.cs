@@ -39,6 +39,9 @@ namespace Game.Billiards.Network
         public const byte EVENT_BALL_IN_HAND_PREVIEW = 113;
         public const byte EVENT_SHOT_REJECTED = 114;      // Master -> Client: lệnh đánh bị từ chối
         public const byte EVENT_SURRENDER_REQUEST = 115;  // Client -> Master: xin đầu hàng (Master quyết định)
+        public const byte EVENT_CHAT_MESSAGE = 116;       // Gửi / nhận tin nhắn chat thời gian thực trong trận Online
+        public const byte EVENT_VOICE_DATA = 117;         // Luồng gói âm thanh G.711 μ-law 8kHz thời gian thực (SendUnreliable)
+        public const byte EVENT_VOICE_STATE = 118;        // Đồng bộ trạng thái bật/tắt Mic & Loa giữa 2 cơ thủ (SendReliable)
 
         // Helper sinh mã phòng ngẫu nhiên (VD: "POOL-8821")
         public static string GenerateRoomId()

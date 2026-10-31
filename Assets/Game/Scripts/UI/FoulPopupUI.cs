@@ -40,37 +40,39 @@ namespace Game.Billiards.UI
         private static readonly Color WinColor = new Color(0.25f, 0.98f, 0.50f, 1f);
         private static readonly Color NavyText = new Color(0.05f, 0.09f, 0.18f, 1f);
 
+        private enum PopupSound { Foul, RackWin, RackLose, BreakPocket }
+
         public static void Show(FoulType foul)
         {
             Ensure();
-            instance.Display(GetTitle(foul), LocalizationManager.Get("foul_sub"), LocalizationManager.Get("foul_badge"), true, 2.2f);
+            instance.Display(GetTitle(foul), LocalizationManager.Get("foul_sub"), LocalizationManager.Get("foul_badge"), true, 2.2f, PopupSound.Foul);
         }
 
         public static void Show(string title)
         {
             Ensure();
-            instance.Display(title, LocalizationManager.Get("foul_sub"), LocalizationManager.Get("foul_badge"), true, 2.2f);
+            instance.Display(title, LocalizationManager.Get("foul_sub"), LocalizationManager.Get("foul_badge"), true, 2.2f, PopupSound.Foul);
         }
 
         /// <summary>Banner thắng ván: nhãn xanh lá, tên người thắng và tỉ số.</summary>
         public static void ShowWin(string text, float holdSeconds = 2.0f)
         {
             Ensure();
-            instance.Display(text, LocalizationManager.Get("win_sub"), LocalizationManager.Get("win_badge"), false, holdSeconds);
+            instance.Display(text, LocalizationManager.Get("win_sub"), LocalizationManager.Get("win_badge"), false, holdSeconds, PopupSound.RackWin);
         }
 
-        /// <summary>Banner thắng ván: nền xanh lá, nhãn xanh lá, thông báo người chơi thắng ván.</summary>
+        /// <summary>Banner thắng ván: nền xanh lá, nhãn xanh lá, thông báo người chơi thắng ván (phát tiếng Ngon thí).</summary>
         public static void ShowRackWin(string title, string scoreSubtitle, float holdSeconds = 2.2f)
         {
             Ensure();
-            instance.Display(title, scoreSubtitle, LocalizationManager.Get("win_badge"), false, holdSeconds);
+            instance.Display(title, scoreSubtitle, LocalizationManager.Get("win_badge"), false, holdSeconds, PopupSound.RackWin);
         }
 
-        /// <summary>Banner thua ván: nền đỏ, nhãn đỏ, thông báo người chơi thua ván.</summary>
+        /// <summary>Banner thua ván: nền đỏ, nhãn đỏ, thông báo người chơi thua ván (phát tiếng Mèo khóc).</summary>
         public static void ShowRackLose(string title, string scoreSubtitle, float holdSeconds = 2.2f)
         {
             Ensure();
-            instance.Display(title, scoreSubtitle, LocalizationManager.Get("lose_badge"), true, holdSeconds);
+            instance.Display(title, scoreSubtitle, LocalizationManager.Get("lose_badge"), true, holdSeconds, PopupSound.RackLose);
         }
 
         private static readonly Color BodyBreak = new Color(0.04f, 0.18f, 0.32f, 0.98f);
@@ -80,7 +82,7 @@ namespace Game.Billiards.UI
         public static void ShowBreakSuccess(string title, string subtitle, float holdSeconds = 2.4f)
         {
             Ensure();
-            instance.DisplayCustom(title, subtitle, LocalizationManager.Get("break_badge"), BreakColor, BodyBreak, false, holdSeconds, true);
+            instance.DisplayCustom(title, subtitle, LocalizationManager.Get("break_badge"), BreakColor, BodyBreak, false, holdSeconds, PopupSound.BreakPocket);
         }
 
         private static void Ensure()
@@ -245,14 +247,14 @@ namespace Game.Billiards.UI
         private bool currentIsFoul;
         private float currentHold = 2f;
 
-        private void Display(string title, string subtitle, string tag, bool foul, float holdSeconds)
+        private void Display(string title, string subtitle, string tag, bool foul, float holdSeconds, PopupSound sound)
         {
             Color tint = foul ? FoulColor : WinColor;
             Color bodyColor = foul ? BodyFoul : BodyWin;
-            DisplayCustom(title, subtitle, tag, tint, bodyColor, foul, holdSeconds, false);
+            DisplayCustom(title, subtitle, tag, tint, bodyColor, foul, holdSeconds, sound);
         }
 
-        private void DisplayCustom(string title, string subtitle, string tag, Color tint, Color bodyColor, bool foul, float holdSeconds, bool playPocketSound = false)
+        private void DisplayCustom(string title, string subtitle, string tag, Color tint, Color bodyColor, bool foul, float holdSeconds, PopupSound sound)
         {
             body.color = bodyColor;
             frame.SetBaseColor(new Color(tint.r, tint.g, tint.b, 0.85f));
@@ -268,9 +270,22 @@ namespace Game.Billiards.UI
             var am = Audio.AudioManager.Instance;
             if (am != null)
             {
-                if (playPocketSound) am.PlayPocketDrop();
-                else if (foul) am.PlayFoul();
-                else am.PlayWinFanfare();
+                switch (sound)
+                {
+                    case PopupSound.BreakPocket:
+                        am.PlayPocketDrop();
+                        break;
+                    case PopupSound.RackWin:
+                        am.PlayRackWin();
+                        break;
+                    case PopupSound.RackLose:
+                        am.PlayRackLose();
+                        break;
+                    case PopupSound.Foul:
+                    default:
+                        am.PlayFoul();
+                        break;
+                }
             }
 
             if (routine != null) StopCoroutine(routine);

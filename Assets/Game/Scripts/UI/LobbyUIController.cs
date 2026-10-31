@@ -135,9 +135,9 @@ namespace Game.Billiards.UI
             {
                 if (b == null) continue;
 
-                if (b == diffEasyButton || b == diffNormalButton || b == diffHardButton)
+                if (b == diffEasyButton || b == diffNormalButton || b == diffHardButton || b.GetComponentInParent<MusicTrackCarouselUI>() != null)
                 {
-                    continue; // thẻ độ khó tự xử lý hover/chọn (DifficultyCardUI)
+                    continue; // thẻ độ khó / nút mũi tên chọn nhạc tự xử lý hover
                 }
 
                 if (b == quitGameButton || b == quitConfirmYesButton)
@@ -564,6 +564,7 @@ namespace Game.Billiards.UI
 
         private Dropdown languageDropdown;
         private Text languageLabel;
+        private MusicTrackCarouselUI musicTrackCarousel;
 
         private void EnsureLanguageDropdown()
         {
@@ -738,6 +739,14 @@ namespace Game.Billiards.UI
             SetAnchoredY(root, "LanguageDropdown", -181f);
             SetAnchoredY(root, "BtnCloseSettings", -258f);
 
+            // Thu gọn thanh âm lượng nhạc bên trái (-220..+56) và đặt bộ chọn Nhạc nền 1 / Nhạc nền 2 kế bên (+68..+220)
+            Transform sldMusicT = root.Find("SldMusic");
+            if (sldMusicT != null)
+            {
+                PlaceCenter((RectTransform)sldMusicT, new Vector2(-82f, -13f), new Vector2(276f, 25f));
+            }
+            EnsureMusicTrackDropdown(root);
+
             profileNameLabel = EnsureSettingsLabel(root, "LblPlayerName", 215f, "settings_player_name");
 
             // Ô nhập tên (ngắn): nhân bản từ ô tên chưa được làm đẹp ở modal độ khó (được style cùng các popup sau đó)
@@ -810,6 +819,21 @@ namespace Game.Billiards.UI
             PlayerProfile.OnChanged -= RefreshProfileViews;
             PlayerProfile.OnChanged += RefreshProfileViews;
             RefreshProfileViews();
+        }
+
+        private void EnsureMusicTrackDropdown(Transform settingsRoot)
+        {
+            if (settingsRoot == null) return;
+            Text sample = settingsRoot.GetComponentInChildren<Text>(true);
+            Font font = sample != null ? sample.font : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            musicTrackCarousel = MusicTrackCarouselUI.Create(settingsRoot, "MusicTrackDropdown", font, new Vector2(144f, -13f), new Vector2(152f, 34f));
+        }
+
+        private void RefreshMusicTrackDropdownOptions()
+        {
+            if (musicTrackCarousel == null) return;
+            musicTrackCarousel.RefreshLocalization();
+            musicTrackCarousel.SyncFromSettings(false);
         }
 
         /// <summary>Khung popup kiểu HUD (nền mờ + thẻ vát góc + viền) dùng chung cho các popup con.</summary>
@@ -1043,6 +1067,7 @@ namespace Game.Billiards.UI
                         languageDropdown.captionText.text = LocalizationManager.LanguageNames[LocalizationManager.CurrentLanguageIndex];
                     }
                 }
+                RefreshMusicTrackDropdownOptions();
             }
 
             // Difficulty Modal
@@ -1158,9 +1183,12 @@ namespace Game.Billiards.UI
             if (startOfflineMatchButton != null) startOfflineMatchButton.onClick.AddListener(OnStartOfflineMatchClicked);
             if (closeDifficultyModalButton != null) closeDifficultyModalButton.onClick.AddListener(HideAllModals);
 
-            // Online modal
-            if (createRoomButton != null) createRoomButton.onClick.AddListener(OnCreateRoomClicked);
-            if (joinRoomButton != null) joinRoomButton.onClick.AddListener(OnJoinRoomClicked);
+            // Online modal (chỉ gắn fallback khi không có OnlineRoomUI để tránh ghi đè text trạng thái)
+            if (onlineRoomUI == null)
+            {
+                if (createRoomButton != null) createRoomButton.onClick.AddListener(OnCreateRoomClicked);
+                if (joinRoomButton != null) joinRoomButton.onClick.AddListener(OnJoinRoomClicked);
+            }
             if (closeOnlineModalButton != null) closeOnlineModalButton.onClick.AddListener(HideAllModals);
 
             // Settings modal
@@ -1227,6 +1255,8 @@ namespace Game.Billiards.UI
             HideAllModals();
             CloseAvatarPicker();
             RefreshProfileViews();
+            LoadAudioSettings();
+            RefreshMusicTrackDropdownOptions();
             if (settingsModalRoot != null) settingsModalRoot.SetActive(true);
         }
 

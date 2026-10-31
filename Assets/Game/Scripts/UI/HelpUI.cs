@@ -21,6 +21,9 @@ namespace Game.Billiards.UI
             new[] { "J",              "help_spin" },
             new[] { "K",              "help_elev" },
             new[] { "V",              "help_camera" },
+            new[] { "0",              "help_chat" },
+            new[] { "M",              "help_mic" },
+            new[] { "N",              "help_speaker" },
             new[] { "WASD",           "help_place" },
             new[] { "ENTER",          "help_confirm" },
             new[] { "ALT",            "help_cursor" },
@@ -30,10 +33,10 @@ namespace Game.Billiards.UI
             new[] { "ESC",            "help_settings" },
         };
 
-        private const int RowsInLeftColumn = 6;
+        private const int RowsInLeftColumn = 8;
         private const float ColumnWidth = 350f;
         private const float ColumnGap = 20f;
-        private const float RowHeight = 50f;
+        private const float RowHeight = 44f;
         private const float KeySlotWidth = 124f;
         private const int LabelFontSize = 22;
         private const int KeyFontSize = 20;
@@ -102,7 +105,7 @@ namespace Game.Billiards.UI
                 rowsRoot = go.GetComponent<RectTransform>();
                 rowsRoot.anchorMin = rowsRoot.anchorMax = new Vector2(0.5f, 0.5f);
                 rowsRoot.pivot = new Vector2(0.5f, 0.5f);
-                rowsRoot.sizeDelta = new Vector2(ColumnWidth * 2f + ColumnGap, RowHeight * 7f);
+                rowsRoot.sizeDelta = new Vector2(ColumnWidth * 2f + ColumnGap, RowHeight * RowsInLeftColumn);
                 rowsRoot.anchoredPosition = new Vector2(0f, 6f);
             }
 

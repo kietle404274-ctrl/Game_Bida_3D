@@ -25,6 +25,7 @@ namespace Game.Billiards.Core
         [SerializeField] private string playerAName = "Cơ Thủ (Player 1)";
         [SerializeField] private string playerBName = "AI Đối Thủ (Normal)";
         [SerializeField] private bool isPlayerBAi = true;
+        [SerializeField] private bool isOnlineMaster = true;
 
         public GameMode CurrentGameMode => currentGameMode;
         public AIDifficulty SelectedAIDifficulty => selectedAIDifficulty;
@@ -32,6 +33,7 @@ namespace Game.Billiards.Core
         public string PlayerAName => playerAName;
         public string PlayerBName => playerBName;
         public bool IsPlayerBAi => isPlayerBAi;
+        public bool IsOnlineMaster => isOnlineMaster;
 
         private const string AimGuidePrefKey = "AimGuide_Enabled";
 
@@ -70,8 +72,9 @@ namespace Game.Billiards.Core
             Instance = this;
             DontDestroyOnLoad(gameObject);
 
-            // Cấu hình target frame rate theo yêu cầu đồ án (60 FPS)
+            // Cấu hình target frame rate theo yêu cầu đồ án (60 FPS) & luôn chạy nền cho chế độ Online / Voice Chat
             Application.targetFrameRate = 60;
+            Application.runInBackground = true;
         }
 
         public static GameSession GetOrCreateInstance()
@@ -122,11 +125,12 @@ namespace Game.Billiards.Core
             currentGameMode = GameMode.OnlinePvP;
             selectedAIDifficulty = AIDifficulty.Normal;
             isPlayerBAi = false;
+            isOnlineMaster = amIMaster;
             currentSettings = settings;
             playerAName = playerA;
             playerBName = playerB;
 
-            Debug.Log($"[GameSession] Khởi động trận Online 1v1: {playerA} vs {playerB}");
+            Debug.Log($"[GameSession] Khởi động trận Online 1v1: {playerA} vs {playerB} (amIMaster={amIMaster})");
             LoadGameplayScene();
         }
 
@@ -134,6 +138,11 @@ namespace Game.Billiards.Core
         {
             if (Application.isPlaying)
             {
+                if (Game.Billiards.Audio.AudioManager.Instance != null)
+                {
+                    Game.Billiards.Audio.AudioManager.Instance.StopMatchResultAudio();
+                }
+
                 // Online: rời phòng Photon để đối thủ nhận OnPlayerLeftRoom (thoát giữa trận = thua trận, Rule 124)
                 if (currentGameMode == GameMode.OnlinePvP && Photon.Pun.PhotonNetwork.InRoom)
                 {

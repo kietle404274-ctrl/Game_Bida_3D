@@ -133,6 +133,8 @@ namespace Game.Billiards.UI
 
         public static void StyleDropdown(Dropdown d)
         {
+            bool isCompact = ((RectTransform)d.transform).sizeDelta.x > 0f && ((RectTransform)d.transform).sizeDelta.x <= 200f;
+
             Image bg = d.GetComponent<Image>();
             if (bg != null)
             {
@@ -145,7 +147,7 @@ namespace Game.Billiards.UI
 
             SkewedPanelGraphic shape;
             BorderProgressGraphic frame;
-            AddShapeAndFrame(d.transform, FieldBg, FieldLine, 10f, out shape, out frame, false);
+            AddShapeAndFrame(d.transform, FieldBg, FieldLine, isCompact ? 8f : 10f, out shape, out frame, false);
             d.targetGraphic = shape; // hover/nhấn tô màu lên khung bình hành
             d.transition = Selectable.Transition.ColorTint;
 
@@ -159,17 +161,27 @@ namespace Game.Billiards.UI
 
             if (d.captionText != null)
             {
+                if (d.captionText.font == null) d.captionText.font = Font;
                 d.captionText.fontStyle = FontStyle.Bold;
                 d.captionText.color = Color.white;
+                if (isCompact)
+                {
+                    d.captionText.fontSize = 13;
+                    d.captionText.horizontalOverflow = HorizontalWrapMode.Overflow;
+                }
                 RectTransform cr = d.captionText.rectTransform;
-                cr.offsetMin = new Vector2(14f, cr.offsetMin.y);
-                cr.offsetMax = new Vector2(-34f, cr.offsetMax.y);
+                cr.offsetMin = new Vector2(isCompact ? 11f : 14f, cr.offsetMin.y);
+                cr.offsetMax = new Vector2(isCompact ? -24f : -34f, cr.offsetMax.y);
             }
 
             // Mũi tên: thay hình nút mặc định bằng tam giác vẽ tay
             Transform arrow = d.transform.Find("Arrow");
             if (arrow != null)
             {
+                if (isCompact)
+                {
+                    ((RectTransform)arrow).anchoredPosition = new Vector2(-13f, 0f);
+                }
                 Image old = arrow.GetComponent<Image>();
                 if (old != null) old.enabled = false;
                 if (arrow.Find("Tri") == null)
@@ -180,9 +192,9 @@ namespace Game.Billiards.UI
                     tr.anchorMin = tr.anchorMax = new Vector2(0.5f, 0.5f);
                     tr.pivot = new Vector2(0.5f, 0.5f);
                     tr.anchoredPosition = Vector2.zero;
-                    tr.sizeDelta = new Vector2(13f, 8f);
+                    tr.sizeDelta = isCompact ? new Vector2(11f, 7f) : new Vector2(13f, 8f);
                     SkewedPanelGraphic g = tri.GetComponent<SkewedPanelGraphic>();
-                    g.SetInsets(0f, 0f, 6.5f, 6.5f);
+                    g.SetInsets(0f, 0f, isCompact ? 5.5f : 6.5f, isCompact ? 5.5f : 6.5f);
                     g.color = LabelColor;
                     g.raycastTarget = false;
                 }
@@ -196,9 +208,35 @@ namespace Game.Billiards.UI
             RectTransform template = d.template;
             if (template == null) return;
 
-            const float itemH = 40f;
+            bool isCompact = ((RectTransform)d.transform).sizeDelta.x > 0f && ((RectTransform)d.transform).sizeDelta.x <= 200f;
+            float itemH = isCompact ? 34f : 40f;
             int count = Mathf.Max(1, d.options.Count);
             template.sizeDelta = new Vector2(template.sizeDelta.x, itemH * count + 8f);
+
+            Transform viewport = template.Find("Viewport");
+            if (viewport != null)
+            {
+                RectTransform vpRt = viewport as RectTransform;
+                if (vpRt != null && count <= 5)
+                {
+                    vpRt.offsetMin = Vector2.zero;
+                    vpRt.offsetMax = Vector2.zero;
+                }
+                Mask vpMask = viewport.GetComponent<Mask>();
+                Image vpImg = viewport.GetComponent<Image>();
+                if (vpMask != null && (vpImg == null || vpImg.sprite == null))
+                {
+                    vpMask.enabled = false;
+                    if (vpImg != null) vpImg.enabled = false;
+                    if (viewport.GetComponent<RectMask2D>() == null) viewport.gameObject.AddComponent<RectMask2D>();
+                }
+            }
+
+            Transform scrollbar = template.Find("Scrollbar");
+            if (scrollbar != null && count <= 5)
+            {
+                scrollbar.gameObject.SetActive(false);
+            }
 
             Image tbg = template.GetComponent<Image>();
             if (tbg != null)
@@ -212,7 +250,7 @@ namespace Game.Billiards.UI
 
             SkewedPanelGraphic tShape;
             BorderProgressGraphic tFrame;
-            AddShapeAndFrame(template, new Color(0.05f, 0.09f, 0.16f, 0.99f), new Color(0.40f, 0.62f, 0.92f, 0.95f), 10f, out tShape, out tFrame, true);
+            AddShapeAndFrame(template, new Color(0.05f, 0.09f, 0.16f, 0.99f), new Color(0.40f, 0.62f, 0.92f, 0.95f), isCompact ? 8f : 10f, out tShape, out tFrame, true);
 
             Transform item = template.Find("Viewport/Content/Item");
             if (item == null) return;
@@ -243,7 +281,7 @@ namespace Game.Billiards.UI
                 sr.offsetMin = Vector2.zero;
                 sr.offsetMax = Vector2.zero;
                 itemShape = sg.GetComponent<SkewedPanelGraphic>();
-                itemShape.SetInsets(0f, 8f, 8f, 0f);
+                itemShape.SetInsets(0f, isCompact ? 6f : 8f, isCompact ? 6f : 8f, 0f);
                 itemShape.raycastTarget = false;
                 itemShape.color = Color.white; // màu thực do ColorBlock của Toggle quyết định
             }
@@ -285,13 +323,14 @@ namespace Game.Billiards.UI
                 Text lt = label.GetComponent<Text>();
                 if (lt != null)
                 {
-                    lt.fontSize = 16;
+                    if (lt.font == null) lt.font = Font;
+                    lt.fontSize = isCompact ? 14 : 16;
                     lt.fontStyle = FontStyle.Bold;
                     lt.color = new Color(0.90f, 0.95f, 1f, 1f);
                 }
                 RectTransform lr = label as RectTransform;
-                lr.offsetMin = new Vector2(20f, 1f);
-                lr.offsetMax = new Vector2(-10f, -2f);
+                lr.offsetMin = new Vector2(isCompact ? 14f : 20f, 1f);
+                lr.offsetMax = new Vector2(isCompact ? -6f : -10f, -2f);
             }
         }
 

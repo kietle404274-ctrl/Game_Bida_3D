@@ -50,8 +50,46 @@ namespace Game.Billiards.Network
 
         /// <summary>Đối thủ đã rời phòng (thoát giữa trận hoặc sau khi trận kết thúc). Dùng để ẩn nút Chơi lại.</summary>
         public bool OpponentLeft { get; private set; }
+        /// <summary>Tên của đối thủ vừa rời phòng/mất kết nối.</summary>
+        public string OpponentLeftName { get; private set; }
         /// <summary>Máy cục bộ bị mất kết nối Photon giữa trận (bị xử thua).</summary>
         public bool LocalDisconnected { get; private set; }
+
+        // Theo dõi chất lượng đường truyền & phát hiện hiện tượng khựng/delay do mạng yếu
+        private float lastPacketReceivedTime;
+        private float lastBallsSyncReceivedTime;
+        private float clientBallsSettledWaitDuration;
+        private float highPingDuration;
+
+        /// <summary>Độ trễ mạng hiện tại (ms) tới máy chủ Photon.</summary>
+        public int CurrentPingMs => PhotonNetwork.IsConnected ? PhotonNetwork.GetPing() : 999;
+
+        /// <summary>Đang đứt kết nối mạng cục bộ hoặc chờ Photon timeout.</summary>
+        public bool IsConnectionLostPending => isOnlineMatch &&
+            (LocalDisconnected || !PhotonNetwork.IsConnected || Application.internetReachability == NetworkReachability.NotReachable);
+
+        /// <summary>
+        /// Trả về true khi đường truyền đang bị yếu/nghẽn gói tin khiến trận đấu bị khựng hoặc delay
+        /// (VD: Ping > 220ms kéo dài, bi đã dừng > 1.1s mà chưa nhận gói kết quả từ Master, hoặc đang lăn bi mà hụt gói đồng bộ > 0.65s).
+        /// </summary>
+        public bool IsExperiencingNetworkDelay
+        {
+            get
+            {
+                if (!isOnlineMatch) return false;
+                if (matchStateManager != null && matchStateManager.CurrentPhase == MatchPhase.MatchResult) return false;
+                if (IsConnectionLostPending) return true;
+                if (highPingDuration >= 1.0f) return true;
+                if (clientBallsSettledWaitDuration >= 1.1f) return true;
+                if (!IsMaster && matchStateManager != null && matchStateManager.CurrentPhase == MatchPhase.ShotInProgress
+                    && clientBallsSettledWaitDuration < 0.2f
+                    && (Time.unscaledTime - lastBallsSyncReceivedTime > 0.65f))
+                {
+                    return true;
+                }
+                return false;
+            }
+        }
 
         /// <summary>Client đã chạy dự đoán cú đánh cục bộ và đang chờ kết quả chính thức từ Master (bỏ qua sự kiện bi dừng cục bộ).</summary>
         public bool AwaitingMasterResult { get; private set; }
@@ -75,6 +113,19 @@ namespace Game.Billiards.Network
 
         /// <summary>Client nhận snapshot thống kê trận từ Master.</summary>
         public event Action<float[]> OnStatsReceived;
+
+        /// <summary>Sự kiện nhận tin nhắn chat thời gian thực: (senderPlayerIndex, senderName, messageText).</summary>
+        public event Action<int, string, string> OnChatMessageReceived;
+
+        /// <summary>Sự kiện nhận gói âm thanh đàm thoại (senderPlayerIndex, ulawAudioBytes).</summary>
+        public event Action<int, byte[]> OnVoiceDataReceived;
+
+        /// <summary>Sự kiện nhận trạng thái Mic/Loa của đối thủ (senderPlayerIndex, isMicEnabled, isSpeakerEnabled).</summary>
+        public event Action<int, bool, bool> OnVoiceStateReceived;
+
+        private float lastChatSendTime = -10f;
+        private const float MinChatInterval = 0.30f;
+        private const int MaxChatMessageLength = 120;
 
         public void BroadcastStats(float[] data)
         {
@@ -119,8 +170,15 @@ namespace Game.Billiards.Network
             tickInterval = 1f / Mathf.Max(networkTickRate, 30f);
 
             var session = GameSession.Instance;
-            isOnlineMatch = (session != null && session.CurrentGameMode == GameMode.OnlinePvP && PhotonNetwork.InRoom);
-            localPlayerIndex = PhotonNetwork.IsMasterClient ? 0 : 1;
+            isOnlineMatch = (session != null && session.CurrentGameMode == GameMode.OnlinePvP);
+            localPlayerIndex = (session != null && session.CurrentGameMode == GameMode.OnlinePvP)
+                ? (session.IsOnlineMaster ? 0 : 1)
+                : (PhotonNetwork.IsMasterClient ? 0 : 1);
+
+            lastPacketReceivedTime = Time.unscaledTime;
+            lastBallsSyncReceivedTime = Time.unscaledTime;
+            clientBallsSettledWaitDuration = 0f;
+            highPingDuration = 0f;
 
             Debug.Log($"[NetworkMatchManager] Khởi tạo trận đấu mạng: IsOnline={isOnlineMatch}, LocalPlayerIndex={localPlayerIndex} ({(localPlayerIndex == 0 ? "Chủ phòng / Master" : "Khách / Client")})");
 
@@ -168,6 +226,16 @@ namespace Game.Billiards.Network
 
                 // Cập nhật quyền điều khiển theo lượt hiện tại
                 UpdateInputPermissions();
+
+                // Kiểm tra nếu đã xảy ra mất kết nối trong lúc LoadingScreen hoặc RackIntroSequence (trước khi Initialize chạy)
+                if (LocalDisconnected || !PhotonNetwork.IsConnected || !PhotonNetwork.InRoom)
+                {
+                    ResolveLocalDisconnect("EarlyDisconnectDuringInit");
+                }
+                else if (OpponentLeft || (PhotonNetwork.CurrentRoom != null && PhotonNetwork.CurrentRoom.PlayerCount < 2))
+                {
+                    ResolveOpponentDisconnect(OpponentLeftName);
+                }
             }
         }
 
@@ -261,6 +329,35 @@ namespace Game.Billiards.Network
         private void Update()
         {
             if (!isOnlineMatch) return;
+
+            // Theo dõi thời gian Ping cao & thời gian chờ kết quả đồng bộ khi bi đã dừng
+            float dt = Time.unscaledDeltaTime;
+            if (CurrentPingMs > 220)
+            {
+                highPingDuration += dt;
+            }
+            else
+            {
+                highPingDuration = Mathf.MoveTowards(highPingDuration, 0f, dt * 2f);
+            }
+
+            if (!IsMaster && matchStateManager != null && matchStateManager.CurrentPhase == MatchPhase.ShotInProgress)
+            {
+                bool ballsStopped = movementMonitor != null && movementMonitor.AreAllBallsResting;
+                if (ballsStopped)
+                {
+                    clientBallsSettledWaitDuration += dt;
+                }
+                else
+                {
+                    clientBallsSettledWaitDuration = 0f;
+                }
+            }
+            else
+            {
+                clientBallsSettledWaitDuration = 0f;
+                lastBallsSyncReceivedTime = Time.unscaledTime;
+            }
 
             // Master Client gửi tọa độ bi định kỳ khi các bi đang chuyển động
             if (IsMaster && matchStateManager != null && matchStateManager.CurrentPhase == MatchPhase.ShotInProgress)
@@ -749,7 +846,7 @@ namespace Game.Billiards.Network
             FoulType foul = (FoulType)Convert.ToInt32(data["foul"]);
             bool rackEnded = (bool)data["rackEnded"];
 
-            if (foul != FoulType.None)
+            if (foul != FoulType.None && !rackEnded)
             {
                 FoulPopupUI.Show(foul);
             }
@@ -848,25 +945,36 @@ namespace Game.Billiards.Network
 
         public void OnEvent(EventData photonEvent)
         {
-            if (!isOnlineMatch) return;
-
             byte code = photonEvent.Code;
+            if (!isOnlineMatch
+                && code != NetworkConstants.EVENT_CHAT_MESSAGE
+                && code != NetworkConstants.EVENT_VOICE_DATA
+                && code != NetworkConstants.EVENT_VOICE_STATE)
+            {
+                return;
+            }
 
             switch (code)
             {
                 case NetworkConstants.EVENT_SHOT_COMMAND:
+                    lastPacketReceivedTime = Time.unscaledTime;
+                    lastBallsSyncReceivedTime = Time.unscaledTime;
                     HandleReceivedShotCommand(photonEvent.CustomData);
                     break;
 
                 case NetworkConstants.EVENT_SHOT_REJECTED:
+                    lastPacketReceivedTime = Time.unscaledTime;
                     HandleReceivedShotRejected();
                     break;
 
                 case NetworkConstants.EVENT_SURRENDER_REQUEST:
+                    lastPacketReceivedTime = Time.unscaledTime;
                     HandleReceivedSurrenderRequest(photonEvent.CustomData);
                     break;
 
                 case NetworkConstants.EVENT_BALLS_SYNC:
+                    lastPacketReceivedTime = Time.unscaledTime;
+                    lastBallsSyncReceivedTime = Time.unscaledTime;
                     // Chỉ nhận khi Client đang trong ShotInProgress; gói trễ sau TURN_RESULT sẽ bị bỏ (không kéo bi lùi)
                     if (!IsMaster && matchStateManager != null && matchStateManager.CurrentPhase == MatchPhase.ShotInProgress)
                     {
@@ -875,6 +983,9 @@ namespace Game.Billiards.Network
                     break;
 
                 case NetworkConstants.EVENT_TURN_RESULT:
+                    lastPacketReceivedTime = Time.unscaledTime;
+                    lastBallsSyncReceivedTime = Time.unscaledTime;
+                    clientBallsSettledWaitDuration = 0f;
                     if (!IsMaster)
                     {
                         ApplyTurnResultPacket((ExitGames.Client.Photon.Hashtable)photonEvent.CustomData);
@@ -918,6 +1029,18 @@ namespace Game.Billiards.Network
 
                 case NetworkConstants.EVENT_REMATCH:
                     HandleReceivedRematch(photonEvent.CustomData);
+                    break;
+
+                case NetworkConstants.EVENT_CHAT_MESSAGE:
+                    HandleReceivedChatMessage(photonEvent.CustomData);
+                    break;
+
+                case NetworkConstants.EVENT_VOICE_DATA:
+                    HandleReceivedVoiceData(photonEvent.CustomData);
+                    break;
+
+                case NetworkConstants.EVENT_VOICE_STATE:
+                    HandleReceivedVoiceState(photonEvent.CustomData);
                     break;
             }
         }
@@ -1303,10 +1426,156 @@ namespace Game.Billiards.Network
         {
             if (IsMaster) return;
             Debug.Log("[NetworkMatchManager] [Client] Nhận lệnh đấu lại EVENT_REMATCH từ Master.");
+            var statsPanel = FindObjectOfType<StatsPanelUI>();
+            if (statsPanel != null)
+            {
+                statsPanel.CloseResult();
+            }
             var resultUI = FindObjectOfType<ResultUI>();
             if (resultUI != null)
             {
                 resultUI.RematchFromMaster();
+            }
+        }
+
+        /// <summary>
+        /// Gửi tin nhắn chat thời gian thực tới đối thủ qua Photon RaiseEvent (EVENT_CHAT_MESSAGE = 116)
+        /// và kích hoạt sự kiện hiển thị ngay lập tức tại máy cục bộ.
+        /// </summary>
+        public bool SendChatMessage(string rawMessage)
+        {
+            if (string.IsNullOrWhiteSpace(rawMessage)) return false;
+            if (Time.unscaledTime - lastChatSendTime < MinChatInterval) return false;
+
+            string clean = rawMessage.Trim().Replace("\r", " ").Replace("\n", " ");
+            if (clean.Length > MaxChatMessageLength)
+            {
+                clean = clean.Substring(0, MaxChatMessageLength);
+            }
+            if (string.IsNullOrEmpty(clean)) return false;
+
+            lastChatSendTime = Time.unscaledTime;
+
+            string senderName = GetPlayerDisplayName(localPlayerIndex);
+
+            // Hiển thị ngay trên máy gửi (0ms latency)
+            OnChatMessageReceived?.Invoke(localPlayerIndex, senderName, clean);
+
+            // Gửi qua Photon nếu đang ở trong phòng trực tuyến
+            if (PhotonNetwork.InRoom)
+            {
+                object[] payload = new object[] { localPlayerIndex, senderName, clean };
+                RaiseEventOptions options = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
+                PhotonNetwork.RaiseEvent(NetworkConstants.EVENT_CHAT_MESSAGE, payload, options, SendOptions.SendReliable);
+            }
+
+            return true;
+        }
+
+        private string GetPlayerDisplayName(int playerIdx)
+        {
+            if (matchStateManager != null && matchStateManager.State != null && matchStateManager.State.players != null)
+            {
+                if (playerIdx >= 0 && playerIdx < matchStateManager.State.players.Length)
+                {
+                    string name = matchStateManager.State.players[playerIdx].displayName;
+                    if (!string.IsNullOrWhiteSpace(name)) return name;
+                }
+            }
+            if (PhotonNetwork.LocalPlayer != null && !string.IsNullOrWhiteSpace(PhotonNetwork.LocalPlayer.NickName))
+            {
+                return PhotonNetwork.LocalPlayer.NickName;
+            }
+            return LocalizationManager.Get("default_player_name", "Cơ Thủ");
+        }
+
+        private void HandleReceivedChatMessage(object rawData)
+        {
+            if (rawData is object[] arr && arr.Length >= 3)
+            {
+                int senderIdx = arr[0] is int idx ? idx : (localPlayerIndex == 0 ? 1 : 0);
+                string senderName = arr[1] as string;
+                string message = arr[2] as string;
+
+                if (string.IsNullOrWhiteSpace(message)) return;
+                if (message.Length > MaxChatMessageLength)
+                {
+                    message = message.Substring(0, MaxChatMessageLength);
+                }
+
+                if (string.IsNullOrWhiteSpace(senderName))
+                {
+                    senderName = GetPlayerDisplayName(senderIdx);
+                }
+
+                OnChatMessageReceived?.Invoke(senderIdx, senderName, message);
+            }
+        }
+
+        /// <summary>
+        /// Gửi gói âm thanh G.711 μ-law (8000 Hz) qua Photon RaiseEvent (SendUnreliable để đạt độ trễ thấp nhất).
+        /// </summary>
+        public void SendVoiceData(byte[] ulawBytes)
+        {
+            if (ulawBytes == null || ulawBytes.Length == 0) return;
+            if (!PhotonNetwork.InRoom) return;
+
+            object[] payload = new object[] { localPlayerIndex, ulawBytes };
+            RaiseEventOptions options = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
+            PhotonNetwork.RaiseEvent(NetworkConstants.EVENT_VOICE_DATA, payload, options, SendOptions.SendUnreliable);
+        }
+
+        private void HandleReceivedVoiceData(object rawData)
+        {
+            if (rawData is object[] arr && arr.Length >= 2 && arr[1] is byte[] ulaw && ulaw.Length > 0)
+            {
+                int senderIdx = arr[0] is int idx ? idx : (localPlayerIndex == 0 ? 1 : 0);
+                OnVoiceDataReceived?.Invoke(senderIdx, ulaw);
+            }
+            else if (rawData is byte[] rawBytes && rawBytes.Length > 0)
+            {
+                int senderIdx = localPlayerIndex == 0 ? 1 : 0;
+                OnVoiceDataReceived?.Invoke(senderIdx, rawBytes);
+            }
+        }
+
+        /// <summary>
+        /// Đồng bộ trạng thái bật/tắt Mic, Loa và chỉ số Avatar của người chơi cục bộ tới đối thủ (SendReliable).
+        /// </summary>
+        public void SendVoiceState(bool micEnabled, bool speakerEnabled)
+        {
+            if (!PhotonNetwork.InRoom) return;
+
+            int localAvatar = AvatarLibrary.Wrap(PlayerProfile.AvatarIndex);
+            if (PhotonNetwork.LocalPlayer != null)
+            {
+                if (!PhotonNetwork.LocalPlayer.CustomProperties.TryGetValue(NetworkManager.PLAYER_PROP_AVATAR, out object curAv)
+                    || !(curAv is int curIdx) || curIdx != localAvatar)
+                {
+                    PhotonNetwork.LocalPlayer.SetCustomProperties(new ExitGames.Client.Photon.Hashtable
+                    {
+                        { NetworkManager.PLAYER_PROP_AVATAR, localAvatar }
+                    });
+                }
+            }
+
+            object[] payload = new object[] { localPlayerIndex, micEnabled, speakerEnabled, localAvatar };
+            RaiseEventOptions options = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
+            PhotonNetwork.RaiseEvent(NetworkConstants.EVENT_VOICE_STATE, payload, options, SendOptions.SendReliable);
+        }
+
+        private void HandleReceivedVoiceState(object rawData)
+        {
+            if (rawData is object[] arr && arr.Length >= 3)
+            {
+                int senderIdx = arr[0] is int idx ? idx : (localPlayerIndex == 0 ? 1 : 0);
+                bool micOn = arr[1] is bool m && m;
+                bool speakerOn = arr[2] is bool s ? s : true;
+                if (arr.Length >= 4 && arr[3] is int remoteAv && OnlineVoiceChatManager.Instance != null)
+                {
+                    OnlineVoiceChatManager.Instance.SetRemoteAvatarIndex(remoteAv);
+                }
+                OnVoiceStateReceived?.Invoke(senderIdx, micOn, speakerOn);
             }
         }
 
@@ -1391,10 +1660,70 @@ namespace Game.Billiards.Network
 
         public override void OnPlayerLeftRoom(Player otherPlayer)
         {
-            if (!isOnlineMatch) return;
+            var session = GameSession.Instance;
+            bool onlineMode = isOnlineMatch || (session != null && session.CurrentGameMode == GameMode.OnlinePvP);
+            if (!onlineMode) return;
 
-            Debug.LogWarning($"[NetworkMatchManager] Người chơi {otherPlayer.NickName} đã thoát/mất kết nối trong trận đấu (Rule 124)!");
+            string opName = otherPlayer != null && !string.IsNullOrWhiteSpace(otherPlayer.NickName)
+                ? otherPlayer.NickName
+                : null;
             OpponentLeft = true;
+            if (!string.IsNullOrEmpty(opName)) OpponentLeftName = opName;
+
+            if (!isOnlineMatch || matchStateManager == null)
+            {
+                Debug.LogWarning($"[NetworkMatchManager] Ghi nhận đối thủ ({opName}) thoát sớm trong lúc tải/intro trận đấu.");
+                return;
+            }
+
+            ResolveOpponentDisconnect(opName);
+        }
+
+        public override void OnDisconnected(DisconnectCause cause)
+        {
+            var session = GameSession.Instance;
+            bool onlineMode = isOnlineMatch || (session != null && session.CurrentGameMode == GameMode.OnlinePvP);
+            if (!onlineMode) return;
+
+            LocalDisconnected = true;
+            if (!isOnlineMatch || matchStateManager == null)
+            {
+                Debug.LogWarning($"[NetworkMatchManager] Ghi nhận mất kết nối sớm ({cause}) trong lúc tải/intro trận đấu.");
+                return;
+            }
+
+            ResolveLocalDisconnect(cause.ToString());
+        }
+
+        private void CleanupOnMatchInterrupted()
+        {
+            if (turnManager != null)
+            {
+                turnManager.StopShotTimer();
+            }
+            if (Audio.AudioManager.Instance != null)
+            {
+                Audio.AudioManager.Instance.StopTimerTick();
+            }
+            var chat = FindObjectOfType<OnlineChatUI>();
+            if (chat != null && OnlineChatUI.IsChatOpen)
+            {
+                chat.SetExpanded(false);
+            }
+        }
+
+        private void ResolveOpponentDisconnect(string opponentName)
+        {
+            OpponentLeft = true;
+            if (string.IsNullOrWhiteSpace(opponentName))
+            {
+                int oppIdx = localPlayerIndex == 0 ? 1 : 0;
+                opponentName = GetPlayerDisplayName(oppIdx);
+            }
+            OpponentLeftName = opponentName;
+
+            Debug.LogWarning($"[NetworkMatchManager] Người chơi {opponentName} đã thoát/mất kết nối trong trận đấu (Rule 124)!");
+            CleanupOnMatchInterrupted();
 
             if (matchStateManager == null) return;
 
@@ -1411,23 +1740,31 @@ namespace Game.Billiards.Network
             int remainingPlayerIndex = localPlayerIndex;
             matchStateManager.RecordMatchWon(remainingPlayerIndex);
 
-            string winMsg = LocalizationManager.Format("net_win_disconnect", otherPlayer.NickName);
+            string winMsg = LocalizationManager.Format("net_win_disconnect", opponentName);
             OnMatchDisconnected?.Invoke(winMsg);
             Debug.Log($"[NetworkMatchManager] {winMsg}");
         }
 
-        public override void OnDisconnected(DisconnectCause cause)
+        private void ResolveLocalDisconnect(string reason)
         {
-            if (!isOnlineMatch) return;
-
-            Debug.LogWarning($"[NetworkMatchManager] Bạn đã mất kết nối tới máy chủ Photon: {cause}");
+            Debug.LogWarning($"[NetworkMatchManager] Bạn đã mất kết nối tới máy chủ Photon: {reason}");
             string loseMsg = LocalizationManager.Get("net_lose_disconnect");
             LocalDisconnected = true;
+            CleanupOnMatchInterrupted();
 
-            // Rule 124: người mất kết nối thua cả trận (nếu trận chưa kết thúc)
-            if (matchStateManager != null
-                && matchStateManager.CurrentPhase != MatchPhase.MatchResult
-                && !OpponentLeft)
+            if (matchStateManager == null) return;
+
+            // Nếu trận đã kết thúc (đang xem bảng thống kê cuối trận) mà bị rớt mạng: khóa nút Chơi lại, chỉ giữ nút Về sảnh
+            if (matchStateManager.CurrentPhase == MatchPhase.MatchResult)
+            {
+                var statsPanel = FindObjectOfType<StatsPanelUI>();
+                if (statsPanel != null) statsPanel.SetLobbyOnly(true);
+                OnMatchDisconnected?.Invoke(loseMsg);
+                return;
+            }
+
+            // Rule 124: người mất kết nối thua cả trận (nếu trận chưa kết thúc và đối thủ chưa thoát trước đó)
+            if (!OpponentLeft)
             {
                 matchStateManager.RecordMatchWon(localPlayerIndex == 0 ? 1 : 0);
             }

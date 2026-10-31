@@ -839,6 +839,10 @@ namespace Game.Billiards.UI
         /// <summary>Đóng màn hình kết thúc trận (sau khi bấm Chơi lại / Về sảnh).</summary>
         public void CloseResult()
         {
+            if (Audio.AudioManager.Instance != null)
+            {
+                Audio.AudioManager.Instance.StopMatchResultAudio();
+            }
             if (!resultMode) return;
             HudModalState.Release("result");
             open = false;

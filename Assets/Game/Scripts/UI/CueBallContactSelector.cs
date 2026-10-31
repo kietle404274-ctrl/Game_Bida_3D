@@ -61,6 +61,8 @@ namespace Game.Billiards.UI
 
         private void Update()
         {
+            if (OnlineChatUI.IsChatOpen || OnlineChatUI.IsTyping) return;
+
             if (!isOpen)
             {
                 // Phím J mở popup chọn điểm chạm (chỉ khi đang được phép ngắm)

@@ -35,7 +35,7 @@ namespace Game.Billiards.UI
                 case 4: return new Color(0.42f, 0.15f, 0.60f);
                 case 5: return new Color(0.98f, 0.45f, 0.08f);
                 case 6: return new Color(0.08f, 0.55f, 0.25f);
-                case 7: return new Color(0.55f, 0.10f, 0.12f);
+                case 7: return new Color(0.48f, 0.22f, 0.08f);
                 case 8: return new Color(0.05f, 0.05f, 0.05f);
                 default: return Color.white;
             }

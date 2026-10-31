@@ -118,6 +118,10 @@ namespace Game.Billiards.UI
 
         public void Hide()
         {
+            if (Audio.AudioManager.Instance != null)
+            {
+                Audio.AudioManager.Instance.StopMatchResultAudio();
+            }
             HudModalState.Release("result");
             if (resultModalRoot != null) resultModalRoot.SetActive(false);
         }

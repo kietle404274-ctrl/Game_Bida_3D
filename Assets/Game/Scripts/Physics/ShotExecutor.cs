@@ -102,6 +102,8 @@ namespace Game.Billiards.Physics
                 rb.angularVelocity = (horizontalSpinAxis * topBackSpin) + (Vector3.up * sideSpin);
             }
 
+            cueBall.SyncPreStepState();
+
             // 2b. Nhảy bi: cơ nâng đủ góc thì một phần xung lực thành bật lên (phản lực mặt đá), còn lại là tốc độ ngang
             // v_ngang = v * cos(góc), v_đứng = min(v * sin(góc) * JumpGain, MaxJumpSpeed). Không áp dụng cho cú phá bi.
             float elevation = Mathf.Clamp(command.cueElevationDeg, 0f, physicsConfig.MaxCueElevation);

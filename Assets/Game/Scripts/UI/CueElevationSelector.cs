@@ -164,6 +164,8 @@ namespace Game.Billiards.UI
 
         private void Update()
         {
+            if (OnlineChatUI.IsChatOpen || OnlineChatUI.IsTyping) return;
+
             if (!isOpen)
             {
                 // Phím K mở popup chọn góc nâng (chỉ khi đang được phép ngắm)

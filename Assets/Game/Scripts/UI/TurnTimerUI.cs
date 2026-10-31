@@ -68,6 +68,10 @@ namespace Game.Billiards.UI
 
         public void Hide()
         {
+            if (lastWholeSecond != -1 && Audio.AudioManager.Instance != null)
+            {
+                Audio.AudioManager.Instance.StopTimerTick();
+            }
             lastWholeSecond = -1;
             pulse = 0f;
             if (numberText != null)

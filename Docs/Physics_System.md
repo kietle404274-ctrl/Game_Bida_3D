@@ -125,14 +125,13 @@ Với μ_lăn = 0,015: quãng dừng `s = v²/(2·μ_lăn·g) = v²/0,294`. Ví 
 
 ---
 
-## 4. Va chạm bi–bi
+## 4. Va chạm bi–bi (`HandleBallCollisionResponse`)
 
-Do PhysX giải với:
-
-- Hệ số nảy `e = 0,95` (`BallRestitution`, bounce combine = Average).
-- Ma sát bi–bi ≈ 0,05 (`frictionCombine = Average`) – tạo hiện tượng **throw** nhẹ và truyền xoáy.
-
-Cú bắn thẳng vào tâm bi mục tiêu → bi cái dừng (stop shot) nếu không xoáy; có xoáy → trô lùi / cu-lê đi theo như thực tế nhờ giữ xoáy qua va chạm.
+- **Va chạm đơn / cắt góc (Isolated 2-Ball Collision):** Giải chính xác thời điểm tiếp xúc liên tục (Continuous Time-of-Impact – TOI) trong bước vật lý từ `prevPosition`, `prevVelocity`:
+  $$\| (\vec{p}_1 + \vec{v}_1 t^*) - (\vec{p}_2 + \vec{v}_2 t^*) \| = 2R$$
+  Tại đúng vị trí Ghost Ball $\vec{p}_1(t^*), \vec{p}_2(t^*)$, pháp tuyến đơn vị $\vec{n} = (\vec{c}_2 - \vec{c}_1) / (2R)$ trùng khít 100% với tia chỉ hướng của thước ngắm (`AimGuide`). Xung lực đàn hồi dọc theo $\vec{n}$ với hệ số nảy $e = 0,95$ (`BallRestitution`), ma sát mặt bi = 0 để không sinh *collision throw* làm lệch hướng bi mục tiêu.
+- **Va chạm cụm nhiều bi / Cú phá bi (Multi-ball Cluster / Rack Break):** Khi phát hiện có bi thứ 3 nằm sát trong bán kính $2,15R$, hệ thống tự động nhường cho bộ giải đa vật thể PGS 12-iteration của PhysX để dàn bi 15 quả nổ tự nhiên.
+- **Bảo toàn xoáy qua va chạm:** Vận tốc góc `prevAngular` được giữ nguyên qua thời điểm chạm nên cú bắn thẳng không xoáy làm bi cái dừng tại chỗ (stop shot), có xoáy trô sẽ giật lùi và cu-lê sẽ đuổi theo trên mặt nỉ như thực tế.
 
 ---
 
