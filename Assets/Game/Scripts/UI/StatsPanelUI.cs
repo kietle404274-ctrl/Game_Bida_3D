@@ -831,8 +831,16 @@ namespace Game.Billiards.UI
 
             if (resultTitle != null)
             {
-                string t = resultLobbyOnly && string.IsNullOrEmpty(resultTitleOverride) ? LocalizationManager.Get("stats_opponent_left") : resultTitleOverride;
-                resultTitle.text = string.IsNullOrEmpty(t) ? LocalizationManager.Get("stats_match_over") : t;
+                if (resultLobbyOnly && string.IsNullOrEmpty(resultTitleOverride))
+                {
+                    resultTitle.text = string.Empty;
+                }
+                else
+                {
+                    resultTitle.text = string.IsNullOrEmpty(resultTitleOverride)
+                        ? LocalizationManager.Get("stats_match_over")
+                        : resultTitleOverride;
+                }
             }
         }
 

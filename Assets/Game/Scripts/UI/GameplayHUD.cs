@@ -163,6 +163,29 @@ namespace Game.Billiards.UI
             if (turnSlideBanner == null) turnSlideBanner = GetComponentInChildren<TurnSlideBannerUI>(true);
         }
 
+        /// <summary>
+        /// Chuẩn bị dữ liệu hiển thị cho 2 thẻ người chơi, bảng tỉ số và thanh lực trước khi bước vào pha Đua Bi Băng Ngắn.
+        /// </summary>
+        public void PrepareForPreMatchLag(MatchStateManager stateMgr, PlayerInputController inputCtrl, BallManager bManager)
+        {
+            matchStateManager = stateMgr;
+            inputController = inputCtrl;
+            ballManager = bManager;
+
+            if (powerBar != null && inputController != null)
+            {
+                powerBar.Initialize(inputController);
+            }
+
+            if (matchStartIntroRoot != null)
+            {
+                matchStartIntroRoot.SetActive(false);
+            }
+
+            EnsureGameplayCanvasVisible();
+            RefreshAllUI();
+        }
+
         public void Initialize(MatchStateManager stateMgr, TurnManager tManager, PlayerInputController inputCtrl, BallManager bManager, BallMovementMonitor monitor, CueBallContactSelector cSelector = null)
         {
             matchStateManager = stateMgr;
@@ -217,6 +240,7 @@ namespace Game.Billiards.UI
                 string pName = matchStateManager.State.players[cur].displayName;
                 bool isLocalPlayer = (cur == GetLocalPlayerIndex());
                 turnSlideBanner.ShowTurn(isLocalPlayer, pName);
+                UpdateBreakPlacementBanner(isLocalPlayer);
             }
 
             if (onlineChat == null) onlineChat = OnlineChatUI.Ensure(this);
@@ -315,6 +339,15 @@ namespace Game.Billiards.UI
                 movementMonitor.OnAllBallsSettled += HandleAllBallsSettled;
             }
 
+            if (inputController != null)
+            {
+                inputController.OnShotInitiated -= HandlePlayerShotInitiated;
+                inputController.OnShotInitiated += HandlePlayerShotInitiated;
+
+                inputController.OnBreakPlacementConfirmed -= HandleBreakPlacementConfirmed;
+                inputController.OnBreakPlacementConfirmed += HandleBreakPlacementConfirmed;
+            }
+
             LocalizationManager.OnLanguageChanged -= RefreshAllUI;
             LocalizationManager.OnLanguageChanged += RefreshAllUI;
         }
@@ -344,6 +377,12 @@ namespace Game.Billiards.UI
             if (movementMonitor != null)
             {
                 movementMonitor.OnAllBallsSettled -= HandleAllBallsSettled;
+            }
+
+            if (inputController != null)
+            {
+                inputController.OnShotInitiated -= HandlePlayerShotInitiated;
+                inputController.OnBreakPlacementConfirmed -= HandleBreakPlacementConfirmed;
             }
         }
 
@@ -408,6 +447,7 @@ namespace Game.Billiards.UI
                 {
                     var net = FindObjectOfType<Network.NetworkMatchManager>();
                     if (net != null && net.IsOnlineMatch) return net.LocalPlayerIndex == 1 ? 1 : 0;
+                    return session.IsOnlineMaster ? 0 : 1;
                 }
                 return 0;
             }
@@ -494,6 +534,42 @@ namespace Game.Billiards.UI
             {
                 bool isLocalPlayer = (newPlayerIndex == GetLocalPlayerIndex());
                 turnSlideBanner.ShowTurn(isLocalPlayer, currentPlayerName);
+                UpdateBreakPlacementBanner(isLocalPlayer);
+            }
+        }
+
+        private void UpdateBreakPlacementBanner(bool isLocalPlayer)
+        {
+            if (turnSlideBanner == null) return;
+            bool isBreakTurn = matchStateManager != null
+                && matchStateManager.State != null
+                && (matchStateManager.State.turnSequence == 0 || matchStateManager.CurrentPhase == MatchPhase.BreakSetup);
+
+            bool isPendingConfirmation = inputController == null || !inputController.IsBreakPlacementConfirmed;
+
+            if (isLocalPlayer && isBreakTurn && isPendingConfirmation)
+            {
+                turnSlideBanner.ShowBreakPlacementPrompt();
+            }
+            else
+            {
+                turnSlideBanner.HideBreakPlacementPrompt();
+            }
+        }
+
+        private void HandleBreakPlacementConfirmed()
+        {
+            if (turnSlideBanner != null)
+            {
+                turnSlideBanner.HideBreakPlacementPrompt();
+            }
+        }
+
+        private void HandlePlayerShotInitiated(ShotCommand cmd)
+        {
+            if (turnSlideBanner != null)
+            {
+                turnSlideBanner.HideBreakPlacementPrompt();
             }
         }
 
@@ -503,6 +579,11 @@ namespace Game.Billiards.UI
             {
                 if (playerLeftPanel != null) playerLeftPanel.ClearTimer();
                 if (playerRightPanel != null) playerRightPanel.ClearTimer();
+            }
+
+            if (phase != MatchPhase.Aiming && phase != MatchPhase.BreakSetup && turnSlideBanner != null)
+            {
+                turnSlideBanner.HideBreakPlacementPrompt();
             }
 
             if (phase == MatchPhase.Aiming && callShotUI != null)
@@ -562,7 +643,7 @@ namespace Game.Billiards.UI
             var session = GameSession.Instance;
             if (session != null && session.CurrentGameMode == GameMode.OnlinePvP)
             {
-                if (net != null) return net.LocalPlayerIndex;
+                return session.IsOnlineMaster ? 0 : 1;
             }
 
             if (matchStateManager != null && matchStateManager.State != null)
@@ -580,6 +661,69 @@ namespace Game.Billiards.UI
         }
 
         private Coroutine autoNextRackRoutine;
+        private Coroutine opponentLeftCountdownRoutine;
+
+        private System.Collections.IEnumerator OpponentLeftCountdownToStatsRoutine(int winnerIndex, string oppName)
+        {
+            // Đóng các popup phụ nếu đang mở để người chơi nhìn rõ bàn Bida và thẻ HUD đếm ngược
+            if (helpUI != null) helpUI.Hide();
+            if (rulesUI != null) rulesUI.Hide();
+            if (settingsUI != null) settingsUI.Hide();
+            if (contactSelector != null) contactSelector.SetOpen(false);
+            if (CueElevationSelector.Instance != null) CueElevationSelector.Instance.SetOpen(false);
+            if (turnSlideBanner != null) turnSlideBanner.HideBreakPlacementPrompt();
+
+            HudModalState.ForceOpen("disconnect_countdown");
+
+            var st = matchStateManager != null ? matchStateManager.State : null;
+            int targetWins = st != null ? (int)st.settings.raceTarget : 3;
+            int winsA = winnerIndex == 0 ? targetWins : 0;
+            int winsB = winnerIndex == 1 ? targetWins : 0;
+            if (st != null)
+            {
+                st.playerARackWins = winsA;
+                st.playerBRackWins = winsB;
+                HandleRackScoreChanged(winsA, winsB);
+            }
+
+            if (Audio.AudioManager.Instance != null)
+            {
+                Audio.AudioManager.Instance.PlayRackWin();
+            }
+
+            const float totalSec = 5f;
+            OpponentLeftOverlayUI.Show(this, targetWins, 0, totalSec);
+
+            float remaining = totalSec;
+            while (remaining > 0f)
+            {
+                remaining -= Time.unscaledDeltaTime;
+                OpponentLeftOverlayUI.UpdateProgress(Mathf.Max(0f, remaining), totalSec);
+                yield return null;
+            }
+
+            OpponentLeftOverlayUI.HideImmediate();
+            opponentLeftCountdownRoutine = null;
+            HudModalState.Release("disconnect_countdown");
+
+            if (Audio.AudioManager.Instance != null)
+            {
+                Audio.AudioManager.Instance.PlayMatchWin();
+            }
+
+            if (statsPanel != null && resultUI != null)
+            {
+                statsPanel.ShowMatchResult(
+                    winnerIndex,
+                    null,
+                    () => { statsPanel.CloseResult(); resultUI.ReturnToLobby(); },
+                    lobbyOnly: true);
+            }
+            else if (resultUI != null && st != null)
+            {
+                resultUI.ShowMatchResult(winnerIndex, st.playerARackWins, st.playerBRackWins);
+            }
+        }
 
         private System.Collections.IEnumerator AutoNextRackRoutine()
         {
@@ -609,6 +753,7 @@ namespace Game.Billiards.UI
                 {
                     bool isLocalPlayer = (cur == GetLocalPlayerIndex());
                     turnSlideBanner.ShowTurn(isLocalPlayer, pName);
+                    UpdateBreakPlacementBanner(isLocalPlayer);
                 }
             }
         }
@@ -625,17 +770,30 @@ namespace Game.Billiards.UI
                 autoNextRackRoutine = null;
             }
 
+            var net = FindObjectOfType<Network.NetworkMatchManager>();
+            bool online = net != null && net.IsOnlineMatch;
+            int localIdx = GetLocalPlayerIndex();
+            bool isLocalWinner = (winnerIndex == localIdx) && !(online && net.LocalDisconnected);
+
+            // Nếu đối thủ rời trận Online: giữ nguyên giao diện bàn Bida, hiện thẻ HUD riêng biệt và đếm ngược 5 giây rồi mới mở màn hình thống kê!
+            if (online && net.OpponentLeft && !net.LocalDisconnected)
+            {
+                int oppIdx = 1 - localIdx;
+                string oppName = !string.IsNullOrWhiteSpace(net.OpponentLeftName)
+                    ? net.OpponentLeftName
+                    : (state.players != null && oppIdx >= 0 && oppIdx < state.players.Length ? state.players[oppIdx].displayName : "Player");
+
+                if (opponentLeftCountdownRoutine != null) StopCoroutine(opponentLeftCountdownRoutine);
+                opponentLeftCountdownRoutine = StartCoroutine(OpponentLeftCountdownToStatsRoutine(winnerIndex, oppName));
+                return;
+            }
+
             string winnerName = state.players[winnerIndex].displayName;
 
             if (eventToast != null)
             {
                 eventToast.ShowWinToast(winnerName, LocalizationManager.Get("hud_match_champion"));
             }
-
-            var net = FindObjectOfType<Network.NetworkMatchManager>();
-            bool online = net != null && net.IsOnlineMatch;
-            int localIdx = GetLocalPlayerIndex();
-            bool isLocalWinner = (winnerIndex == localIdx) && !(online && net.LocalDisconnected);
 
             // Phát âm thanh Tieng_Win nếu người chơi tại máy này thắng trận, ngược lại phát Tieng_Thua (hỗ trợ cả Offline & Online)
             if (Audio.AudioManager.Instance != null)
@@ -663,20 +821,6 @@ namespace Game.Billiards.UI
                         lobbyOnly: true,
                         title: LocalizationManager.Get("net_lose_disconnect"));
                 }
-                else if (online && net.OpponentLeft)
-                {
-                    // Đối thủ đã rời trận / mất kết nối: hiển thị rõ lý do thắng do đối thủ mất kết nối và chỉ hiện nút Về sảnh
-                    int oppIdx = 1 - localIdx;
-                    string oppName = !string.IsNullOrWhiteSpace(net.OpponentLeftName)
-                        ? net.OpponentLeftName
-                        : (state.players != null && oppIdx >= 0 && oppIdx < state.players.Length ? state.players[oppIdx].displayName : "Player");
-                    statsPanel.ShowMatchResult(
-                        winnerIndex,
-                        null,
-                        () => { statsPanel.CloseResult(); resultUI.ReturnToLobby(); },
-                        lobbyOnly: true,
-                        title: LocalizationManager.Format("net_win_disconnect", oppName));
-                }
                 else if (online)
                 {
                     // Online: chỉ chủ phòng bấm Chơi lại (phát EVENT_REMATCH cho Client); Client chờ chủ phòng
@@ -686,11 +830,14 @@ namespace Game.Billiards.UI
                         () =>
                         {
                             if (!isMaster || net.OpponentLeft) return;
-                            net.BroadcastRematch();
+                            int firstBreaker = UnityEngine.Random.Range(0, 2);
+                            int spinSeed = UnityEngine.Random.Range(1000, 999999);
+                            net.BroadcastRematch(firstBreaker, spinSeed);
                             statsPanel.CloseResult();
-                            resultUI.Rematch();
+                            resultUI.Rematch(firstBreaker, spinSeed);
                         },
                         () => { statsPanel.CloseResult(); resultUI.ReturnToLobby(); },
+                        lobbyOnly: net.OpponentLeft,
                         rematchEnabled: isMaster,
                         rematchLabel: isMaster ? null : LocalizationManager.Get("result_waiting_host"));
                 }

@@ -19,11 +19,11 @@ namespace Game.Billiards.Physics
         [Tooltip("Tọa độ mốc chân bàn (Foot Spot - nơi đặt đỉnh dàn bi)")]
         [SerializeField] private Vector3 footSpot = new Vector3(-0.502f, 0.8635f, 0f);
 
-        [Tooltip("Tọa độ mốc đầu bàn (Head Spot - nơi đặt bi cái khi khai cuộc)")]
-        [SerializeField] private Vector3 headSpot = new Vector3(0.502f, 0.8635f, 0f);
+        [Tooltip("Tọa độ mốc đầu bàn (Head Spot - nơi đặt bi cái khi khai cuộc, nằm sau vạch kẻ trắng)")]
+        [SerializeField] private Vector3 headSpot = new Vector3(0.595f, 0.8635f, 0f);
 
-        [Tooltip("Tọa độ X của đường lằn đầu bàn (Head String)")]
-        [SerializeField] private float headStringX = 0.502f;
+        [Tooltip("Tọa độ X giới hạn đặt bi sau đường lằn đầu bàn (Head String Line = 0.5512m + bán kính bi 0.02855m)")]
+        [SerializeField] private float headStringX = 0.582f;
 
         [Header("Pockets (6 lỗ)")]
         [Tooltip("Danh sách 6 PocketDetector (0=FootLeft, 1=FootRight, 2=SideLeft, 3=SideRight, 4=HeadLeft, 5=HeadRight)")]
@@ -48,9 +48,25 @@ namespace Game.Billiards.Physics
             // Đảm bảo kích thước đồng bộ chính xác với mép mũi băng 3D thực tế
             if (playableHalfLength < 1.04f || playableHalfLength > 1.08f) playableHalfLength = 1.066f;
             if (playableHalfWidth < 0.49f || playableHalfWidth > 0.52f) playableHalfWidth = 0.5023f;
-            if (Mathf.Abs(headStringX) > 0.52f) headStringX = 0.502f;
             if (Mathf.Abs(footSpot.x) > 0.52f) footSpot = new Vector3(-0.502f, clothSurfaceY + 0.02855f, 0f);
-            if (Mathf.Abs(headSpot.x) > 0.52f) headSpot = new Vector3(0.502f, clothSurfaceY + 0.02855f, 0f);
+
+            // Vạch kẻ trắng 3D trên mặt bàn (TableVisual/Line) nằm tại X = 0.55123m.
+            // Cộng thêm bán kính bi (0.02855m) + 2mm đệm để mép trước của bi cái không bao giờ vượt qua vạch kẻ.
+            float paintedLineX = 0.55123f;
+            var lineTr = transform.Find("TableVisual/Line") ?? transform.Find("Line");
+            if (lineTr != null && lineTr.localPosition.x > 0.40f)
+            {
+                paintedLineX = lineTr.localPosition.x;
+            }
+            float minCueBallCenterBehindLine = paintedLineX + 0.02855f + 0.002f; // ~0.5818m
+            if (headStringX < minCueBallCenterBehindLine || headStringX > 0.65f)
+            {
+                headStringX = minCueBallCenterBehindLine;
+            }
+            if (headSpot.x < headStringX + 0.008f || headSpot.x > 0.68f)
+            {
+                headSpot = new Vector3(headStringX + 0.013f, clothSurfaceY + 0.02855f, 0f);
+            }
             if (cornerMouthRetreat > 0.005f) cornerMouthRetreat = 0.002f;
 
             EnsureClothBedCollider();

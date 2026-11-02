@@ -10366,7 +10366,7 @@ MonoBehaviour:
   physicsConfig: {fileID: 11400000, guid: e97274f2d4384091ac38dcea024154e5, type: 2}
   ballManager: {fileID: 700000012}
   movementMonitor: {fileID: 700000011}
-  breakPowerMultiplier: 1.6
+  breakPowerMultiplier: 1.36
 --- !u!114 &700000015
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -25685,7 +25685,6 @@ GameObject:
   - component: {fileID: 1667188181}
   - component: {fileID: 1667188180}
   - component: {fileID: 1667188179}
-  - component: {fileID: 1667188182}
   - component: {fileID: 1667188183}
   - component: {fileID: 1667188190}
   m_Layer: 0
@@ -25769,18 +25768,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: -1.21, y: -21.557, z: -0.003}
---- !u!114 &1667188182
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1667188178}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!114 &1667188183
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -25923,7 +25910,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   cueBallTarget: {fileID: 700000200}
-  mainCamera: {fileID: 1667188181}
+  mainCamera: {fileID: 1667188180}
   aimDistance: 1.15
   aimHeightOffset: 0.08
   minPitch: 8

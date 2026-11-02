@@ -22,7 +22,18 @@ namespace Game.Billiards.Physics
         private int fixedStepIndex = 0;
         private int lastCushionResponseStep = -1;
         private int lastBallResponseStep = -1;
+        private readonly float[] lastPairHitAudioTime = new float[16];
+        private float lastCushionHitAudioTime = -10f;
+        private float lastAnyBounceTime = -10f;
+
+        /// <summary>True nếu quả bi vừa nảy khỏi bi khác hoặc băng trong khoảng windowSec giây gần đây.</summary>
+        public bool RecentlyBounced(float windowSec = 0.14f) => (Time.unscaledTime - lastAnyBounceTime) < windowSec;
         private static readonly Collider[] clusterHitsBuffer = new Collider[12];
+        private static readonly Collider[] rackBreakHitsBuffer = new Collider[24];
+        private static readonly BallController[] rackBallsBuffer = new BallController[16];
+        private static readonly Vector3[] rackPosBuffer = new Vector3[16];
+        private static readonly Vector3[] rackVelBuffer = new Vector3[16];
+        private static readonly float[] rackProjBuffer = new float[16];
         private bool isAirborne = false;
         private float airborneRestY;
         private float airborneTime;
@@ -190,7 +201,7 @@ namespace Game.Billiards.Physics
             rb.drag = config.LinearDrag;
             rb.angularDrag = config.AngularDrag;
             rb.useGravity = true;
-            rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
+            rb.collisionDetectionMode = rb.isKinematic ? CollisionDetectionMode.Discrete : CollisionDetectionMode.ContinuousDynamic;
             rb.interpolation = RigidbodyInterpolation.Interpolate;
             rb.sleepThreshold = 0.005f;
             rb.maxAngularVelocity = 1000f;
@@ -218,10 +229,16 @@ namespace Game.Billiards.Physics
             {
                 if (kinematic)
                 {
+                    rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
                     rb.velocity = Vector3.zero;
                     rb.angularVelocity = Vector3.zero;
+                    rb.isKinematic = true;
                 }
-                rb.isKinematic = kinematic;
+                else
+                {
+                    rb.isKinematic = false;
+                    rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+                }
                 prevPosition = rb.position;
                 prevVelocity = rb.velocity;
                 prevAngular = rb.angularVelocity;
@@ -281,12 +298,18 @@ namespace Game.Billiards.Physics
             isAirborne = false;
             lastCushionResponseStep = -1;
             lastBallResponseStep = -1;
+            lastCushionHitAudioTime = -10f;
+            lastAnyBounceTime = -10f;
+            for (int i = 0; i < lastPairHitAudioTime.Length; i++)
+            {
+                lastPairHitAudioTime[i] = -10f;
+            }
             gameObject.SetActive(true);
 
             if (rb != null)
             {
                 rb.isKinematic = false;
-                rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
+                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
                 rb.constraints = RigidbodyConstraints.FreezePositionY;
                 rb.velocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
@@ -309,6 +332,7 @@ namespace Game.Billiards.Physics
 
             if (rb != null)
             {
+                rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
                 rb.isKinematic = true;
             }
             if (sphereCollider != null)
@@ -420,15 +444,26 @@ namespace Game.Billiards.Physics
             if (isPocketed || rb == null || rb.isKinematic || physicsConfig == null)
                 return;
 
-            // Đang bay (cú nhảy): chỉ trọng lực + PhysX, không ma sát nỉ; hạ cánh thì khóa lại về mặt nỉ
+            // Đang bay (cú nhảy hoặc nảy Pop khi phá bi): chỉ trọng lực + PhysX, không ma sát nỉ; hạ cánh thì khóa lại về mặt nỉ
             if (isAirborne)
             {
                 airborneTime += Time.fixedDeltaTime;
                 Vector3 ap = rb.position;
                 float vy = rb.velocity.y;
-                bool nearCloth = ap.y <= airborneRestY + 0.0015f && Mathf.Abs(vy) < 0.15f;
-                bool stuckNearCloth = airborneTime > 4f && ap.y > airborneRestY - 0.05f;
-                if (airborneTime > 0.05f && (nearCloth || stuckNearCloth))
+                if (airborneTime > 0.03f && ap.y <= airborneRestY + 0.0018f && vy <= 0.08f)
+                {
+                    // Nảy đệm 1 nhịp nhẹ trên mặt đá nếu bi đáp xuống với vận tốc đứng đáng kể, sau đó tiếp đất êm trên mặt nỉ
+                    if (vy < -0.45f)
+                    {
+                        rb.position = new Vector3(ap.x, airborneRestY + 0.001f, ap.z);
+                        rb.velocity = new Vector3(rb.velocity.x, -vy * 0.22f, rb.velocity.z);
+                    }
+                    else
+                    {
+                        LandFromJump();
+                    }
+                }
+                else if (airborneTime > 4f && ap.y > airborneRestY - 0.05f)
                 {
                     LandFromJump();
                 }
@@ -589,22 +624,40 @@ namespace Game.Billiards.Physics
                 HandleCushionCollisionResponse(collision);
             }
 
-            // Audio Feedback (Milestone M10)
+            // Audio Feedback (Milestone M10) - có chống lặp (debounce) theo cặp bi và theo băng
+            // để tránh phát đúp âm thanh khi gói đồng bộ mạng (EVENT_BALLS_SYNC) hiệu chỉnh vị trí bi trên máy Client.
             if (Audio.AudioManager.Instance != null)
             {
+                float now = Time.unscaledTime;
                 float relativeSpeed = collision.relativeVelocity.magnitude;
                 if (otherBall != null)
                 {
                     // Chỉ để bi có số thứ tự nhỏ hơn phát âm thanh để tránh phát đúp âm thanh va chạm
                     if (this.ballNumber < otherBall.BallNumber)
                     {
-                        Audio.AudioManager.Instance.PlayBallHit(relativeSpeed);
+                        int myIdx = Mathf.Clamp(this.ballNumber, 0, 15);
+                        int otherIdx = Mathf.Clamp(otherBall.BallNumber, 0, 15);
+                        if (now - lastPairHitAudioTime[otherIdx] >= 0.16f)
+                        {
+                            lastPairHitAudioTime[otherIdx] = now;
+                            otherBall.lastPairHitAudioTime[myIdx] = now;
+                            this.lastAnyBounceTime = now;
+                            otherBall.lastAnyBounceTime = now;
+                            Audio.AudioManager.Instance.PlayBallHit(relativeSpeed);
+                        }
                     }
                 }
                 else if (collision.collider.name != "ClothBedCollider")
                 {
-                    // Va chạm với băng cao su hoặc thành bàn (bỏ qua tiếp xúc với mặt nỉ)
-                    Audio.AudioManager.Instance.PlayCushionHit(relativeSpeed);
+                    // Chỉ phát âm thanh băng khi thực sự có phản xạ bật băng (hoặc bi đang bay đập thành bàn)
+                    // và đã qua thời gian chống lặp 0.16s (bỏ qua va chạm sượt đầu hồi băng hoặc kéo vị trí do mạng).
+                    bool validBounce = (lastCushionResponseStep == fixedStepIndex) || isAirborne;
+                    if (validBounce && now - lastCushionHitAudioTime >= 0.16f)
+                    {
+                        lastCushionHitAudioTime = now;
+                        lastAnyBounceTime = now;
+                        Audio.AudioManager.Instance.PlayCushionHit(relativeSpeed);
+                    }
                 }
             }
         }
@@ -638,29 +691,40 @@ namespace Game.Billiards.Physics
             if (isAirborne || other.isAirborne || isPocketed || other.isPocketed)
                 return;
 
-            // Nếu 1 trong 2 bi đã vừa xử lý va chạm bi-bi hoặc băng trong cùng bước FixedUpdate -> giữ nguyên kết quả đa vật thể
+            // Nếu 1 trong 2 bi đã vừa xử lý va chạm bi-bi trong cùng bước FixedUpdate -> giữ nguyên kết quả đa vật thể
             if (this.lastBallResponseStep == this.fixedStepIndex || other.lastBallResponseStep == other.fixedStepIndex)
-                return;
-            if (this.lastCushionResponseStep == this.fixedStepIndex || other.lastCushionResponseStep == other.fixedStepIndex)
                 return;
 
             float R = physicsConfig.BallRadius;
+            bool eitherNearCushion = IsNearStraightCushion(this.prevPosition, R, out _, out _, out _)
+                                  || IsNearStraightCushion(other.prevPosition, R, out _, out _, out _);
 
-            // Nếu 1 trong 2 bi đang nằm sát một quả bi thứ 3 (như trong dàn tam giác 15 bi lúc phá bi),
-            // nhường cho bộ giải đa tiếp xúc PGS của PhysX để dàn bi nổ tự nhiên và bảo toàn năng lượng toàn cục.
-            if (IsInMultiBallCluster(this, other, R))
+            // Nếu 1 trong 2 bi đang nằm sát một quả bi thứ 3 ở giữa bàn (như trong dàn tam giác 15 bi lúc phá bi):
+            // 1. Nếu là cú phá khuôn tốc độ cao (bi cái lao vào dàn bi đứng yên), giải chính xác điểm chạm TOI đầu tiên,
+            //    truyền sóng xung kích đàn hồi (Elastic Shockwave) qua 5 hàng bi và tạo hiệu ứng "Squat & Pop" cho bi cái.
+            // 2. Nếu là va chạm cụm nhỏ giữa trận, nhường cho bộ giải đa tiếp xúc PGS của PhysX.
+            // Lưu ý: Nếu bi đang nằm sát băng (eitherNearCushion == true), BẮT BUỘC giải qua HandleBallCollisionResponse
+            // vì băng trong PhysX có bounciness = 0 sẽ nuốt mất xung lực nếu để PhysX tự giải.
+            if (!eitherNearCushion && IsInMultiBallCluster(this, other, R))
             {
-                this.lastBallResponseStep = this.fixedStepIndex;
-                other.lastBallResponseStep = other.fixedStepIndex;
+                if (!TryResolveRackBreakImpact(this, other, R))
+                {
+                    this.lastBallResponseStep = this.fixedStepIndex;
+                    other.lastBallResponseStep = other.fixedStepIndex;
+                }
                 return;
             }
 
             Vector3 p1 = this.prevPosition;
             Vector3 p2 = other.prevPosition;
-            Vector3 v1 = new Vector3(this.prevVelocity.x, 0f, this.prevVelocity.z);
-            Vector3 v2 = new Vector3(other.prevVelocity.x, 0f, other.prevVelocity.z);
-            Vector3 w1 = this.prevAngular;
-            Vector3 w2 = other.prevAngular;
+            Vector3 v1 = (this.lastCushionResponseStep == this.fixedStepIndex)
+                ? new Vector3(this.rb.velocity.x, 0f, this.rb.velocity.z)
+                : new Vector3(this.prevVelocity.x, 0f, this.prevVelocity.z);
+            Vector3 v2 = (other.lastCushionResponseStep == other.fixedStepIndex)
+                ? new Vector3(other.rb.velocity.x, 0f, other.rb.velocity.z)
+                : new Vector3(other.prevVelocity.x, 0f, other.prevVelocity.z);
+            Vector3 w1 = (this.lastCushionResponseStep == this.fixedStepIndex) ? this.rb.angularVelocity : this.prevAngular;
+            Vector3 w2 = (other.lastCushionResponseStep == other.fixedStepIndex) ? other.rb.angularVelocity : other.prevAngular;
 
             Vector3 d0 = new Vector3(p1.x - p2.x, 0f, p1.z - p2.z);
             Vector3 vRel = v1 - v2;
@@ -716,22 +780,48 @@ namespace Game.Billiards.Physics
             v1Post.y = 0f;
             v2Post.y = 0f;
 
-            // Đặt lại vị trí xuất phát từ đúng điểm tiếp xúc hình học (kèm khe hở an toàn 0.15mm để PhysX không tách lặp)
+            // Đặt lại vị trí xuất phát từ đúng điểm tiếp xúc hình học (kèm khe hở an toàn 0.25mm để PhysX không tách lặp)
             Vector3 mid = 0.5f * (c1 + c2);
-            float halfSep = R + 0.00015f;
+            float halfSep = R + 0.00025f;
             Vector3 pos1 = new Vector3(mid.x - n.x * halfSep, p1.y, mid.z - n.z * halfSep);
             Vector3 pos2 = new Vector3(mid.x + n.x * halfSep, p2.y, mid.z + n.z * halfSep);
 
-            // Tiến thêm phần thời gian còn lại trong frame nếu cả 2 vị trí mới đều cách xa thành băng bàn
+            // Xử lý tức thì trường hợp 1 trong 2 bi đang nằm sát băng và bị đánh ép vào băng:
+            // Giải ngay phản xạ bật băng và tách khe hở an toàn để bi mục tiêu văng ra dứt khoát,
+            // tuyệt đối không bị bi cái chặn trước mặt hay bị băng bounciness=0 của PhysX giữ lại ở frame kế tiếp.
+            if (IsNearStraightCushion(pos2, R, out Vector3 cNorm2, out float railCoord2, out bool isXRail2) &&
+                Vector3.Dot(v2Post, cNorm2) < -0.015f)
+            {
+                ClampAndBounceRailBall(
+                    ref pos2, ref v2Post, ref w2,
+                    ref pos1, ref v1Post,
+                    n, cNorm2, railCoord2, isXRail2, R, e);
+                other.lastCushionResponseStep = other.fixedStepIndex;
+            }
+            else if (IsNearStraightCushion(pos1, R, out Vector3 cNorm1, out float railCoord1, out bool isXRail1) &&
+                     Vector3.Dot(v1Post, cNorm1) < -0.015f)
+            {
+                ClampAndBounceRailBall(
+                    ref pos1, ref v1Post, ref w1,
+                    ref pos2, ref v2Post,
+                    -n, cNorm1, railCoord1, isXRail1, R, e);
+                this.lastCushionResponseStep = this.fixedStepIndex;
+            }
+
+            // Tiến thêm phần thời gian còn lại trong frame nếu cả 2 vị trí mới đều nằm gọn trong mặt bàn
             float tRem = Mathf.Clamp(dt - Mathf.Max(0f, tHit), 0f, dt);
             if (tRem > 0f)
             {
                 Vector3 next1 = pos1 + v1Post * tRem;
                 Vector3 next2 = pos2 + v2Post * tRem;
-                float safeX = TableWrapper.HeadCushionX - R * 2.2f;
-                float safeZ = TableWrapper.CushionHalfWidth - R * 2.2f;
-                if (Mathf.Abs(next1.x) < safeX && Mathf.Abs(next1.z) < safeZ &&
-                    Mathf.Abs(next2.x) < safeX && Mathf.Abs(next2.z) < safeZ)
+                float minX = TableWrapper.FootCushionX + R + 0.0005f;
+                float maxX = TableWrapper.HeadCushionX - R - 0.0005f;
+                float maxZ = TableWrapper.CushionHalfWidth - R - 0.0005f;
+                float minSepSq = (2f * R + 0.0002f) * (2f * R + 0.0002f);
+
+                if (next1.x >= minX && next1.x <= maxX && Mathf.Abs(next1.z) <= maxZ &&
+                    next2.x >= minX && next2.x <= maxX && Mathf.Abs(next2.z) <= maxZ &&
+                    (next2 - next1).sqrMagnitude >= minSepSq)
                 {
                     pos1 = next1;
                     pos2 = next2;
@@ -743,12 +833,154 @@ namespace Game.Billiards.Physics
             rb.velocity = v1Post;
             other.rb.velocity = v2Post;
 
-            // Giữ nguyên vận tốc góc trước va chạm để xoáy cu-lê / trô của bi cái không bị PhysX làm biến dạng
+            // Giữ nguyên hoặc cập nhật vận tốc góc sau phản xạ để xoáy hoạt động chuẩn xác trên nỉ
             rb.angularVelocity = w1;
             other.rb.angularVelocity = w2;
 
             this.lastBallResponseStep = this.fixedStepIndex;
             other.lastBallResponseStep = other.fixedStepIndex;
+            float bounceNow = Time.unscaledTime;
+            this.lastAnyBounceTime = bounceNow;
+            other.lastAnyBounceTime = bounceNow;
+        }
+
+        /// <summary>
+        /// Kiểm tra xem tâm bi tại <paramref name="pos"/> có đang nằm sát một trong 4 cạnh băng thẳng hay không
+        /// (bỏ qua vùng miệng 6 lỗ). Trả về pháp tuyến hướng từ băng ra mặt bàn <paramref name="cushionNormal"/>.
+        /// </summary>
+        private static bool IsNearStraightCushion(Vector3 pos, float R, out Vector3 cushionNormal, out float railFaceCoord, out bool isXAxisRail)
+        {
+            const float margin = 0.0055f; // Sát băng trong phạm vi 5.5mm
+            float threshold = R + margin;
+
+            // 1. Băng ngắn Foot (-X) và Head (+X): giới hạn trong khoảng giữa 2 má lỗ góc
+            if (Mathf.Abs(pos.z) <= TableWrapper.ShortCushionHalfSpanZ - 0.004f)
+            {
+                if (pos.x - TableWrapper.FootCushionX <= threshold)
+                {
+                    cushionNormal = Vector3.right;
+                    railFaceCoord = TableWrapper.FootCushionX;
+                    isXAxisRail = true;
+                    return true;
+                }
+                if (TableWrapper.HeadCushionX - pos.x <= threshold)
+                {
+                    cushionNormal = Vector3.left;
+                    railFaceCoord = TableWrapper.HeadCushionX;
+                    isXAxisRail = true;
+                    return true;
+                }
+            }
+
+            // 2. Băng dài +Z và -Z: giới hạn ngoài miệng lỗ giữa và 4 lỗ góc
+            if ((pos.x >= -1.008f && pos.x <= -0.078f) || (pos.x >= 0.066f && pos.x <= 0.996f))
+            {
+                if (TableWrapper.CushionHalfWidth - pos.z <= threshold)
+                {
+                    cushionNormal = Vector3.back;
+                    railFaceCoord = TableWrapper.CushionHalfWidth;
+                    isXAxisRail = false;
+                    return true;
+                }
+                if (pos.z - (-TableWrapper.CushionHalfWidth) <= threshold)
+                {
+                    cushionNormal = Vector3.forward;
+                    railFaceCoord = -TableWrapper.CushionHalfWidth;
+                    isXAxisRail = false;
+                    return true;
+                }
+            }
+
+            cushionNormal = Vector3.zero;
+            railFaceCoord = 0f;
+            isXAxisRail = false;
+            return false;
+        }
+
+        /// <summary>
+        /// Giải phản xạ bật băng tức thì cho quả bi đang nằm sát băng (<paramref name="railPos"/>) khi bị bi kia (<paramref name="otherPos"/>)
+        /// đâm ép vào băng:
+        /// 1. Kẹp vị trí tâm bi sát băng không lún qua mặt phẳng băng.
+        /// 2. Tính vận tốc &amp; xoáy bật băng bằng mô hình xung lực chuẩn.
+        /// 3. Đảm bảo khe hở thoát hiểm trước mặt để ở bước PhysX kế tiếp bi bật ra không đâm ngược vào bi cái rồi bị ép lại vào băng bounciness=0.
+        /// </summary>
+        private void ClampAndBounceRailBall(
+            ref Vector3 railPos, ref Vector3 railVel, ref Vector3 railAng,
+            ref Vector3 otherPos, ref Vector3 otherVel,
+            Vector3 hitNormalToRailBall, Vector3 cushionNormal, float railFaceCoord, bool isXAxisRail, float R, float ballRestitution)
+        {
+            // 1. Kẹp tọa độ tâm bi sát băng cách mặt băng đúng R + 0.4mm
+            float safeCenterDist = R + 0.0004f;
+            if (isXAxisRail)
+            {
+                float limitX = railFaceCoord + cushionNormal.x * safeCenterDist;
+                if ((cushionNormal.x > 0f && railPos.x < limitX) || (cushionNormal.x < 0f && railPos.x > limitX))
+                {
+                    railPos.x = limitX;
+                }
+            }
+            else
+            {
+                float limitZ = railFaceCoord + cushionNormal.z * safeCenterDist;
+                if ((cushionNormal.z > 0f && railPos.z < limitZ) || (cushionNormal.z < 0f && railPos.z > limitZ))
+                {
+                    railPos.z = limitZ;
+                }
+            }
+
+            // 2. Giải xung lực bật băng cao su cho quả bi sát băng
+            ComputeCushionBounceImpulse(railVel, railAng, cushionNormal, false, out railVel, out railAng);
+
+            // Đảm bảo vận tốc thoát khỏi băng luôn đủ mạnh và hướng ra ngoài mặt bàn
+            float reboundOutSpeed = Vector3.Dot(railVel, cushionNormal);
+            if (reboundOutSpeed < 0.08f)
+            {
+                railVel += cushionNormal * (0.08f - reboundOutSpeed);
+                reboundOutSpeed = 0.08f;
+            }
+
+            // 3. Xử lý tách quỹ đạo trong thời gian nén cao su băng (~4.5ms)
+            Vector3 railTangent = new Vector3(-cushionNormal.z, 0f, cushionNormal.x);
+            float cutSin = Mathf.Abs(Vector3.Dot(hitNormalToRailBall, railTangent));
+            if (cutSin >= 0.16f)
+            {
+                float otherIntoRailBall = Vector3.Dot(otherVel, hitNormalToRailBall);
+                if (otherIntoRailBall > 0f)
+                {
+                    otherVel -= hitNormalToRailBall * otherIntoRailBall;
+                }
+
+                const float cushionCompressionTime = 0.0045f;
+                otherPos += otherVel * cushionCompressionTime;
+                railPos += railVel * cushionCompressionTime;
+            }
+            else
+            {
+                // Đánh trực diện (< 9°) vào bi sát băng: đặt bi cái lệch nhẹ và lùi ra ngoài để không khóa đường thoát của bi mục tiêu
+                float sideSign = Vector3.Dot(hitNormalToRailBall, railTangent) >= 0f ? 1f : -1f;
+                railVel += railTangent * (sideSign * reboundOutSpeed * 0.18f);
+                otherPos = railPos + cushionNormal * (2f * R + 0.0025f) - railTangent * (sideSign * R * 0.35f);
+            }
+
+            // 4. Đảm bảo khoảng cách giữa 2 tâm bi >= 2R + 1.0mm và vận tốc tương đối theo phương nối tâm luôn tách xa nhau
+            // (|d(t)| > 2R với mọi t > 0) để sang Frame 2 PhysX không bao giờ đẩy dội bi mục tiêu ngược lại vào băng.
+            Vector3 delta = railPos - otherPos;
+            delta.y = 0f;
+            float dist = delta.magnitude;
+            float minSep = 2f * R + 0.0010f;
+            Vector3 sepDir = dist > 1e-5f ? (delta / dist) : -cushionNormal;
+            if (dist < minSep)
+            {
+                otherPos = railPos - sepDir * minSep;
+            }
+
+            // sepDir hướng từ otherPos (bi đâm) sang railPos (bi sát băng).
+            // Nếu closingSpeed > 0 nghĩa là railPos đang bật ra nhanh hơn otherPos dọc theo sepDir -> truyền xung đẩy otherVel ra trước
+            float closingSpeed = Vector3.Dot(otherVel - railVel, sepDir);
+            if (closingSpeed > -0.02f)
+            {
+                otherVel -= sepDir * (closingSpeed + 0.04f);
+            }
         }
 
         private static bool IsInMultiBallCluster(BallController b1, BallController b2, float radius)
@@ -775,6 +1007,271 @@ namespace Game.Billiards.Physics
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Mô phỏng chuyên biệt cho cú phá khuôn (Rack Break Impact):
+        /// - Xác định chính xác thời điểm chạm liên tục (Continuous TOI) khi bi cái lao vào viên bi đầu tiên của khuôn ở tốc độ cao.
+        /// - Truyền sóng xung kích đàn hồi dây chuyền (Elastic Shockwave Propagation) qua 5 hàng bi trong khuôn tam giác:
+        ///   + Hai bi cánh (Wing balls ở 2 góc ngoài hàng đáy) văng mạnh về phía 2 lỗ giữa.
+        ///   + Các bi hàng trước và hàng giữa tách nêm (Wedge Decompression) kèm sai số góc vi mô tất định để dàn bi nổ giòn,
+        ///     tự nhiên khắp mặt bàn mà không bị bộ giải lặp PGS của PhysX triệt tiêu 50% năng lượng hay tách đối xứng robot.
+        /// - Tạo hiệu ứng "Squat &amp; Pop" chân thực cho bi cái: khi phá mạnh trực diện, bi cái nảy nhẹ lên khỏi mặt nỉ (2.5–4cm)
+        ///   và ghìm lại quanh khu vực tâm bàn.
+        /// </summary>
+        private static bool TryResolveRackBreakImpact(BallController b1, BallController b2, float R)
+        {
+            Vector3 v1 = new Vector3(b1.prevVelocity.x, 0f, b1.prevVelocity.z);
+            Vector3 v2 = new Vector3(b2.prevVelocity.x, 0f, b2.prevVelocity.z);
+
+            BallController attacker;
+            BallController apexHit;
+            Vector3 vAttacker;
+            Vector3 wAttacker;
+
+            if (v1.sqrMagnitude >= 3.5f && v2.sqrMagnitude < 0.04f)
+            {
+                attacker = b1;
+                apexHit = b2;
+                vAttacker = v1;
+                wAttacker = b1.prevAngular;
+            }
+            else if (v2.sqrMagnitude >= 3.5f && v1.sqrMagnitude < 0.04f)
+            {
+                attacker = b2;
+                apexHit = b1;
+                vAttacker = v2;
+                wAttacker = b2.prevAngular;
+            }
+            else
+            {
+                return false;
+            }
+
+            Vector3 pAttacker = attacker.prevPosition;
+            Vector3 pApex = apexHit.prevPosition;
+
+            // Gom tất cả các bi mục tiêu đang đứng yên trong khuôn tam giác (bán kính 0.34m quanh điểm chạm)
+            int hitCount = UnityEngine.Physics.OverlapSphereNonAlloc(pApex, 0.34f, rackBreakHitsBuffer, ~0, QueryTriggerInteraction.Ignore);
+            int rackCount = 0;
+            for (int i = 0; i < hitCount && rackCount < rackBallsBuffer.Length; i++)
+            {
+                var col = rackBreakHitsBuffer[i];
+                if (col == null) continue;
+                var bc = col.GetComponent<BallController>();
+                if (bc == null || bc == attacker || bc.IsPocketed || bc.rb == null || bc.rb.isKinematic)
+                    continue;
+
+                Vector3 vBc = new Vector3(bc.prevVelocity.x, 0f, bc.prevVelocity.z);
+                if (vBc.sqrMagnitude > 0.09f)
+                    continue;
+
+                bool duplicate = false;
+                for (int k = 0; k < rackCount; k++)
+                {
+                    if (rackBallsBuffer[k] == bc)
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (!duplicate)
+                {
+                    rackBallsBuffer[rackCount++] = bc;
+                }
+            }
+
+            // Chỉ kích hoạt mô hình nổ khuôn đề-pa khi cụm bi tĩnh có từ 6 viên trở lên
+            if (rackCount < 6)
+                return false;
+
+            // 1. Giải chính xác thời điểm chạm liên tục (TOI) giữa bi cái (attacker) và viên bi chạm đầu tiên (apexHit)
+            Vector3 d0 = new Vector3(pAttacker.x - pApex.x, 0f, pAttacker.z - pApex.z);
+            float a = vAttacker.sqrMagnitude;
+            float b = Vector3.Dot(d0, vAttacker);
+            if (a < 1e-6f || b >= 0f)
+                return false;
+
+            float twoR = 2f * R;
+            float c = d0.sqrMagnitude - twoR * twoR;
+            float disc = b * b - a * c;
+            float tHit = disc >= 0f ? (-b - Mathf.Sqrt(disc)) / a : (-b / a);
+            float dt = Time.fixedDeltaTime;
+            tHit = Mathf.Clamp(tHit, -4f * dt, 4f * dt);
+
+            Vector3 cAttacker = new Vector3(pAttacker.x + vAttacker.x * tHit, pAttacker.y, pAttacker.z + vAttacker.z * tHit);
+            Vector3 nImpact = new Vector3(pApex.x - cAttacker.x, 0f, pApex.z - cAttacker.z);
+            if (nImpact.sqrMagnitude < 1e-8f)
+                nImpact = vAttacker.normalized;
+            else
+                nImpact.Normalize();
+
+            float vn = Vector3.Dot(vAttacker, nImpact);
+            if (vn <= 0.25f)
+                return false;
+
+            Vector3 vTan = vAttacker - nImpact * vn;
+            float speedAttacker = vAttacker.magnitude;
+            float fullness = Mathf.Clamp01(vn / Mathf.Max(0.01f, speedAttacker));
+
+            // 2. Sắp xếp các bi trong khuôn theo thứ tự truyền sóng xung kích từ đỉnh khuôn xuống đáy khuôn
+            for (int i = 0; i < rackCount; i++)
+            {
+                Vector3 pos = rackBallsBuffer[i].prevPosition;
+                rackPosBuffer[i] = pos;
+                rackVelBuffer[i] = Vector3.zero;
+                rackProjBuffer[i] = (rackBallsBuffer[i] == apexHit)
+                    ? -0.001f
+                    : Vector3.Dot(new Vector3(pos.x - pApex.x, 0f, pos.z - pApex.z), nImpact);
+            }
+
+            for (int i = 0; i < rackCount - 1; i++)
+            {
+                int minIdx = i;
+                for (int j = i + 1; j < rackCount; j++)
+                {
+                    if (rackProjBuffer[j] < rackProjBuffer[minIdx] ||
+                        (Mathf.Abs(rackProjBuffer[j] - rackProjBuffer[minIdx]) < 1e-5f &&
+                         rackBallsBuffer[j].BallNumber < rackBallsBuffer[minIdx].BallNumber))
+                    {
+                        minIdx = j;
+                    }
+                }
+                if (minIdx != i)
+                {
+                    var tmpB = rackBallsBuffer[i]; rackBallsBuffer[i] = rackBallsBuffer[minIdx]; rackBallsBuffer[minIdx] = tmpB;
+                    var tmpP = rackPosBuffer[i]; rackPosBuffer[i] = rackPosBuffer[minIdx]; rackPosBuffer[minIdx] = tmpP;
+                    var tmpProj = rackProjBuffer[i]; rackProjBuffer[i] = rackProjBuffer[minIdx]; rackProjBuffer[minIdx] = tmpProj;
+                }
+            }
+
+            // Cấp vận tốc xung kích đầu vào cho viên bi chạm đầu tiên (index 0)
+            rackVelBuffer[0] = nImpact * (vn * 0.96f);
+
+            // 3. Truyền sóng xung kích đàn hồi qua chuỗi tiếp xúc giữa các hàng bi (4 lượt lan truyền)
+            float neighborDistSq = (2.35f * R) * (2.35f * R);
+            for (int pass = 0; pass < 4; pass++)
+            {
+                for (int i = 0; i < rackCount; i++)
+                {
+                    Vector3 pi = rackPosBuffer[i];
+                    for (int j = 0; j < rackCount; j++)
+                    {
+                        if (i == j) continue;
+                        Vector3 d = new Vector3(rackPosBuffer[j].x - pi.x, 0f, rackPosBuffer[j].z - pi.z);
+                        float distSq = d.sqrMagnitude;
+                        if (distSq > neighborDistSq || distSq < 1e-9f)
+                            continue;
+
+                        float dist = Mathf.Sqrt(distSq);
+                        Vector3 dirIJ = d / dist;
+                        if (Vector3.Dot(dirIJ, nImpact) < -0.12f)
+                            continue;
+
+                        float relVn = Vector3.Dot(rackVelBuffer[i] - rackVelBuffer[j], dirIJ);
+                        if (relVn > 0.005f)
+                        {
+                            Vector3 impulseTransfer = dirIJ * (relVn * 0.88f);
+                            rackVelBuffer[j] += impulseTransfer;
+                            rackVelBuffer[i] -= impulseTransfer * 0.72f;
+                        }
+                    }
+                }
+            }
+
+            // 4. Hiệu ứng tách nêm tam giác (Wedge Decompression) & phân tán tự nhiên thực tế cho từng vùng bi trong khuôn
+            Vector3 rackCenter = Vector3.zero;
+            float maxProj = 0.01f;
+            for (int i = 0; i < rackCount; i++)
+            {
+                rackCenter += rackPosBuffer[i];
+                if (rackProjBuffer[i] > maxProj) maxProj = rackProjBuffer[i];
+            }
+            rackCenter /= rackCount;
+
+            float minX = TableWrapper.FootCushionX + R + 0.001f;
+            float maxX = TableWrapper.HeadCushionX - R - 0.001f;
+            float maxZ = TableWrapper.CushionHalfWidth - R - 0.001f;
+
+            for (int i = 0; i < rackCount; i++)
+            {
+                BallController bc = rackBallsBuffer[i];
+                Vector3 pos = rackPosBuffer[i];
+                Vector3 vel = rackVelBuffer[i];
+                Vector3 relApex = new Vector3(pos.x - pApex.x, 0f, pos.z - pApex.z);
+                float depth01 = Mathf.Clamp01(Mathf.Max(0f, rackProjBuffer[i]) / maxProj);
+
+                Vector3 fromCenter = new Vector3(pos.x - rackCenter.x, 0f, pos.z - rackCenter.z);
+                Vector3 outDir = fromCenter.sqrMagnitude > 1e-6f ? fromCenter.normalized : nImpact;
+
+                // Sai số góc vi mô tất định theo mã số bi để triệt tiêu hoàn toàn hiện tượng đối xứng gương máy móc
+                int hash = ((bc.BallNumber * 73856093) ^ (apexHit.BallNumber * 19349663) ^ (i * 83492791)) & 0xFFFF;
+                float asym01 = (hash / 65535f) * 2f - 1f; // [-1 .. +1]
+
+                // A. Hai bi cánh ở góc ngoài hàng đáy (Wing Balls): văng sắc nét về phía 2 lỗ giữa và nửa trên bàn
+                if (depth01 > 0.70f && Mathf.Abs(relApex.z) > 3.0f * R)
+                {
+                    float zSign = Mathf.Sign(relApex.z);
+                    Vector3 wingDir = new Vector3(nImpact.x * (0.28f + 0.08f * asym01), 0f, zSign * 0.94f).normalized;
+                    float wingSpeed = Mathf.Max(vel.magnitude, vn * (0.44f + 0.12f * fullness));
+                    vel = Vector3.Lerp(vel.normalized, wingDir, 0.68f).normalized * wingSpeed;
+                }
+                // B. Bi đỉnh khuôn (Apex) và hàng 2: sau khi truyền xung lực xuống đáy, bật nảy sang 2 cánh và hướng về băng đầu/giữa bàn
+                else if (depth01 < 0.28f)
+                {
+                    float sideSign = Mathf.Abs(relApex.z) > 0.003f ? Mathf.Sign(relApex.z) : (asym01 >= 0f ? 1f : -1f);
+                    Vector3 reboundDir = new Vector3(-nImpact.x * (0.32f + 0.15f * Mathf.Abs(asym01)), 0f, sideSign * 0.92f).normalized;
+                    float minFrontSpeed = vn * (0.30f + 0.10f * fullness);
+                    vel = (vel * 0.45f + reboundDir * minFrontSpeed);
+                    if (vel.magnitude < minFrontSpeed)
+                    {
+                        vel = vel.normalized * minFrontSpeed;
+                    }
+                }
+                // C. Các bi trung tâm (gồm bi số 8) và hàng đáy giữa: bung tỏa ra khỏi tâm khuôn và dội băng chân bàn
+                else
+                {
+                    float minSpreadSpeed = vn * Mathf.Lerp(0.24f, 0.40f, fullness) * (0.88f + 0.22f * Mathf.Abs(asym01));
+                    Vector3 spreadDir = (vel.sqrMagnitude > 0.01f ? (vel.normalized * 0.62f + outDir * 0.38f) : outDir).normalized;
+                    spreadDir = Quaternion.Euler(0f, asym01 * 5.5f, 0f) * spreadDir;
+                    float finalSpeed = Mathf.Max(vel.magnitude * 0.92f, minSpreadSpeed);
+                    vel = spreadDir * finalSpeed;
+                }
+
+                vel.y = 0f;
+
+                // Tách nhẹ tọa độ ban đầu dọc theo hướng văng (0.6mm - 1.5mm) để PhysX không khóa chồng lấn ở bước kế tiếp
+                Vector3 sepPos = pos + (vel.sqrMagnitude > 1e-6f ? vel.normalized : outDir) * (0.0006f + depth01 * 0.0009f);
+                sepPos.x = Mathf.Clamp(sepPos.x, minX, maxX);
+                sepPos.z = Mathf.Clamp(sepPos.z, -maxZ, maxZ);
+                sepPos.y = pos.y;
+
+                bc.rb.position = sepPos;
+                bc.rb.velocity = vel;
+                bc.rb.angularVelocity = new Vector3(vel.z / R, asym01 * 6f, -vel.x / R);
+                bc.lastBallResponseStep = bc.fixedStepIndex;
+            }
+
+            // 5. Phản hồi "Squat & Pop" chân thực cho bi cái (attacker) tại điểm nổ khuôn
+            Vector3 spinLinearVel = new Vector3(-wAttacker.z * R, 0f, wAttacker.x * R);
+            Vector3 vCuePostXZ = vTan * 0.82f - nImpact * (vn * 0.11f) + spinLinearVel * 0.22f;
+            vCuePostXZ.y = 0f;
+
+            Vector3 cueSafePos = new Vector3(
+                Mathf.Clamp(cAttacker.x - nImpact.x * 0.0015f, minX, maxX),
+                pAttacker.y,
+                Mathf.Clamp(cAttacker.z - nImpact.z * 0.0015f, -maxZ, maxZ));
+            attacker.rb.position = cueSafePos;
+
+            // Khóa chặt trục Y cho bi cái khi phá khuôn (không tự bật nảy Pop để tránh văng khỏi bàn; chức năng Nhảy Bi chủ động bằng góc nâng cơ vẫn giữ nguyên ở ShotExecutor)
+            attacker.isAirborne = false;
+            attacker.rb.constraints = RigidbodyConstraints.FreezePositionY;
+            attacker.rb.velocity = vCuePostXZ;
+            attacker.rb.angularVelocity = wAttacker * 0.75f;
+            attacker.lastBallResponseStep = attacker.fixedStepIndex;
+            attacker.lastAnyBounceTime = Time.unscaledTime;
+
+            return true;
         }
 
         /// <summary>
@@ -805,11 +1302,15 @@ namespace Game.Billiards.Physics
                 return;
             nXZ.Normalize();
 
-            // Dùng vận tốc/xoáy ngay trước bước vật lý (PhysX đã triệt thành phần pháp tuyến của rb.velocity)
-            // Nếu trong cùng bước vật lý bi đã được xử lý phản hồi với một collider khác (vd. băng + má lỗ tại điểm nối),
-            // phải tiếp tục từ vận tốc/xoáy đã cập nhật đó. Nếu dùng lại giá trị trước bước vật lý thì kết quả của lần xử lý
-            // trước bị ghi đè, bi vẫn lún vào mặt kia và bị hãm/bật lệch bất thường.
-            bool chained = (lastCushionResponseStep == fixedStepIndex);
+            // Dùng vận tốc/xoáy ngay trước bước vật lý (PhysX đã triệt thành phần pháp tuyến của rb.velocity).
+            // QUAN TRỌNG: Nếu trong cùng bước vật lý quả bi vừa nhận vận tốc từ va chạm bi-bi (lastBallResponseStep == fixedStepIndex)
+            // hoặc vừa tăng tốc do bị bi khác đâm vào (gainedSpeedThisStep), hoặc đã phản hồi với một collider băng khác,
+            // BẮT BUỘC phải lấy rb.velocity hiện tại! Nếu lấy prevVelocity (bằng 0 khi bi đang nằm sát băng) thì vận tốc văng ra
+            // vừa nhận được sẽ bị xóa sạch về 0 khiến bi dính chặt vào băng như keo.
+            bool gainedSpeedThisStep = rb.velocity.sqrMagnitude > prevVelocity.sqrMagnitude + 0.0001f;
+            bool chained = (lastCushionResponseStep == fixedStepIndex)
+                        || (lastBallResponseStep == fixedStepIndex)
+                        || gainedSpeedThisStep;
             Vector3 v0 = chained ? rb.velocity : prevVelocity;
             Vector3 w0 = chained ? rb.angularVelocity : prevAngular;
             v0.y = 0f;
@@ -859,7 +1360,7 @@ namespace Game.Billiards.Physics
                 // bỏ qua và khôi phục vận tốc để đầu cắt vuông góc của BoxCollider băng không hất bi lệch hướng.
                 if (isStraightCushion && Vector3.Dot(nXZ, faceNormal) < 0.75f)
                 {
-                    if (!rb.isKinematic)
+                    if (!rb.isKinematic && v0.sqrMagnitude > rb.velocity.sqrMagnitude + 0.0001f)
                     {
                         rb.velocity = v0;
                         rb.angularVelocity = w0;
@@ -871,17 +1372,43 @@ namespace Game.Billiards.Physics
 
             // n hướng từ băng ra phía bi (từ collider sang ball).
             // Nếu bi đang chuyển động cùng hướng nXZ (đang tách xa băng hoặc trượt dọc mép má vát mở),
-            // vn <= 0 có nghĩa bi không đâm vào bề mặt này -> khôi phục vận tốc trước va chạm để triệt tiêu lực đẩy đỉnh của PhysX.
+            // vn < 0.02f có nghĩa bi không đâm vào bề mặt này -> chỉ khôi phục v0 nếu v0 lớn hơn vận tốc hiện tại
+            // (tránh tuyệt đối việc ghi đè vận tốc v0 = 0 lên quả bi vừa được truyền lực!).
             float vn = -Vector3.Dot(v0, nXZ);
             if (vn < 0.02f)
             {
-                if (!rb.isKinematic)
+                if (!rb.isKinematic && v0.sqrMagnitude > rb.velocity.sqrMagnitude + 0.0001f)
                 {
                     rb.velocity = v0;
                     rb.angularVelocity = w0;
                 }
                 return;
             }
+
+            if (ComputeCushionBounceImpulse(v0, w0, nXZ, isPocketFacing, out Vector3 vPost, out Vector3 wPost))
+            {
+                // Gán trực tiếp vận tốc sau va chạm, triệt tiêu hoàn toàn lực đẩy chống xuyên thấu (depenetration)
+                // dôi dư do PhysX tự sinh ra ở các góc cạnh/mép lỗ.
+                if (!rb.isKinematic)
+                {
+                    rb.velocity = vPost;
+                    rb.angularVelocity = wPost;
+                    lastCushionResponseStep = fixedStepIndex;
+                    lastAnyBounceTime = Time.unscaledTime;
+                }
+            }
+        }
+
+        private bool ComputeCushionBounceImpulse(
+            Vector3 v0, Vector3 w0, Vector3 nXZ, bool isPocketFacing,
+            out Vector3 vPost, out Vector3 wPost)
+        {
+            vPost = v0;
+            wPost = w0;
+
+            float vn = -Vector3.Dot(v0, nXZ);
+            if (vn < 0.02f)
+                return false;
 
             float m = rb.mass;
             float R = physicsConfig.BallRadius;
@@ -895,13 +1422,11 @@ namespace Game.Billiards.Physics
             float c = Mathf.Sqrt(Mathf.Max(0f, 1f - s * s));
             Vector3 rc = R * (-nXZ * c + up * s);
 
-            // Vận tốc điểm chạm
+            // Vận tốc điểm chạm dùng cho ma sát tiếp tuyến (t, up)
             Vector3 u = v0 + Vector3.Cross(w0, rc);
-            float un = Vector3.Dot(u, nXZ);
-            if (un >= 0f)
-                return;
 
-            // 1. Xung pháp tuyến
+            // 1. Xung pháp tuyến dựa trên vận tốc tiếp cận tâm bi theo phương ngang (vn > 0),
+            // không cộng thành phần xoáy vào un để tránh lỗi xoáy ngược triệt tiêu xung nảy băng.
             float e;
             if (isPocketFacing)
             {
@@ -918,7 +1443,7 @@ namespace Game.Billiards.Physics
             }
 
             float knn = 1f / m + Vector3.Cross(rc, nXZ).sqrMagnitude / inertia;
-            float jn = -(1f + e) * un / knn;
+            float jn = (1f + e) * vn / knn;
 
             // 2. Xung ma sát trong mặt phẳng (t, up); thành phần thẳng đứng của vận tốc tuyến tính bị khóa bởi mặt nỉ
             float ut = Vector3.Dot(u, t);
@@ -950,18 +1475,10 @@ namespace Game.Billiards.Physics
 
             // 3. Áp dụng xung
             Vector3 jTotal = jn * nXZ + jt * t + ju * up;
-            Vector3 vPost = v0 + (jn * nXZ + jt * t) / m;
+            vPost = v0 + (jn * nXZ + jt * t) / m;
             vPost.y = 0f;
-            Vector3 wPost = w0 + Vector3.Cross(rc, jTotal) / inertia;
-
-            // Gán trực tiếp vận tốc sau va chạm, triệt tiêu hoàn toàn lực đẩy chống xuyên thấu (depenetration)
-            // dôi dư do PhysX tự sinh ra ở các góc cạnh/mép lỗ.
-            if (!rb.isKinematic)
-            {
-                rb.velocity = vPost;
-                rb.angularVelocity = wPost;
-                lastCushionResponseStep = fixedStepIndex;
-            }
+            wPost = w0 + Vector3.Cross(rc, jTotal) / inertia;
+            return true;
         }
     }
 }

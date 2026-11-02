@@ -46,9 +46,16 @@ namespace Game.Billiards.Editor
             BallMovementMonitor moveMonitor = systemsGo.GetComponent<BallMovementMonitor>();
 
             // Loại bỏ 2 gậy cơ thừa nằm trên bàn từ asset mẫu ban đầu nếu có
-            GameObject oldCue1 = GameObject.Find("Cue Stick (1)");
+            GameObject oldCue1 = null;
             if (oldCue1 != null) Undo.DestroyObjectImmediate(oldCue1);
-            GameObject oldCue2 = GameObject.Find("Cue Stick (2)");
+            GameObject oldCue2 = null;
+            foreach (Transform t in UnityEngine.Object.FindObjectsOfType<Transform>(true))
+            {
+                if (t != null && (t.name == "Cue Stick (1)" || t.name == "Cue Stick (2)") && (t.parent == null || (!t.parent.name.Contains("Cue Rack") && t.parent.name != "Cue Sticks")))
+                {
+                    Undo.DestroyObjectImmediate(t.gameObject);
+                }
+            }
             if (oldCue2 != null) Undo.DestroyObjectImmediate(oldCue2);
 
             // Tự động tìm kiếm và liên kết 16 quả bi vào BallManager

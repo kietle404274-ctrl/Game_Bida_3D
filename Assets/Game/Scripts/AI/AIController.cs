@@ -96,6 +96,17 @@ namespace Game.Billiards.AI
         {
             isAIEnabled = enabled;
             aiPlayerIndex = playerIndex;
+
+            if (!isAIEnabled)
+            {
+                CancelActiveRoutine();
+                return;
+            }
+
+            if (IsMyTurn())
+            {
+                EvaluateCurrentStateAndAct();
+            }
         }
 
         private void ApplyDifficultyProfile()
@@ -113,6 +124,9 @@ namespace Game.Billiards.AI
             {
                 matchStateManager.OnPhaseChanged -= HandlePhaseChanged;
                 matchStateManager.OnPhaseChanged += HandlePhaseChanged;
+
+                matchStateManager.OnRackStarted -= HandleRackStarted;
+                matchStateManager.OnRackStarted += HandleRackStarted;
 
                 matchStateManager.OnRackEnded -= HandleRackEnded;
                 matchStateManager.OnRackEnded += HandleRackEnded;
@@ -132,6 +146,7 @@ namespace Game.Billiards.AI
             if (matchStateManager != null)
             {
                 matchStateManager.OnPhaseChanged -= HandlePhaseChanged;
+                matchStateManager.OnRackStarted -= HandleRackStarted;
                 matchStateManager.OnRackEnded -= HandleRackEnded;
                 matchStateManager.OnMatchWon -= HandleMatchWon;
             }
@@ -193,6 +208,14 @@ namespace Game.Billiards.AI
         }
 
         private void HandlePhaseChanged(MatchPhase newPhase)
+        {
+            if (IsMyTurn())
+            {
+                EvaluateCurrentStateAndAct();
+            }
+        }
+
+        private void HandleRackStarted()
         {
             if (IsMyTurn())
             {
@@ -440,6 +463,11 @@ namespace Game.Billiards.AI
             yield return new WaitForSeconds(0.15f);
 
             // 5. Thực thi cú đánh qua ShotExecutor (dùng chung pipeline với người chơi theo Rule A09)
+            if (cameraDirector != null)
+            {
+                cameraDirector.TryActivatePredictedEightBallPocketCamera(finalCommand, ballManager, tableWrapper);
+            }
+
             if (cueController != null)
             {
                 cueController.TriggerStrikeAnimation(() =>
@@ -468,13 +496,28 @@ namespace Game.Billiards.AI
 
         private ShotCandidate GenerateBreakCandidate(Vector3 cuePos)
         {
-            Vector3 targetApex = (tableWrapper != null) ? tableWrapper.FootSpot : new Vector3(-0.56f, 0.8635f, 0f);
+            Vector3 targetApex = (tableWrapper != null) ? tableWrapper.FootSpot : new Vector3(-0.502f, 0.8635f, 0f);
+
+            // Cơ thủ AI chọn vị trí đặt bi cái trong vùng Bếp (Kitchen) giống cơ thủ thực tế
+            // (phá từ cánh trái, cánh phải hoặc lệch nhẹ khỏi tâm để mở dàn bi tốt nhất)
+            if (ballInHandController != null && tableWrapper != null)
+            {
+                float[] zOffsets = { -0.26f, -0.14f, 0f, 0.14f, 0.26f };
+                float chosenZ = zOffsets[UnityEngine.Random.Range(0, zOffsets.Length)] + UnityEngine.Random.Range(-0.03f, 0.03f);
+                float chosenX = tableWrapper.HeadStringX + UnityEngine.Random.Range(0.01f, 0.08f);
+                Vector3 kitchenPos = new Vector3(chosenX, tableWrapper.HeadSpot.y, chosenZ);
+                if (ballInHandController.PlaceCueBallInKitchen(kitchenPos, true) && ballManager != null && ballManager.CueBall != null)
+                {
+                    cuePos = ballManager.CueBall.transform.position;
+                }
+            }
+
             Vector3 breakDir = (targetApex - cuePos);
             breakDir.y = 0f;
             breakDir = breakDir.normalized;
 
-            // Random nhẹ góc break theo profile
-            float breakPower = UnityEngine.Random.Range(0.85f, 0.95f);
+            // Lực đề-pa mạnh chuẩn giải đấu (88% - 98%)
+            float breakPower = UnityEngine.Random.Range(0.88f, 0.98f);
 
             return new ShotCandidate
             {
@@ -483,7 +526,7 @@ namespace Game.Billiards.AI
                 targetPocketId = -1,
                 aimDirection = breakDir,
                 estimatedPower01 = breakPower,
-                estimatedSpin = new Vector2(0f, 0.12f), // Topspin nhẹ
+                estimatedSpin = new Vector2(0f, 0.08f), // Ngọn cơ hơi trên tâm nhẹ để ghìm bi cái (Squat & Pop)
                 isSafety = false,
                 isLegalBreak = true,
                 finalUtilityScore = 1.0f

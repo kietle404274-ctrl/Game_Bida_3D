@@ -8,21 +8,31 @@ namespace Game.Billiards.UI
     {
         [SerializeField] private CueBallContactSelector selector;
         private CanvasGroup group;
+        private float nextSearchTime;
+        private bool hasAppliedState;
+        private bool lastOpenState;
 
         private void Awake()
         {
             group = GetComponent<CanvasGroup>();
-            Apply(false);
+            Apply(false, true);
         }
 
         private void Update()
         {
-            if (selector == null) selector = FindObjectOfType<CueBallContactSelector>();
-            Apply(selector != null && selector.IsOpen);
+            if (selector == null && Time.unscaledTime >= nextSearchTime)
+            {
+                nextSearchTime = Time.unscaledTime + 0.5f;
+                selector = FindObjectOfType<CueBallContactSelector>();
+            }
+            Apply(selector != null && selector.IsOpen, false);
         }
 
-        private void Apply(bool open)
+        private void Apply(bool open, bool force)
         {
+            if (!force && hasAppliedState && lastOpenState == open) return;
+            hasAppliedState = true;
+            lastOpenState = open;
             group.alpha = open ? 1f : 0f;
             group.interactable = open;
             group.blocksRaycasts = open;

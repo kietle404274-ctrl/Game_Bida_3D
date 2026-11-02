@@ -70,7 +70,7 @@ namespace Game.Billiards.Match
             ResolveRefs();
 
             UnityEngine.Camera cam = cameraDirector != null ? cameraDirector.MainCamera : null;
-            if (IsOnlineMatch() || ballManager == null || tableWrapper == null || cam == null)
+            if (ballManager == null || tableWrapper == null || cam == null)
             {
                 onComplete?.Invoke();
                 yield break;
@@ -137,8 +137,13 @@ namespace Game.Billiards.Match
             Vector3 rackBaseScale = Vector3.one;
             rack.SetActive(false);
 
-            // --- Letterbox + gợi ý bỏ qua ---
+            // --- Letterbox + gợi ý bỏ qua (ẩn gợi ý bỏ qua khi đấu Online để 2 máy luôn đồng bộ thời gian vào ván) ---
+            bool onlineMatch = IsOnlineMatch();
             GameObject overlay = BuildLetterbox(out RectTransform topBar, out RectTransform botBar, out Text hint);
+            if (hint != null && onlineMatch)
+            {
+                hint.gameObject.SetActive(false);
+            }
 
             float ballsEnd = ballsStart + (n - 1) * ballInterval + ballDropDuration;
             float liftStart = ballsEnd + holdAfterBalls;
@@ -151,7 +156,7 @@ namespace Game.Billiards.Match
             while (time < total && !skipRequested)
             {
                 time += Time.deltaTime;
-                if (UnityEngine.Input.GetKeyDown(KeyCode.Space) || UnityEngine.Input.GetMouseButtonDown(0))
+                if (!onlineMatch && (UnityEngine.Input.GetKeyDown(KeyCode.Space) || UnityEngine.Input.GetMouseButtonDown(0)))
                 {
                     skipRequested = true;
                     break;

@@ -73,11 +73,18 @@ namespace Game.Billiards.UI
             var chatUi = OnlineChatUI.Ensure(hud);
             Canvas.ForceUpdateCanvases();
 
-            // Thanh tên / tỉ số phía trên: trượt xuống
+            // Thanh tên / tỉ số phía trên: trượt xuống (lấy cả khung TopHUDBar để các viền Border & TurnHighlight trượt cùng thẻ người chơi)
             var top = new List<RectTransform>();
-            AddRect(top, hud.MatchHeader);
-            AddRect(top, hud.PlayerLeftPanel);
-            AddRect(top, hud.PlayerRightPanel);
+            if (hud.MatchHeader != null && hud.MatchHeader.transform.parent is RectTransform topBarRt && topBarRt.name == "TopHUDBar")
+            {
+                top.Add(topBarRt);
+            }
+            else
+            {
+                AddRect(top, hud.MatchHeader);
+                AddRect(top, hud.PlayerLeftPanel);
+                AddRect(top, hud.PlayerRightPanel);
+            }
 
             // Thanh lực: trượt vào từ mép trái/phải. Panel Điểm cơ (SpinSelectorPanel): từ mép gần nhất.
             // Lấy đúng khung gốc (có AimOnlyHudVisibility) để di chuyển cả panel chứ không phải một phần tử con bên trong.

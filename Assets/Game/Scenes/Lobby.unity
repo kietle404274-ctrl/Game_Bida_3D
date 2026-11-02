@@ -12578,6 +12578,11 @@ PrefabInstance:
       propertyPath: m_Name
       value: Cue Stick (1)
       objectReference: {fileID: 0}
+    - target: {fileID: 6295125738965695470, guid: c1f28ce6b8975f44f9fd37291a76fca4,
+        type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 8146120120495519583, guid: c1f28ce6b8975f44f9fd37291a76fca4,
         type: 3}
       propertyPath: m_RootOrder
@@ -18914,6 +18919,11 @@ PrefabInstance:
         type: 3}
       propertyPath: m_Name
       value: Cue Stick (2)
+      objectReference: {fileID: 0}
+    - target: {fileID: 6295125738965695470, guid: c1f28ce6b8975f44f9fd37291a76fca4,
+        type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 8146120120495519583, guid: c1f28ce6b8975f44f9fd37291a76fca4,
         type: 3}

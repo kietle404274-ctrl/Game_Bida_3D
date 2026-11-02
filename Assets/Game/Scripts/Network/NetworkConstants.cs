@@ -17,6 +17,11 @@ namespace Game.Billiards.Network
         public const string PROP_P1_NAME = "p1n";
         public const string PROP_P2_NAME = "p2n";
         public const string PROP_RACK_BALLS = "rb";
+        public const string PROP_TABLE_THEME = "tt";
+        public const string PROP_FIRST_BREAKER = "fb";
+        public const string PROP_SPIN_SEED = "ss";
+        public const string PROP_BREAK_METHOD = "bm";
+        public const string PROP_RACK_INTRO = "ri";
 
         // Room States
         public const string STATE_WAITING = "Waiting";
@@ -42,6 +47,9 @@ namespace Game.Billiards.Network
         public const byte EVENT_CHAT_MESSAGE = 116;       // Gửi / nhận tin nhắn chat thời gian thực trong trận Online
         public const byte EVENT_VOICE_DATA = 117;         // Luồng gói âm thanh G.711 μ-law 8kHz thời gian thực (SendUnreliable)
         public const byte EVENT_VOICE_STATE = 118;        // Đồng bộ trạng thái bật/tắt Mic & Loa giữa 2 cơ thủ (SendReliable)
+        public const byte EVENT_LAG_AIM_SYNC = 119;       // Đồng bộ hướng cơ thời gian thực trong pha Đua Băng (SendUnreliable)
+        public const byte EVENT_LAG_SHOT_LOCK = 120;      // Chốt cú đánh Đua Băng (hướng + lực) để 2 bi xuất phát cùng lúc (SendReliable)
+        public const byte EVENT_LAG_RESULT = 121;         // Master -> Client: Kết quả chấm điểm Đua Băng authoritative (SendReliable)
 
         // Helper sinh mã phòng ngẫu nhiên (VD: "POOL-8821")
         public static string GenerateRoomId()

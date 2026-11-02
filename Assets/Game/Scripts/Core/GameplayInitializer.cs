@@ -36,32 +36,36 @@ namespace Game.Billiards.Core
 
         private void Awake()
         {
-            ApplyGlobalPhysicsSettings();
+            bool isLobby = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Lobby";
+            ApplyGlobalPhysicsSettings(isLobby);
             RemoveRedundantCueSticks();
             FindReferencesIfMissing();
 
-            if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "Lobby")
+            if (isLobby)
             {
                 isLobbyDisplayMode = true;
                 DisableGameplayForLobby();
+                TableThemeApplier.ApplyThemeToCurrentScene(GameSession.SelectedTableTheme);
             }
             else if (Photon.Pun.PhotonNetwork.InRoom)
             {
                 var session = GameSession.GetOrCreateInstance();
-                if (session.CurrentGameMode != GameMode.OnlinePvP)
-                {
-                    var netMgr = Network.NetworkManager.Instance;
-                    MatchSettings settings = netMgr != null ? netMgr.ExtractSettingsFromRoomProperties() : MatchSettings.Default;
-                    string p1 = netMgr != null ? netMgr.GetPlayer1Name() : "Player 1";
-                    string p2 = netMgr != null ? netMgr.GetPlayer2Name() : "Player 2";
-                    session.StartOnlineMatch(settings, p1, p2, Photon.Pun.PhotonNetwork.IsMasterClient);
-                }
+                var netMgr = Network.NetworkManager.Instance;
+                MatchSettings settings = netMgr != null ? netMgr.ExtractSettingsFromRoomProperties() : session.CurrentSettings;
+                string p1 = netMgr != null ? netMgr.GetPlayer1Name() : session.PlayerAName;
+                string p2 = netMgr != null ? netMgr.GetPlayer2Name() : session.PlayerBName;
+                session.SyncOnlineMatchState(settings, p1, p2, Photon.Pun.PhotonNetwork.IsMasterClient);
+                TableThemeApplier.ApplyThemeToCurrentScene(TableThemeApplier.ResolveActiveMatchTableTheme());
+            }
+            else
+            {
+                TableThemeApplier.ApplyThemeToCurrentScene(GameSession.SelectedTableTheme);
             }
         }
 
         /// <summary>
-        /// Scene Lobby chỉ là bối cảnh trưng bày: tắt toàn bộ điều khiển gameplay (chuột điều khiển cơ/camera/AI/HUD)
-        /// để chuột dành riêng cho các nút sảnh. Camera do LobbyCameraOrbit điều khiển.
+        /// Scene Lobby chỉ là bối cảnh trưng bày: tắt toàn bộ điều khiển gameplay (chuột điều khiển cơ/camera/AI/HUD/vật lý ngầm)
+        /// để chuột dành riêng cho các nút sảnh và triệt tiêu 100% tải FixedUpdate ở sảnh chờ. Camera do LobbyCameraOrbit điều khiển.
         /// </summary>
         private void DisableGameplayForLobby()
         {
@@ -75,17 +79,39 @@ namespace Game.Billiards.Core
             if (eventCollector != null) eventCollector.enabled = false;
             if (matchStateManager != null) matchStateManager.enabled = false;
             if (cameraDirector != null) cameraDirector.enabled = false;
+            if (movementMonitor != null) movementMonitor.enabled = false;
+            if (ruleEngine != null) ruleEngine.enabled = false;
+            if (cueController != null) cueController.enabled = false;
         }
 
         private bool isLobbyDisplayMode;
 
         private System.Collections.IEnumerator LobbyDisplayRoutine()
         {
-            if (ballManager != null) ballManager.ResetRack();
+            if (ballManager != null)
+            {
+                ballManager.ResetRack(BallManager.GenerateWpaRackBallNumbersStatic(2026));
+                if (ballManager.AllBalls != null)
+                {
+                    for (int i = 0; i < ballManager.AllBalls.Length; i++)
+                    {
+                        var b = ballManager.AllBalls[i];
+                        if (b == null) continue;
+                        b.SetKinematic(true);
+                        if (b.SphereCollider != null) b.SphereCollider.enabled = false;
+                        b.enabled = false;
+                    }
+                }
+                ballManager.enabled = false;
+            }
 
-            // Chờ 1 frame để CueController.Start() chạy xong rồi mới đặt cơ cố định
+            PlaceLobbyDisplayCueStick();
             yield return null;
+            PlaceLobbyDisplayCueStick();
+        }
 
+        private void PlaceLobbyDisplayCueStick()
+        {
             var cueBall = ballManager != null ? ballManager.CueBall : null;
             if (cueBall != null && cueController != null && tableWrapper != null)
             {
@@ -107,7 +133,6 @@ namespace Game.Billiards.Core
                 float radius = (ballManager != null && ballManager.PhysicsConfig != null) ? ballManager.PhysicsConfig.BallRadius : 0.0286f;
                 float clothY = head.y - radius;
 
-                cueController.SetCueBallTarget(cueBall.transform);
                 cueController.PlaceAtRest(new Vector3(target.x, clothY + 0.02f, target.z), Quaternion.LookRotation(forward, Vector3.up));
 
                 // Căn lại theo bounds thật của cây cơ: tâm cơ về điểm đặt, đáy cơ chạm mặt nỉ
@@ -120,24 +145,53 @@ namespace Game.Billiards.Core
                     Vector3 shift = new Vector3(target.x - b.center.x, clothY - b.min.y, target.z - b.center.z);
                     stick.position += shift;
                 }
+                cueController.enabled = false;
             }
         }
 
-        private void ApplyGlobalPhysicsSettings()
+        private void ApplyGlobalPhysicsSettings(bool isLobby = false)
         {
             UnityEngine.Physics.bounceThreshold = 0.05f;
-            UnityEngine.Physics.defaultSolverIterations = 12;
-            UnityEngine.Physics.defaultSolverVelocityIterations = 4;
+            UnityEngine.Physics.defaultSolverIterations = isLobby ? 6 : 12;
+            UnityEngine.Physics.defaultSolverVelocityIterations = isLobby ? 1 : 4;
             UnityEngine.Physics.defaultMaxAngularSpeed = 1000f;
-            Time.fixedDeltaTime = 0.01f;
+            Time.fixedDeltaTime = isLobby ? 0.02f : 0.01f;
+        }
+
+        private static bool IsInsideWallCueRackOrWrapper(Transform t)
+        {
+            Transform cur = t != null ? t.parent : null;
+            while (cur != null)
+            {
+                string pName = cur.name;
+                if (!string.IsNullOrEmpty(pName) &&
+                    (pName.IndexOf("Cue Rack", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     pName.IndexOf("Cue Sticks", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                     pName.IndexOf("CueStickWrapper", System.StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    return true;
+                }
+                cur = cur.parent;
+            }
+            return false;
         }
 
         private void RemoveRedundantCueSticks()
         {
-            var oldCue1 = GameObject.Find("Cue Stick (1)");
-            if (oldCue1 != null) oldCue1.SetActive(false);
-            var oldCue2 = GameObject.Find("Cue Stick (2)");
-            if (oldCue2 != null) oldCue2.SetActive(false);
+            var allTransforms = FindObjectsOfType<Transform>(true);
+            for (int i = 0; i < allTransforms.Length; i++)
+            {
+                Transform t = allTransforms[i];
+                if (t == null || t.gameObject == null) continue;
+                string n = t.gameObject.name;
+                if (n != "Cue Stick (1)" && n != "Cue Stick (2)") continue;
+                if (IsInsideWallCueRackOrWrapper(t)) continue;
+
+                var ctrl = t.gameObject.GetComponent<CueController>();
+                if (ctrl != null) DestroyImmediate(ctrl);
+                t.gameObject.SetActive(false);
+                Destroy(t.gameObject);
+            }
         }
 
         private System.Collections.IEnumerator Start()
@@ -159,33 +213,187 @@ namespace Game.Billiards.Core
             if (FindObjectOfType<UI.TvScoreboardDisplay>() == null)
                 gameObject.AddComponent<UI.TvScoreboardDisplay>();
 
-            if (autoResetRackOnStart && ballManager != null)
+            int[] initialRack = null;
+            int initialBreaker = 0;
+            int spinSeed = UnityEngine.Random.Range(1000, 999999);
+            var session = GameSession.GetOrCreateInstance();
+            bool isOnline = session != null && session.CurrentGameMode == GameMode.OnlinePvP;
+            bool isPractice = session != null && session.CurrentGameMode == GameMode.LocalPractice;
+            FirstBreakMethod breakMethod = session != null ? session.CurrentSettings.firstBreakMethod : FirstBreakMethod.RandomWheel;
+            bool rackIntroEnabled = GameSession.RackIntroEnabled;
+
+            if (Photon.Pun.PhotonNetwork.InRoom && Photon.Pun.PhotonNetwork.CurrentRoom != null && Photon.Pun.PhotonNetwork.CurrentRoom.CustomProperties != null)
             {
-                int[] initialRack = null;
-                if (Photon.Pun.PhotonNetwork.InRoom && Photon.Pun.PhotonNetwork.CurrentRoom != null && Photon.Pun.PhotonNetwork.CurrentRoom.CustomProperties != null)
+                var roomProps = Photon.Pun.PhotonNetwork.CurrentRoom.CustomProperties;
+                if (roomProps.TryGetValue(Network.NetworkConstants.PROP_RACK_BALLS, out object rbObj) && rbObj is int[] rackArr && rackArr.Length == 15)
                 {
-                    if (Photon.Pun.PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(Network.NetworkConstants.PROP_RACK_BALLS, out object rbObj))
-                    {
-                        if (rbObj is int[] rackArr && rackArr.Length == 15)
-                        {
-                            initialRack = rackArr;
-                        }
-                    }
+                    initialRack = rackArr;
                 }
-                ballManager.ResetRack(initialRack);
+                if (roomProps.TryGetValue(Network.NetworkConstants.PROP_FIRST_BREAKER, out object fbObj))
+                {
+                    initialBreaker = System.Convert.ToInt32(fbObj) == 1 ? 1 : 0;
+                }
+                if (roomProps.TryGetValue(Network.NetworkConstants.PROP_SPIN_SEED, out object ssObj))
+                {
+                    spinSeed = System.Convert.ToInt32(ssObj);
+                }
+                if (roomProps.TryGetValue(Network.NetworkConstants.PROP_BREAK_METHOD, out object bmObj))
+                {
+                    breakMethod = (FirstBreakMethod)System.Convert.ToInt32(bmObj);
+                }
+                if (roomProps.TryGetValue(Network.NetworkConstants.PROP_RACK_INTRO, out object riObj))
+                {
+                    rackIntroEnabled = System.Convert.ToInt32(riObj) != 0;
+                }
+            }
+            else if (!isPractice)
+            {
+                initialBreaker = UnityEngine.Random.Range(0, 2);
             }
 
             // Chờ 1 frame để các script khác (CameraDirector, ...) hoàn tất Start()
             yield return null;
 
+            // Online: chờ màn hình tải (LoadingScreen) đồng bộ xong cả 2 máy trước khi bắt đầu Đua Bi / Vòng Quay
+            while (UI.LoadingScreen.IsActive)
+            {
+                yield return null;
+            }
+
+            // Đọc lại Room CustomProperties sau khi LoadingScreen kết thúc để đảm bảo gói SetCustomProperties
+            // từ lúc bắt đầu trận đã cập nhật đầy đủ 100% trên cả Master và Client.
+            if (Photon.Pun.PhotonNetwork.InRoom && Photon.Pun.PhotonNetwork.CurrentRoom != null && Photon.Pun.PhotonNetwork.CurrentRoom.CustomProperties != null)
+            {
+                var roomProps = Photon.Pun.PhotonNetwork.CurrentRoom.CustomProperties;
+                if (roomProps.TryGetValue(Network.NetworkConstants.PROP_RACK_BALLS, out object rbObj) && rbObj is int[] rackArr && rackArr.Length == 15)
+                {
+                    initialRack = rackArr;
+                }
+                if (roomProps.TryGetValue(Network.NetworkConstants.PROP_FIRST_BREAKER, out object fbObj))
+                {
+                    initialBreaker = System.Convert.ToInt32(fbObj) == 1 ? 1 : 0;
+                }
+                if (roomProps.TryGetValue(Network.NetworkConstants.PROP_SPIN_SEED, out object ssObj))
+                {
+                    spinSeed = System.Convert.ToInt32(ssObj);
+                }
+                if (roomProps.TryGetValue(Network.NetworkConstants.PROP_BREAK_METHOD, out object bmObj))
+                {
+                    breakMethod = (FirstBreakMethod)System.Convert.ToInt32(bmObj);
+                }
+                if (roomProps.TryGetValue(Network.NetworkConstants.PROP_RACK_INTRO, out object riObj))
+                {
+                    rackIntroEnabled = System.Convert.ToInt32(riObj) != 0;
+                }
+            }
+
+            // Trước khi xếp bi ở ván 1: chọn người phá bi đầu theo chế độ cấu hình (Đua Bi Băng Ngắn hoặc Vòng Quay Random)
+            if (!isPractice)
+            {
+                int localPlayerIdx = isOnline
+                    ? (Photon.Pun.PhotonNetwork.InRoom ? (Photon.Pun.PhotonNetwork.IsMasterClient ? 0 : 1) : (session.IsOnlineMaster ? 0 : 1))
+                    : 0;
+                string pAName = session != null ? session.PlayerAName : "Player 1";
+                string pBName = session != null ? session.PlayerBName : "AI";
+
+                if (isOnline && breakMethod == FirstBreakMethod.LagShot && ballManager != null && tableWrapper != null)
+                {
+                    // Khởi tạo trước dữ liệu người chơi và trượt HUD (TopHUDBar + PowerBarUI) vào màn hình ngay khi bắt đầu Đua Bi
+                    if (matchStateManager != null)
+                    {
+                        matchStateManager.Initialize(
+                            session != null ? session.CurrentSettings : MatchSettings.Default,
+                            pAName,
+                            pBName,
+                            session != null && session.IsPlayerBAi,
+                            0
+                        );
+                    }
+                    if (gameplayHUD != null)
+                    {
+                        gameplayHUD.PrepareForPreMatchLag(matchStateManager, inputController, ballManager);
+                    }
+                    if (hudEntrance != null)
+                    {
+                        hudEntrance.Play();
+                        hudEntrance = null;
+                    }
+
+                    bool lagDone = false;
+                    Match.LagForBreakController.PlayLagShot(
+                        this,
+                        ballManager,
+                        tableWrapper,
+                        cameraDirector,
+                        cueController,
+                        movementMonitor,
+                        gameplayHUD,
+                        localPlayerIdx,
+                        pAName,
+                        pBName,
+                        spinSeed,
+                        winnerIdx =>
+                        {
+                            initialBreaker = winnerIdx;
+                            lagDone = true;
+                        });
+                    while (!lagDone) yield return null;
+                }
+                else
+                {
+                    // Ẩn tạm các bi trên mặt bàn trong lúc quay vòng tròn trước khi xếp khuôn bi
+                    if (ballManager != null)
+                    {
+                        ballManager.InitializeRegistry();
+                        if (ballManager.AllBalls != null)
+                        {
+                            foreach (var b in ballManager.AllBalls)
+                            {
+                                if (b != null) b.gameObject.SetActive(false);
+                            }
+                        }
+                    }
+                    if (cueController != null) cueController.SetAimingState(false);
+
+                    bool wheelDone = false;
+                    UI.BreakTossWheelUI.PlayWheel(this, initialBreaker, localPlayerIdx, pAName, pBName, spinSeed, () => wheelDone = true);
+                    while (!wheelDone) yield return null;
+                }
+            }
+
+            if (autoResetRackOnStart && ballManager != null)
+            {
+                if (isOnline)
+                {
+                    if (Photon.Pun.PhotonNetwork.InRoom && Photon.Pun.PhotonNetwork.CurrentRoom != null && Photon.Pun.PhotonNetwork.CurrentRoom.CustomProperties != null)
+                    {
+                        var roomProps = Photon.Pun.PhotonNetwork.CurrentRoom.CustomProperties;
+                        if (roomProps.TryGetValue(Network.NetworkConstants.PROP_SPIN_SEED, out object ssLatest))
+                        {
+                            spinSeed = System.Convert.ToInt32(ssLatest);
+                        }
+                        if (roomProps.TryGetValue(Network.NetworkConstants.PROP_RACK_BALLS, out object rbLatest) && rbLatest is int[] latestArr && latestArr.Length == 15)
+                        {
+                            initialRack = latestArr;
+                        }
+                    }
+
+                    if (initialRack == null || initialRack.Length != 15)
+                    {
+                        initialRack = BallManager.GenerateWpaRackBallNumbersStatic(spinSeed + 9973);
+                    }
+                }
+                ballManager.ResetRack(initialRack);
+            }
+
             bool introDone = false;
             var intro = FindObjectOfType<RackIntroSequence>();
-            if (intro == null && ballManager != null && GameSession.RackIntroEnabled)
+            if (intro == null && ballManager != null && rackIntroEnabled)
             {
                 intro = gameObject.AddComponent<RackIntroSequence>();
             }
 
-            if (intro != null && GameSession.RackIntroEnabled)
+            if (intro != null && rackIntroEnabled)
             {
                 intro.Play(() => introDone = true);
                 while (!introDone) yield return null;
@@ -193,7 +401,7 @@ namespace Game.Billiards.Core
 
             if (hudEntrance != null) hudEntrance.Play();
 
-            SetupWiring();
+            SetupWiring(initialBreaker);
         }
 
         private void FindReferencesIfMissing()
@@ -218,7 +426,7 @@ namespace Game.Billiards.Core
             if (vfxManager == null) vfxManager = FindObjectOfType<VFX.VFXManager>();
         }
 
-        public void SetupWiring()
+        public void SetupWiring(int initialBreakerIndex = 0)
         {
             // 1. Khởi tạo BallManager
             if (ballManager != null)
@@ -242,7 +450,7 @@ namespace Game.Billiards.Core
                     cueController.SetAimingState(true);
                     if (cameraDirector != null)
                     {
-                        cueController.UpdateAim(cameraDirector.AimDirection, 0.35f);
+                        cueController.UpdateAim(cameraDirector.AimDirection, 0.85f);
                     }
                 }
             }
@@ -269,12 +477,13 @@ namespace Game.Billiards.Core
                         session.CurrentSettings, 
                         session.PlayerAName, 
                         session.PlayerBName, 
-                        session.IsPlayerBAi
+                        session.IsPlayerBAi,
+                        initialBreakerIndex
                     );
                 }
                 else
                 {
-                    matchStateManager.Initialize(MatchSettings.Default);
+                    matchStateManager.Initialize(MatchSettings.Default, initialBreakerIndex: initialBreakerIndex);
                 }
             }
 

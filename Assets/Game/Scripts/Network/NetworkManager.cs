@@ -234,6 +234,9 @@ namespace Game.Billiards.Network
                 { NetworkConstants.PROP_ROOM_STATE, NetworkConstants.STATE_WAITING },
                 { NetworkConstants.PROP_RACE_TARGET, (int)settings.raceTarget },
                 { NetworkConstants.PROP_SHOT_TIMER, (int)settings.shotTimer },
+                { NetworkConstants.PROP_BREAK_METHOD, (int)settings.firstBreakMethod },
+                { NetworkConstants.PROP_RACK_INTRO, GameSession.RackIntroEnabled ? 1 : 0 },
+                { NetworkConstants.PROP_TABLE_THEME, (int)GameSession.SelectedTableTheme },
                 { NetworkConstants.PROP_P1_NAME, PhotonNetwork.NickName },
                 { NetworkConstants.PROP_P2_NAME, "" },
                 { NetworkConstants.PROP_P1_READY, true }, // Host mặc định sẵn sàng
@@ -262,7 +265,10 @@ namespace Game.Billiards.Network
             var props = new ExitGames.Client.Photon.Hashtable
             {
                 { NetworkConstants.PROP_RACE_TARGET, (int)settings.raceTarget },
-                { NetworkConstants.PROP_SHOT_TIMER, (int)settings.shotTimer }
+                { NetworkConstants.PROP_SHOT_TIMER, (int)settings.shotTimer },
+                { NetworkConstants.PROP_BREAK_METHOD, (int)settings.firstBreakMethod },
+                { NetworkConstants.PROP_RACK_INTRO, GameSession.RackIntroEnabled ? 1 : 0 },
+                { NetworkConstants.PROP_TABLE_THEME, (int)GameSession.SelectedTableTheme }
             };
             room.SetCustomProperties(props);
             return true;
@@ -349,12 +355,17 @@ namespace Game.Billiards.Network
                 return;
             }
 
-            // Đóng phòng, lưu dàn bi ban đầu và đổi trạng thái
-            int[] initialRack = Game.Billiards.Match.BallManager.GenerateWpaRackBallNumbersStatic();
+            // Đóng phòng, lưu dàn bi ban đầu (sinh tất định từ spinSeed + 9973), random người phá bi đầu tiên và đổi trạng thái
+            int firstBreaker = UnityEngine.Random.Range(0, 2);
+            int spinSeed = UnityEngine.Random.Range(1000, 999999);
+            int[] initialRack = Game.Billiards.Match.BallManager.GenerateWpaRackBallNumbersStatic(spinSeed + 9973);
             var props = new ExitGames.Client.Photon.Hashtable
             {
                 { NetworkConstants.PROP_ROOM_STATE, NetworkConstants.STATE_IN_MATCH },
-                { NetworkConstants.PROP_RACK_BALLS, initialRack }
+                { NetworkConstants.PROP_RACK_BALLS, initialRack },
+                { NetworkConstants.PROP_FIRST_BREAKER, firstBreaker },
+                { NetworkConstants.PROP_SPIN_SEED, spinSeed },
+                { NetworkConstants.PROP_RACK_INTRO, GameSession.RackIntroEnabled ? 1 : 0 }
             };
             PhotonNetwork.CurrentRoom.SetCustomProperties(props);
             PhotonNetwork.CurrentRoom.IsOpen = false;
@@ -384,6 +395,10 @@ namespace Game.Billiards.Network
                 if (props.TryGetValue(NetworkConstants.PROP_SHOT_TIMER, out object timerVal))
                 {
                     settings.shotTimer = (ShotTimerOption)Convert.ToInt32(timerVal);
+                }
+                if (props.TryGetValue(NetworkConstants.PROP_BREAK_METHOD, out object bmVal))
+                {
+                    settings.firstBreakMethod = (FirstBreakMethod)Convert.ToInt32(bmVal);
                 }
             }
             return settings;
@@ -464,6 +479,18 @@ namespace Game.Billiards.Network
             OnRoomCreateFailed?.Invoke(message);
         }
 
+        private static bool IsInLobbyWaitingRoom()
+        {
+            if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "Lobby")
+                return false;
+            if (!PhotonNetwork.InRoom || PhotonNetwork.CurrentRoom?.CustomProperties == null)
+                return false;
+            if (PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(NetworkConstants.PROP_ROOM_STATE, out object st)
+                && st != null && st.ToString() != NetworkConstants.STATE_WAITING)
+                return false;
+            return true;
+        }
+
         public override void OnJoinedRoom()
         {
             Debug.Log($"[NetworkManager] Tham gia phòng thành công: {PhotonNetwork.CurrentRoom.Name}");
@@ -479,6 +506,11 @@ namespace Game.Billiards.Network
                 PhotonNetwork.CurrentRoom.SetCustomProperties(updatedProps);
             }
 
+            if (IsInLobbyWaitingRoom() && Audio.AudioManager.Instance != null)
+            {
+                Audio.AudioManager.Instance.PlayRoomJoinSound();
+            }
+
             OnRoomJoined?.Invoke(PhotonNetwork.CurrentRoom.Name);
         }
 
@@ -491,6 +523,10 @@ namespace Game.Billiards.Network
         public override void OnPlayerEnteredRoom(Player newPlayer)
         {
             Debug.Log($"[NetworkManager] Người chơi {newPlayer.NickName} đã vào phòng.");
+            if (IsInLobbyWaitingRoom() && Audio.AudioManager.Instance != null)
+            {
+                Audio.AudioManager.Instance.PlayRoomJoinSound();
+            }
             OnRemotePlayerJoined?.Invoke(newPlayer);
         }
 
@@ -521,6 +557,11 @@ namespace Game.Billiards.Network
                     };
                     PhotonNetwork.CurrentRoom.SetCustomProperties(updatedProps);
                 }
+            }
+
+            if (IsInLobbyWaitingRoom() && Audio.AudioManager.Instance != null)
+            {
+                Audio.AudioManager.Instance.PlayRoomLeaveSound();
             }
 
             OnRemotePlayerLeft?.Invoke(otherPlayer);

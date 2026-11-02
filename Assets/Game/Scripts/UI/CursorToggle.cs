@@ -16,6 +16,8 @@ namespace Game.Billiards.UI
 
         private bool userShowCursor = false;
         private bool inMatch = false;
+        private string lastCheckedSceneName = string.Empty;
+        private float nextScenePollTime = 0f;
 
         public static bool IsCursorToggledByPlayer => instance != null && instance.inMatch && instance.userShowCursor;
 
@@ -98,16 +100,16 @@ namespace Game.Billiards.UI
             var activeScene = SceneManager.GetActiveScene();
             string sceneName = activeScene.name;
 
-            // Nếu scene là Lobby hoặc Boot hoặc có LobbyUIController trong scene -> Chắc chắn là ở Sảnh
-            if (sceneName == "Lobby" || sceneName == "Boot" || Object.FindObjectOfType<LobbyUIController>(true) != null)
+            // Nếu scene là Lobby hoặc Boot -> Chắc chắn là ở Sảnh
+            if (sceneName == "Lobby" || sceneName == "Boot")
             {
                 return false;
             }
 
-            // Nếu scene là Gameplay -> Chắc chắn là trong trận đấu
+            // Nếu scene là Gameplay -> Chắc chắn là trong trận đấu (trừ khi có LobbyUIController đè lên)
             if (sceneName == "Gameplay")
             {
-                return true;
+                return Object.FindObjectOfType<LobbyUIController>(true) == null;
             }
 
             // Phòng hờ các scene test khác: nếu có GameplayInitializer và không có LobbyUIController
@@ -116,13 +118,20 @@ namespace Game.Billiards.UI
 
         private void Update()
         {
-            // Kiểm tra trạng thái scene liên tục phòng khi load scene async
-            bool currentMatchState = DetermineIfInMatch();
-            if (currentMatchState != inMatch)
+            // Chỉ kiểm tra lại trạng thái scene khi tên scene đổi hoặc định kỳ mỗi 0.5 giây (tránh gọi FindObjectOfType mỗi frame)
+            string activeSceneName = SceneManager.GetActiveScene().name;
+            if (activeSceneName != lastCheckedSceneName || Time.unscaledTime >= nextScenePollTime)
             {
-                inMatch = currentMatchState;
-                userShowCursor = false; // Mặc định vào trận là ẩn con trỏ
-                Apply();
+                lastCheckedSceneName = activeSceneName;
+                nextScenePollTime = Time.unscaledTime + 0.5f;
+
+                bool currentMatchState = DetermineIfInMatch();
+                if (currentMatchState != inMatch)
+                {
+                    inMatch = currentMatchState;
+                    userShowCursor = false; // Mặc định vào trận là ẩn con trỏ
+                    Apply();
+                }
             }
 
             // Ở Sảnh: Luôn giữ con trỏ hiện, phím Alt hoàn toàn không có tác dụng

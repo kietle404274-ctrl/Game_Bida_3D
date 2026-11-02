@@ -46,10 +46,29 @@ namespace Game.Billiards.Editor
                 AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
                 RepairBallMaterialsInProjectAndActiveScene();
                 UnityEditor.Compilation.CompilationPipeline.RequestScriptCompilation();
+                return;
             }
 
             string flagPath = Path.Combine(Directory.GetCurrentDirectory(), "Temp", "trigger_build.flag");
             if (!File.Exists(flagPath)) return;
+
+            if (EditorApplication.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                EditorApplication.isPlaying = false;
+                return;
+            }
+
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+            {
+                return;
+            }
+
+            // Làm mới tài sản trước khi đóng gói; nếu phát sinh biên dịch mới thì giữ lại flag để đợi Domain Reload xong
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+            {
+                return;
+            }
 
             string targetDir = @"D:\TAI_LIEU_HOC_TAP\DoAnTotNghiep\Game_Build";
             try
@@ -68,11 +87,9 @@ namespace Game.Billiards.Editor
             }
             catch { }
 
-            // Làm mới tài sản trước khi đóng gói
-            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             RepairBallMaterialsInProjectAndActiveScene();
 
-            // Xóa cờ và thực hiện build
+            // Thực hiện build
             BuildToCustomPath(targetDir);
         }
 
@@ -142,11 +159,17 @@ namespace Game.Billiards.Editor
                 "Assets/Game/Configs/DefaultAudioLibrary.asset"
             };
 
+            AssetDatabase.ImportAsset("Assets/Game/Audio/Tieng_Vo_Tay_1.mp3", ImportAssetOptions.ForceSynchronousImport);
+            AssetDatabase.ImportAsset("Assets/Game/Audio/Tieng_Thua_Game.mp3", ImportAssetOptions.ForceSynchronousImport);
+            AssetDatabase.ImportAsset("Assets/Resources/Audio/Tieng_Vo_Tay_1.mp3", ImportAssetOptions.ForceSynchronousImport);
+            AssetDatabase.ImportAsset("Assets/Resources/Audio/Tieng_Thua_Game.mp3", ImportAssetOptions.ForceSynchronousImport);
+
             AudioClip bgm1 = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Nhac_nen.mp3");
             AudioClip bgm2 = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Nhac_nen_2.mp3");
-            AudioClip foul = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_Loi_Bi.mp3");
-            AudioClip rackWin = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_Ngon_Thi.mp3");
-            AudioClip rackLose = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_Meo_Khoc.mp3");
+            AudioClip foul = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_That_Vong.mp3")
+                          ?? AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_Loi_Bi.mp3");
+            AudioClip rackWin = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_Vo_Tay_1.mp3");
+            AudioClip rackLose = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_Thua_Game.mp3");
             AudioClip timerTick = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_Dong_Ho.mp3");
             AudioClip matchWin = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_Win.mp3");
             AudioClip matchLose = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_Thua.mp3");
@@ -215,10 +238,38 @@ namespace Game.Billiards.Editor
 
                 string fullExecutablePath = Path.Combine(outputDirectory, ExecutableName);
 
+                // Đóng các tiến trình Game_Bida_3D đang chạy (nếu có) để tránh khóa file khi build
+                try
+                {
+                    var runningProcs = System.Diagnostics.Process.GetProcessesByName("Game_Bida_3D");
+                    if (runningProcs != null && runningProcs.Length > 0)
+                    {
+                        foreach (var proc in runningProcs)
+                        {
+                            try
+                            {
+                                proc.Kill();
+                                proc.WaitForExit(3000);
+                            }
+                            catch { }
+                        }
+                        System.Threading.Thread.Sleep(500);
+                    }
+                }
+                catch { }
+
                 // Xóa file exe cũ nếu có để đảm bảo Unity tạo file mới với timestamp cập nhật chính xác
                 if (File.Exists(fullExecutablePath))
                 {
-                    try { File.Delete(fullExecutablePath); } catch { }
+                    try
+                    {
+                        File.Delete(fullExecutablePath);
+                    }
+                    catch (Exception delEx)
+                    {
+                        writeStatus("FAILED: Cannot delete locked exe: " + delEx.Message);
+                        return;
+                    }
                 }
 
                 // Kiểm tra danh sách scene
@@ -256,7 +307,25 @@ namespace Game.Billiards.Editor
                 }
                 else
                 {
-                    string err = $"FAILED: Errors={summary.totalErrors}, Warnings={summary.totalWarnings}";
+                    var sb = new System.Text.StringBuilder();
+                    sb.Append($"FAILED ({summary.result}): Errors={summary.totalErrors}, Warnings={summary.totalWarnings}");
+                    if (report.steps != null)
+                    {
+                        foreach (var step in report.steps)
+                        {
+                            if (step.messages != null)
+                            {
+                                foreach (var msg in step.messages)
+                                {
+                                    if (msg.type == LogType.Error || msg.type == LogType.Exception || msg.type == LogType.Warning)
+                                    {
+                                        sb.Append(" | ").Append(msg.content);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    string err = sb.ToString();
                     Debug.LogError($"<color=red>✗ XÂY DỰNG THẤT BẠI! {err}</color>");
                     writeStatus(err);
                 }

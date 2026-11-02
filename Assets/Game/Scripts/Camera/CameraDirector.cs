@@ -10,7 +10,8 @@ namespace Game.Billiards.Camera
         Cinematic,
         ShotFollow,
         OpponentView,
-        TopDown
+        TopDown,
+        PocketCloseup
     }
 
     public class CameraDirector : MonoBehaviour
@@ -109,13 +110,34 @@ namespace Game.Billiards.Camera
         private Vector3 opponentViewPosition;
         private Quaternion opponentViewRotation;
 
+        // Camera góc nhìn bên trong miệng lỗ điện ảnh (Pocket Closeup - Bi số 8 quyết định)
+        private bool pocketCameraLockedForShot = false;
+        private Vector3 pocketCameraPosition;
+        private Vector3 pocketThroatFocusPoint;
+        private Vector3 pocketOutwardDirection;
+        private Transform pocketTrackedBall;
+        private float savedNearClipPlane = 0.3f;
+        private float savedFieldOfView = 60f;
+        private bool hasSavedCameraLens = false;
+
         // Camera Micro-Shake (M10)
         private float shakeTimer = 0f;
         private float totalShakeDuration = 0f;
         private float currentShakeIntensity = 0f;
 
         public CameraState CurrentState => currentState;
-        public UnityEngine.Camera MainCamera => mainCamera;
+        public UnityEngine.Camera MainCamera
+        {
+            get
+            {
+                if (ReferenceEquals(mainCamera, null) || mainCamera == null)
+                {
+                    mainCamera = GetComponent<UnityEngine.Camera>();
+                    if (mainCamera == null) mainCamera = UnityEngine.Camera.main;
+                }
+                return mainCamera;
+            }
+        }
 
         /// <summary>
         /// HÆ°á»›ng ngáº¯m cÆ¡ trÃªn máº·t pháº³ng náº±m ngang XZ (hÆ°á»›ng tá»« camera tá»›i bi cÃ¡i)
@@ -131,7 +153,14 @@ namespace Game.Billiards.Camera
 
         private void Awake()
         {
-            if (mainCamera == null)
+            // LuÃ´n láº¥y trá»±c tiáº¿p component Camera tháº­t trÃªn GameObject hoáº·c Camera.main
+            // Ä‘á»ƒ trÃ¡nh lá»—i fileID serialize nháº§m sang Transform trong báº£n build Standalone (.exe)
+            var ownCam = GetComponent<UnityEngine.Camera>();
+            if (ownCam != null)
+            {
+                mainCamera = ownCam;
+            }
+            else if (mainCamera == null)
             {
                 mainCamera = UnityEngine.Camera.main;
             }
@@ -180,6 +209,9 @@ namespace Game.Billiards.Camera
 
         public void SwitchToShotCamera()
         {
+            if (pocketCameraLockedForShot && currentState == CameraState.PocketCloseup)
+                return;
+            RestoreCameraLensIfNeeded();
             currentState = CameraState.ShotWide;
         }
 
@@ -188,6 +220,7 @@ namespace Game.Billiards.Camera
         /// </summary>
         public void SwitchToCinematicCamera()
         {
+            ClearPocketCameraLock();
             currentState = CameraState.Cinematic;
         }
 
@@ -197,6 +230,10 @@ namespace Game.Billiards.Camera
         /// </summary>
         public void SwitchToShotFollowCamera(Vector3 shotDirection)
         {
+            if (pocketCameraLockedForShot && currentState == CameraState.PocketCloseup)
+                return;
+
+            RestoreCameraLensIfNeeded();
             Vector3 flat = new Vector3(shotDirection.x, 0f, shotDirection.z);
             if (flat.sqrMagnitude > 0.0001f)
             {
@@ -225,6 +262,7 @@ namespace Game.Billiards.Camera
 
         public void SwitchToAimCamera()
         {
+            ClearPocketCameraLock();
             currentState = CameraState.Aim;
         }
 
@@ -233,6 +271,7 @@ namespace Game.Billiards.Camera
         /// </summary>
         public void SwitchToTopDownCamera()
         {
+            ClearPocketCameraLock();
             topDownYaw = currentYaw;
             currentState = CameraState.TopDown;
         }
@@ -252,12 +291,144 @@ namespace Game.Billiards.Camera
         /// </summary>
         public void SwitchToOpponentCamera()
         {
+            if (pocketCameraLockedForShot && currentState == CameraState.PocketCloseup)
+                return;
+
+            RestoreCameraLensIfNeeded();
             // Vá»‹ trÃ­ cá»‘ Ä‘á»‹nh trong phÃ²ng á»Ÿ cuá»‘i bÃ n, nhÃ¬n tháº³ng vÃ o tÃ¢m bÃ n
             float sign = opponentViewFromFootEnd ? -1f : 1f;
             opponentViewPosition = new Vector3(tableCenter.x + sign * opponentCamOffsetX, opponentCamHeight, tableCenter.z);
             opponentViewRotation = Quaternion.LookRotation(tableCenter - opponentViewPosition, Vector3.up);
 
             currentState = CameraState.OpponentView;
+        }
+
+        /// <summary>
+        /// Kiểm tra trước bằng bộ giải vật lý tất định xem cú đánh <paramref name="command"/> có chắc chắn đưa Bi số 8 vào lỗ hay không.
+        /// Nếu chắc chắn vào lỗ, chuyển NGAY LẬP TỨC camera về góc nhìn bên trong miệng lỗ đó.
+        /// </summary>
+        public bool TryActivatePredictedEightBallPocketCamera(
+            Core.ShotCommand command,
+            Match.BallManager ballManager = null,
+            Physics.TableWrapper tableWrapper = null,
+            Physics.PhysicsConfig physicsConfig = null)
+        {
+            if (ballManager == null)
+                ballManager = FindObjectOfType<Match.BallManager>();
+            if (ballManager == null)
+            {
+                ClearPocketCameraLock();
+                return false;
+            }
+
+            if (tableWrapper == null)
+                tableWrapper = ballManager.TableWrapper != null ? ballManager.TableWrapper : FindObjectOfType<Physics.TableWrapper>();
+            if (physicsConfig == null)
+                physicsConfig = ballManager.PhysicsConfig;
+
+            if (Physics.EightBallPocketPredictor.TryPredictEightBallPocket(
+                command, ballManager, tableWrapper, physicsConfig, out int predictedPocketId))
+            {
+                Transform ball8Tr = ballManager.EightBall != null ? ballManager.EightBall.transform : null;
+                SwitchToPocketCamera(predictedPocketId, ball8Tr);
+                Debug.Log($"[CameraDirector] Dự đoán Bi số 8 CHẮC CHẮN vào lỗ #{predictedPocketId} -> Chuyển ngay sang PocketCloseup Camera!");
+                return true;
+            }
+
+            ClearPocketCameraLock();
+            return false;
+        }
+
+        /// <summary>
+        /// Chuyển ngay tức thì sang góc nhìn bên trong miệng lỗ <paramref name="pocketId"/> (0..5) hướng ra bàn đón Bi số 8.
+        /// </summary>
+        public void SwitchToPocketCamera(int pocketId, Transform targetBall = null)
+        {
+            var cam = MainCamera;
+            if (cam != null && !hasSavedCameraLens)
+            {
+                savedNearClipPlane = cam.nearClipPlane;
+                savedFieldOfView = cam.fieldOfView;
+                hasSavedCameraLens = true;
+            }
+            if (cam != null)
+            {
+                cam.nearClipPlane = 0.012f;
+                cam.fieldOfView = 58f;
+            }
+
+            float clothY = tableCenter.y;
+            Vector3 archMid;
+            Vector3 throatMid;
+            Vector3 outDir;
+
+            switch (pocketId)
+            {
+                case 0: // FootLeft (-X, +Z)
+                    archMid = new Vector3(-1.0965f, clothY, 0.5270f);
+                    throatMid = new Vector3(-1.0432f, clothY, 0.4745f);
+                    outDir = new Vector3(0.7071f, 0f, -0.7071f);
+                    break;
+                case 1: // FootRight (-X, -Z)
+                    archMid = new Vector3(-1.0965f, clothY, -0.5270f);
+                    throatMid = new Vector3(-1.0432f, clothY, -0.4745f);
+                    outDir = new Vector3(0.7071f, 0f, 0.7071f);
+                    break;
+                case 2: // SideLeft (0, +Z)
+                    archMid = new Vector3(-0.0060f, clothY, 0.5589f);
+                    throatMid = new Vector3(-0.0060f, clothY, 0.5023f);
+                    outDir = new Vector3(0f, 0f, -1f);
+                    break;
+                case 3: // SideRight (0, -Z)
+                    archMid = new Vector3(-0.0060f, clothY, -0.5589f);
+                    throatMid = new Vector3(-0.0060f, clothY, -0.5023f);
+                    outDir = new Vector3(0f, 0f, 1f);
+                    break;
+                case 4: // HeadLeft (+X, +Z)
+                    archMid = new Vector3(1.0844f, clothY, 0.5270f);
+                    throatMid = new Vector3(1.0311f, clothY, 0.4745f);
+                    outDir = new Vector3(-0.7071f, 0f, -0.7071f);
+                    break;
+                default: // 5: HeadRight (+X, -Z)
+                    archMid = new Vector3(1.0844f, clothY, -0.5270f);
+                    throatMid = new Vector3(1.0311f, clothY, -0.4745f);
+                    outDir = new Vector3(-0.7071f, 0f, 0.7071f);
+                    break;
+            }
+
+            // Đặt ống kính nằm gọn trong lòng miệng lỗ (trước vách da sau 1.6cm, cao hơn mặt nỉ 6.8cm)
+            pocketCameraPosition = archMid + outDir * 0.016f + Vector3.up * 0.068f;
+            pocketThroatFocusPoint = throatMid + outDir * 0.045f + Vector3.up * 0.005f;
+            pocketOutwardDirection = outDir;
+            pocketTrackedBall = targetBall;
+            pocketCameraLockedForShot = true;
+            currentState = CameraState.PocketCloseup;
+
+            if (cam != null)
+            {
+                cam.transform.position = pocketCameraPosition;
+                cam.transform.rotation = ComputePocketCameraLookRotation();
+            }
+        }
+
+        public void ClearPocketCameraLock()
+        {
+            pocketCameraLockedForShot = false;
+            pocketTrackedBall = null;
+            Physics.EightBallPocketPredictor.ClearPrediction();
+            RestoreCameraLensIfNeeded();
+        }
+
+        private void RestoreCameraLensIfNeeded()
+        {
+            if (!hasSavedCameraLens) return;
+            var cam = MainCamera;
+            if (cam != null)
+            {
+                cam.nearClipPlane = savedNearClipPlane;
+                cam.fieldOfView = savedFieldOfView;
+            }
+            hasSavedCameraLens = false;
         }
 
         /// <summary>
@@ -341,6 +512,10 @@ namespace Game.Billiards.Camera
                 case CameraState.TopDown:
                     UpdateTopDownCamera();
                     break;
+
+                case CameraState.PocketCloseup:
+                    UpdatePocketCloseupCamera();
+                    break;
             }
 
             // Ãp dá»¥ng Camera Micro-Shake náº¿u Ä‘ang kÃ­ch hoáº¡t (M10)
@@ -404,6 +579,45 @@ namespace Game.Billiards.Camera
         {
             mainCamera.transform.position = Vector3.Lerp(mainCamera.transform.position, opponentViewPosition, Time.deltaTime * opponentTransitionSpeed);
             mainCamera.transform.rotation = Quaternion.Slerp(mainCamera.transform.rotation, opponentViewRotation, Time.deltaTime * opponentTransitionSpeed);
+        }
+
+        private void UpdatePocketCloseupCamera()
+        {
+            mainCamera.transform.position = pocketCameraPosition;
+            Quaternion targetRot = ComputePocketCameraLookRotation();
+            mainCamera.transform.rotation = Quaternion.Slerp(mainCamera.transform.rotation, targetRot, Time.deltaTime * 10f);
+        }
+
+        private Quaternion ComputePocketCameraLookRotation()
+        {
+            Vector3 baseOut = pocketOutwardDirection.sqrMagnitude > 0.001f ? pocketOutwardDirection.normalized : Vector3.forward;
+            float baseYaw = Mathf.Atan2(baseOut.x, baseOut.z) * Mathf.Rad2Deg;
+            float targetYaw = baseYaw;
+            float targetPitch = 14f;
+
+            if (pocketTrackedBall != null && pocketTrackedBall.gameObject.activeInHierarchy)
+            {
+                Vector3 ballPos = pocketTrackedBall.position;
+                Vector3 toBallXZ = new Vector3(ballPos.x - pocketCameraPosition.x, 0f, ballPos.z - pocketCameraPosition.z);
+                float distXZ = toBallXZ.magnitude;
+
+                if (distXZ > 0.14f && ballPos.y >= tableCenter.y - 0.01f)
+                {
+                    float ballYaw = Mathf.Atan2(toBallXZ.x, toBallXZ.z) * Mathf.Rad2Deg;
+                    float deltaYaw = Mathf.Clamp(Mathf.DeltaAngle(baseYaw, ballYaw), -22f, 22f);
+                    targetYaw = baseYaw + deltaYaw;
+                    // Khi bi ở xa nhìn ngang hơn (~12°), khi bi tiến gần miệng lỗ nghiêng dần xuống (~20°) để thấy rõ miệng lỗ
+                    float tClose = Mathf.Clamp01(1f - (distXZ - 0.14f) / 0.85f);
+                    targetPitch = Mathf.Lerp(12f, 20f, tClose);
+                }
+                else
+                {
+                    // Bi đang rơi vào họng lỗ ngay trước ống kính
+                    targetPitch = 22f;
+                }
+            }
+
+            return Quaternion.Euler(targetPitch, targetYaw, 0f);
         }
     }
 }

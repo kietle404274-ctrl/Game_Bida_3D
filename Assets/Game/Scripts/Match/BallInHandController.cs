@@ -83,6 +83,7 @@ namespace Game.Billiards.Match
                 if (cueBall.SphereCollider != null) cueBall.SphereCollider.enabled = false;
                 if (cueBall.Rigidbody != null)
                 {
+                    cueBall.Rigidbody.collisionDetectionMode = CollisionDetectionMode.Discrete;
                     cueBall.Rigidbody.velocity = Vector3.zero;
                     cueBall.Rigidbody.angularVelocity = Vector3.zero;
                     cueBall.Rigidbody.isKinematic = true;
@@ -229,6 +230,84 @@ namespace Game.Billiards.Match
         }
 
         /// <summary>
+        /// Cho phép cơ thủ dịch chuyển trực tiếp bi cái trong vùng Bếp (Behind the Head String / Kitchen)
+        /// bằng phím W/A/S/D hoặc mũi tên ngay trong góc ngắm trước khi thực hiện cú phá bi đầu ván (chuẩn luật WPA 8-Ball).
+        /// </summary>
+        public bool TranslateCueBallInKitchen(float hInput, float vInput, float dt)
+        {
+            if (isActive || ballManager == null || tableWrapper == null) return false;
+            var cueBall = ballManager.CueBall;
+            if (cueBall == null || cueBall.IsPocketed) return false;
+
+            GetCameraPlanarAxes(out Vector3 camRight, out Vector3 camForward);
+            Vector3 moveDir = (camRight * hInput + camForward * vInput);
+            if (moveDir.sqrMagnitude < 1e-4f) return false;
+            moveDir.Normalize();
+
+            Vector3 candidate = cueBall.transform.position + moveDir * (moveSpeed * 0.72f * dt);
+            return PlaceCueBallInKitchen(candidate, false);
+        }
+
+        /// <summary>
+        /// Đặt bi cái tại tọa độ hợp lệ bên trong vùng Bếp (Kitchen: phía sau lằn ranh đầu bàn Head String)
+        /// và phát sự kiện đồng bộ mạng.
+        /// </summary>
+        public bool PlaceCueBallInKitchen(Vector3 targetPos, bool notifyConfirmed = false)
+        {
+            if (ballManager == null || tableWrapper == null) return false;
+            var cueBall = ballManager.CueBall;
+            if (cueBall == null || cueBall.IsPocketed) return false;
+
+            float radius = GetBallRadius();
+            float margin = radius + 0.014f;
+            // Đảm bảo mép trước của bi cái không bao giờ vượt qua vạch kẻ trắng trên mặt bàn (Line X = 0.55123m + radius 0.02855m)
+            float minX = Mathf.Max(tableWrapper.HeadStringX, 0.582f);
+            float maxX = TableWrapper.HeadCushionX - margin;
+            float maxZ = tableWrapper.PlayableHalfWidth - margin;
+
+            Vector3 clamped = new Vector3(
+                Mathf.Clamp(targetPos.x, minX, maxX),
+                tableWrapper.HeadSpot.y,
+                Mathf.Clamp(targetPos.z, -maxZ, maxZ));
+
+            // Tránh vùng miệng 2 lỗ góc đầu bàn (HeadLeft & HeadRight)
+            var pockets = tableWrapper.Pockets;
+            if (pockets != null)
+            {
+                for (int i = 0; i < pockets.Length; i++)
+                {
+                    if (pockets[i] == null) continue;
+                    Vector3 pPos = pockets[i].PocketPosition;
+                    Vector3 diff = new Vector3(clamped.x - pPos.x, 0f, clamped.z - pPos.z);
+                    float d = diff.magnitude;
+                    if (d < minDistanceToPocket + 0.01f && d > 1e-5f)
+                    {
+                        clamped = new Vector3(pPos.x, clamped.y, pPos.z) + (diff / d) * (minDistanceToPocket + 0.01f);
+                        clamped.x = Mathf.Clamp(clamped.x, minX, maxX);
+                        clamped.z = Mathf.Clamp(clamped.z, -maxZ, maxZ);
+                    }
+                }
+            }
+
+            clamped = ResolveBallPenetration(clamped);
+            clamped.x = Mathf.Clamp(clamped.x, minX, maxX);
+            clamped.z = Mathf.Clamp(clamped.z, -maxZ, maxZ);
+            currentPosition = clamped;
+            MoveCueBallTo(cueBall, clamped);
+            cueBall.SyncPreStepState();
+
+            if (notifyConfirmed)
+            {
+                OnBallInHandConfirmed?.Invoke(clamped);
+            }
+            else
+            {
+                OnBallInHandMoved?.Invoke(clamped);
+            }
+            return true;
+        }
+
+        /// <summary>
         /// Hủy chế độ đặt bi mà không chốt (dùng khi ván/trận kết thúc giữa chừng, ví dụ đầu hàng lúc đang ball-in-hand).
         /// Nếu không hủy, Update() sẽ tiếp tục ẩn cây cơ ở ván sau.
         /// </summary>
@@ -249,16 +328,58 @@ namespace Game.Billiards.Match
             }
         }
 
+        private bool isBreakPlacementVisualsActive = false;
+
+        /// <summary>
+        /// Bật/tắt 4 mũi tên hướng dẫn xung quanh bi cái khi cơ thủ đang chọn vị trí đặt bi phá khai cuộc.
+        /// </summary>
+        public void SetBreakPlacementVisuals(bool active)
+        {
+            isBreakPlacementVisualsActive = active;
+            if (!active && !isActive)
+            {
+                arrowsWanted = false;
+                SetArrowsVisible(false);
+            }
+        }
+
+        /// <summary>
+        /// Chốt vị trí đặt bi cái trong vùng Bếp khi người chơi nhấn Enter ở lượt phá bi:
+        /// ẩn 4 mũi tên ngay lập tức, khóa vị trí bi cái và phát sự kiện đồng bộ Online.
+        /// </summary>
+        public void ConfirmBreakKitchenPlacement()
+        {
+            SetBreakPlacementVisuals(false);
+            if (ballManager == null || ballManager.CueBall == null) return;
+            PlaceCueBallInKitchen(ballManager.CueBall.transform.position, true);
+        }
+
         private void Update()
         {
-            // Ẩn cây cơ trong suốt quá trình đặt bi (chỉ hiện lại khi đặt xong)
+            // Ẩn cây cơ trong suốt quá trình đặt bi top-down (chỉ hiện lại khi đặt xong)
             if (isActive) HideCueStick();
 
-            if (!isActive) { arrowsWanted = false; SetArrowsVisible(false); ApplyCueBallTint(false); return; }
-            if ((InputBlockedPredicate != null && InputBlockedPredicate())
+            bool inputBlocked = (InputBlockedPredicate != null && InputBlockedPredicate())
                 || Game.Billiards.UI.HudModalState.IsModalOpen
                 || Game.Billiards.UI.OnlineChatUI.IsChatOpen
-                || Game.Billiards.UI.OnlineChatUI.IsTyping)
+                || Game.Billiards.UI.OnlineChatUI.IsTyping;
+
+            if (!isActive)
+            {
+                ApplyCueBallTint(false);
+                if (isBreakPlacementVisualsActive && !inputBlocked)
+                {
+                    arrowsWanted = true;
+                }
+                else
+                {
+                    arrowsWanted = false;
+                    SetArrowsVisible(false);
+                }
+                return;
+            }
+
+            if (inputBlocked)
             {
                 arrowsWanted = false;
                 SetArrowsVisible(false);
@@ -277,7 +398,7 @@ namespace Game.Billiards.Match
         // Mũi tên cập nhật sau cùng trong frame, bám theo vị trí hiển thị thật của bi cái
         private void LateUpdate()
         {
-            if (isActive && arrowsWanted) UpdateArrows();
+            if ((isActive || isBreakPlacementVisualsActive) && arrowsWanted) UpdateArrows();
         }
 
         private bool arrowsWanted = false;
@@ -322,12 +443,22 @@ namespace Game.Billiards.Match
                 // Bi cái không được xuyên qua các bi khác: đẩy ngược ra và trượt dọc theo bề mặt bi
                 currentPosition = ResolveBallPenetration(currentPosition);
 
-                // Giới hạn trong mặt bàn
+                // Giới hạn trong mặt bàn (và không vượt qua vạch kẻ trắng nếu đang ở chế độ đặt bi đầu bàn)
                 if (tableWrapper != null)
                 {
                     currentPosition = tableWrapper.ClampToPlayArea(currentPosition, 0.035f);
+                    if (behindHeadStringOnly)
+                    {
+                        float minKitchenX = Mathf.Max(tableWrapper.HeadStringX, 0.582f);
+                        currentPosition.x = Mathf.Max(currentPosition.x, minKitchenX);
+                    }
                 }
                 currentPosition = ResolveBallPenetration(currentPosition);
+                if (tableWrapper != null && behindHeadStringOnly)
+                {
+                    float minKitchenX = Mathf.Max(tableWrapper.HeadStringX, 0.582f);
+                    currentPosition.x = Mathf.Max(currentPosition.x, minKitchenX);
+                }
 
                 var cueBall = ballManager != null ? ballManager.CueBall : null;
                 if (cueBall != null)

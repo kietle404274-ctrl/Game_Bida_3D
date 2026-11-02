@@ -22,7 +22,7 @@ namespace Game.Billiards.Audio
         [Tooltip("Âm thanh bi rơi vào lỗ")]
         [SerializeField] private AudioClip pocketDropClip;
 
-        [Tooltip("Âm thanh thông báo phạm lỗi bi (Tieng_Loi_Bi)")]
+        [Tooltip("Âm thanh thông báo phạm lỗi bi (Tieng_That_Vong)")]
         [SerializeField] private AudioClip foulClip;
 
         [Tooltip("Âm thanh chiến thắng ván đấu (dự phòng)")]
@@ -70,9 +70,10 @@ namespace Game.Billiards.Audio
             get
             {
 #if UNITY_EDITOR
-                if (foulClip == null || foulClip.name == "sfx_foul")
+                if (foulClip == null || foulClip.name == "sfx_foul" || foulClip.name == "Tieng_Loi_Bi")
                 {
-                    var customFoul = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_Loi_Bi.mp3");
+                    var customFoul = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_That_Vong.mp3")
+                                  ?? UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_Loi_Bi.mp3");
                     if (customFoul != null) foulClip = customFoul;
                 }
 #endif
@@ -80,8 +81,34 @@ namespace Game.Billiards.Audio
             }
         }
         public AudioClip WinFanfareClip => winFanfareClip;
-        public AudioClip RackWinClip => rackWinClip;
-        public AudioClip RackLoseClip => rackLoseClip;
+        public AudioClip RackWinClip
+        {
+            get
+            {
+#if UNITY_EDITOR
+                if (rackWinClip == null || rackWinClip.name == "Tieng_Ngon_Thi")
+                {
+                    var customWin = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_Vo_Tay_1.mp3");
+                    if (customWin != null) rackWinClip = customWin;
+                }
+#endif
+                return rackWinClip;
+            }
+        }
+        public AudioClip RackLoseClip
+        {
+            get
+            {
+#if UNITY_EDITOR
+                if (rackLoseClip == null || rackLoseClip.name == "Tieng_Meo_Khoc")
+                {
+                    var customLose = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Game/Audio/Tieng_Thua_Game.mp3");
+                    if (customLose != null) rackLoseClip = customLose;
+                }
+#endif
+                return rackLoseClip;
+            }
+        }
         public AudioClip TimerTickClip => timerTickClip;
         public AudioClip MatchWinClip => matchWinClip;
         public AudioClip MatchLoseClip => matchLoseClip;

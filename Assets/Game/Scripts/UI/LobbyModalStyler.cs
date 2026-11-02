@@ -423,21 +423,21 @@ namespace Game.Billiards.UI
             if (modal == null) return null;
 
             RectTransform root = modal.GetComponent<RectTransform>();
-            root.sizeDelta = new Vector2(600f, 660f);
+            root.sizeDelta = new Vector2(600f, 740f);
 
             Place(modal.transform, "Title", 0f, 0f, null);
-            Place(modal.transform, "NameLabel", 226f, 24f, 520f);
-            Place(modal.transform, "PlayerNameInput", 190f, 44f, 520f);
-            Place(modal.transform, "DiffLabel", 142f, 24f, 520f);
-            Place(modal.transform, "DiffButtons", 98f, 64f, 520f);
-            Place(modal.transform, "RaceLabel", 40f, 24f, 520f);
-            Place(modal.transform, "RaceDropdown", 6f, 44f, 520f);
-            Place(modal.transform, "TimerLabel", -40f, 24f, 520f);
-            Place(modal.transform, "TimerDropdown", -74f, 44f, 520f);
-            Place(modal.transform, "RackIntroToggle", -122f, 32f, 520f);
-            Place(modal.transform, "AimGuideToggle", -160f, 32f, 520f);
-            Place(modal.transform, "BtnStartMatch", -218f, 54f, 520f);
-            Place(modal.transform, "BtnClose", -280f, 44f, 520f);
+            Place(modal.transform, "NameLabel", 266f, 24f, 520f);
+            Place(modal.transform, "PlayerNameInput", 230f, 44f, 520f);
+            Place(modal.transform, "DiffLabel", 182f, 24f, 520f);
+            Place(modal.transform, "DiffButtons", 138f, 64f, 520f);
+            Place(modal.transform, "RaceLabel", 80f, 24f, 520f);
+            Place(modal.transform, "RaceDropdown", 46f, 44f, 520f);
+            Place(modal.transform, "TimerLabel", 0f, 24f, 520f);
+            Place(modal.transform, "TimerDropdown", -34f, 44f, 520f);
+            Place(modal.transform, "RackIntroToggle", -162f, 32f, 520f);
+            Place(modal.transform, "AimGuideToggle", -198f, 32f, 520f);
+            Place(modal.transform, "BtnStartMatch", -256f, 54f, 520f);
+            Place(modal.transform, "BtnClose", -318f, 44f, 520f);
 
             Text diffLabel = FindText(modal.transform, "DiffLabel");
             if (diffLabel != null) diffLabel.text = LocalizationManager.Get("diff_level_header");

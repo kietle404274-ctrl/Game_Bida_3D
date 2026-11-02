@@ -12,6 +12,15 @@ namespace Game.Billiards.Core
         LocalPractice = 2
     }
 
+    public enum TableTheme
+    {
+        Blue = 0,
+        Purple = 1,
+        Green = 2,
+        Red = 3,
+        Grey = 4
+    }
+
     public class GameSession : MonoBehaviour
     {
         public static GameSession Instance { get; private set; }
@@ -58,6 +67,54 @@ namespace Game.Billiards.Core
             {
                 PlayerPrefs.SetInt(RackIntroPrefKey, value ? 1 : 0);
                 PlayerPrefs.Save();
+            }
+        }
+
+        private const string FirstBreakMethodPrefKey = "Online_FirstBreakMethod";
+
+        /// <summary>Cơ chế chọn lượt phá đầu trong phòng Online (lưu qua PlayerPrefs, mặc định Vòng quay ngẫu nhiên).</summary>
+        public static FirstBreakMethod SavedFirstBreakMethod
+        {
+            get
+            {
+                int val = PlayerPrefs.GetInt(FirstBreakMethodPrefKey, (int)FirstBreakMethod.RandomWheel);
+                return val == (int)FirstBreakMethod.LagShot ? FirstBreakMethod.LagShot : FirstBreakMethod.RandomWheel;
+            }
+            set
+            {
+                PlayerPrefs.SetInt(FirstBreakMethodPrefKey, (int)value);
+                PlayerPrefs.Save();
+            }
+        }
+
+        private const string TableThemePrefKey = "SelectedTableTheme";
+
+        /// <summary>Màu/chủ đề mặt bàn đang chọn (lưu qua PlayerPrefs, mặc định Bàn Xanh Dương).</summary>
+        public static TableTheme SelectedTableTheme
+        {
+            get
+            {
+                int val = PlayerPrefs.GetInt(TableThemePrefKey, (int)TableTheme.Blue);
+                if (val < 0 || val > (int)TableTheme.Grey) val = (int)TableTheme.Blue;
+                return (TableTheme)val;
+            }
+            set
+            {
+                PlayerPrefs.SetInt(TableThemePrefKey, (int)value);
+                PlayerPrefs.Save();
+            }
+        }
+
+        public static string GetTableThemeName(TableTheme theme)
+        {
+            switch (theme)
+            {
+                case TableTheme.Purple: return "Bàn Tím";
+                case TableTheme.Green:  return "Bàn Xanh Lá";
+                case TableTheme.Red:    return "Bàn Đỏ";
+                case TableTheme.Grey:   return "Bàn Xám";
+                case TableTheme.Blue:
+                default:                return "Bàn Xanh Dương";
             }
         }
 
@@ -122,16 +179,23 @@ namespace Game.Billiards.Core
 
         public void StartOnlineMatch(MatchSettings settings, string playerA, string playerB, bool amIMaster)
         {
+            SyncOnlineMatchState(settings, playerA, playerB, amIMaster);
+            Debug.Log($"[GameSession] Khởi động trận Online 1v1: {playerA} vs {playerB} (amIMaster={amIMaster})");
+            LoadGameplayScene();
+        }
+
+        /// <summary>
+        /// Đồng bộ trạng thái phiên Online PvP (vai trò Chủ phòng/Khách, cài đặt, tắt AI) mà KHÔNG gọi LoadGameplayScene lần nữa.
+        /// </summary>
+        public void SyncOnlineMatchState(MatchSettings settings, string playerA, string playerB, bool amIMaster)
+        {
             currentGameMode = GameMode.OnlinePvP;
             selectedAIDifficulty = AIDifficulty.Normal;
             isPlayerBAi = false;
             isOnlineMaster = amIMaster;
             currentSettings = settings;
-            playerAName = playerA;
-            playerBName = playerB;
-
-            Debug.Log($"[GameSession] Khởi động trận Online 1v1: {playerA} vs {playerB} (amIMaster={amIMaster})");
-            LoadGameplayScene();
+            if (!string.IsNullOrWhiteSpace(playerA)) playerAName = playerA;
+            if (!string.IsNullOrWhiteSpace(playerB)) playerBName = playerB;
         }
 
         public void LoadLobbyScene()

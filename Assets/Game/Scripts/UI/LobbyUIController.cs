@@ -77,6 +77,7 @@ namespace Game.Billiards.UI
             SetupDropdowns();
             EnsureAimGuideToggle();
             StyleModals();
+            SetupTableSelectorForModals();
             SetupOnlineConfigPopup();
             if (onlineRoomUI != null) onlineRoomUI.SetupRoomView(roomConfigButton);
             StyleQuitButtons();
@@ -98,6 +99,29 @@ namespace Game.Billiards.UI
         }
 
         private DifficultyCardUI[] difficultyCards;
+        private TableSelectorPopupUI tableSelectorUI;
+
+        private void SetupTableSelectorForModals()
+        {
+            tableSelectorUI = GetComponent<TableSelectorPopupUI>();
+            if (tableSelectorUI == null) tableSelectorUI = gameObject.AddComponent<TableSelectorPopupUI>();
+            tableSelectorUI.OnTableThemeChanged -= HandleTableThemeChanged;
+            tableSelectorUI.OnTableThemeChanged += HandleTableThemeChanged;
+
+            if (difficultyModalRoot != null)
+            {
+                tableSelectorUI.AttachConfigRow(difficultyModalRoot.transform, -80f, -114f, 520f);
+            }
+        }
+
+        private void HandleTableThemeChanged(TableTheme theme)
+        {
+            RefreshOnlineConfigSummary();
+            if (NetworkManager.Instance != null && NetworkManager.Instance.IsInRoom && NetworkManager.Instance.IsMaster)
+            {
+                ApplyOnlineRoomSettings();
+            }
+        }
 
         private void StyleModals()
         {
@@ -135,9 +159,9 @@ namespace Game.Billiards.UI
             {
                 if (b == null) continue;
 
-                if (b == diffEasyButton || b == diffNormalButton || b == diffHardButton || b.GetComponentInParent<MusicTrackCarouselUI>() != null)
+                if (b == diffEasyButton || b == diffNormalButton || b == diffHardButton || b.GetComponentInParent<MusicTrackCarouselUI>() != null || b.gameObject.name == "SelectedTableBox" || b.gameObject.name == "TabWheel" || b.gameObject.name == "TabLag")
                 {
-                    continue; // thẻ độ khó / nút mũi tên chọn nhạc tự xử lý hover
+                    continue; // thẻ độ khó / nút mũi tên chọn nhạc / tab chọn chế độ phá bi tự xử lý màu selected & hover
                 }
 
                 if (b == quitGameButton || b == quitConfirmYesButton)
@@ -186,6 +210,11 @@ namespace Game.Billiards.UI
         private Text onlineConfigSummary;
         private Dropdown onlineRaceDropdown;
         private Dropdown onlineTimerDropdown;
+        private FirstBreakMethod selectedOnlineBreakMethod = FirstBreakMethod.RandomWheel;
+        private SkewedPanelGraphic breakTabWheelBg, breakTabLagBg;
+        private SkewedPanelGraphic breakTabWheelStrip, breakTabLagStrip;
+        private BorderProgressGraphic breakTabWheelFrame, breakTabLagFrame;
+        private Text breakTabWheelText, breakTabLagText;
         private Toggle popupIntroToggle;
         private Toggle popupAimToggle;
         private GameObject popupIntroCheck, popupAimCheck;
@@ -257,7 +286,7 @@ namespace Game.Billiards.UI
             pr.anchorMin = pr.anchorMax = new Vector2(0.5f, 0.5f);
             pr.pivot = new Vector2(0.5f, 0.5f);
             pr.anchoredPosition = Vector2.zero;
-            pr.sizeDelta = new Vector2(580f, 440f);
+            pr.sizeDelta = new Vector2(580f, 595f);
 
             GameObject dim = new GameObject("Dim", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
             dim.transform.SetParent(popup.transform, false);
@@ -290,9 +319,11 @@ namespace Game.Billiards.UI
             title.rectTransform.anchoredPosition = new Vector2(0f, -25f);
             title.rectTransform.sizeDelta = new Vector2(0f, 40f);
             Text raceLabel = NewConfigText(popup.transform, "RaceLabel", LocalizationManager.Get("diff_race"), font);
-            PlaceCfg(raceLabel.rectTransform, 118f, 24f);
+            PlaceCfg(raceLabel.rectTransform, 192f, 24f);
             Text timerLabel = NewConfigText(popup.transform, "TimerLabel", LocalizationManager.Get("diff_timer"), font);
-            PlaceCfg(timerLabel.rectTransform, 34f, 24f);
+            PlaceCfg(timerLabel.rectTransform, 112f, 24f);
+            Text breakMethodLabel = NewConfigText(popup.transform, "BreakMethodLabel", LocalizationManager.Get("cfg_first_break"), font);
+            PlaceCfg(breakMethodLabel.rectTransform, 32f, 24f);
 
             // --- Hai tick cài đặt dùng chung ---
             popupIntroToggle = CreateTickToggle(popup.transform, "PopupIntroToggle", LocalizationManager.Get("diff_rack_intro"), GameSession.RackIntroEnabled,
@@ -309,22 +340,31 @@ namespace Game.Billiards.UI
                 GameSession.AimGuideEnabled = v;
                 SyncTickToggles();
             });
-            PlaceCfg((RectTransform)popupIntroToggle.transform, -56f, 32f);
-            PlaceCfg((RectTransform)popupAimToggle.transform, -92f, 32f);
+            PlaceCfg((RectTransform)popupIntroToggle.transform, -132f, 32f);
+            PlaceCfg((RectTransform)popupAimToggle.transform, -168f, 32f);
 
             // --- Nút Xác nhận (nhân bản từ nút Bắt đầu của popup AI để giữ đúng phong cách xanh lá) ---
             Button confirm = Instantiate(startOfflineMatchButton, popup.transform);
             confirm.name = "BtnConfirmConfig";
             confirm.onClick.RemoveAllListeners();
             ReplaceHudButtonIcon(confirm, LocalizationManager.Get("btn_confirm"), 18);
-            PlaceCfg((RectTransform)confirm.transform, -156f, 54f);
+            PlaceCfg((RectTransform)confirm.transform, -232f, 54f);
 
             // Style chung (tiêu đề, nhãn mục, hiệu ứng mở) khi chưa có dropdown
             LobbyModalStyler.StyleModal(popup, LobbyModalStyler.AccentBlue);
 
+            // --- Thanh Tab chọn chế độ phá bi đầu (Vòng quay ngẫu nhiên <-> Đua bi băng ngắn) theo phong cách HUD ---
+            BuildBreakMethodTabSelector(popup.transform, font, -4f);
+
+            // --- Mục chọn bàn thi đấu trong popup Online ---
+            if (tableSelectorUI != null)
+            {
+                tableSelectorUI.AttachConfigRow(popup.transform, -48f, -82f, 520f);
+            }
+
             // --- Chuyển 2 dropdown vào popup ---
-            MoveDropdownInto(onlineRaceDropdown, popup.transform, 84f);
-            MoveDropdownInto(onlineTimerDropdown, popup.transform, 0f);
+            MoveDropdownInto(onlineRaceDropdown, popup.transform, 158f);
+            MoveDropdownInto(onlineTimerDropdown, popup.transform, 78f);
 
             // --- Nút mở popup nằm trong màn hình PHÒNG (chỉ chủ phòng thấy) ---
             Transform roomSub = onlineModalRoot.transform.Find("RoomSubPanel");
@@ -357,16 +397,171 @@ namespace Game.Billiards.UI
                     if (ti >= 0) onlineTimerDropdown.SetValueWithoutNotify(ti);
                     onlineRaceDropdown.RefreshShownValue();
                     onlineTimerDropdown.RefreshShownValue();
+                    selectedOnlineBreakMethod = current.firstBreakMethod;
                 }
                 SyncTickToggles();
+                if (tableSelectorUI != null) tableSelectorUI.RefreshAllDisplays();
                 popup.SetActive(true);
                 popup.transform.SetAsLastSibling();
+                SelectOnlineBreakMethod(selectedOnlineBreakMethod);
             });
             confirm.onClick.AddListener(() =>
             {
                 popup.SetActive(false);
                 ApplyOnlineRoomSettings();
             });
+        }
+
+        private void BuildBreakMethodTabSelector(Transform parent, Font font, float yPos)
+        {
+            var barGo = new GameObject("BreakMethodTabBar", typeof(RectTransform));
+            barGo.transform.SetParent(parent, false);
+            var barRt = barGo.GetComponent<RectTransform>();
+            barRt.anchorMin = barRt.anchorMax = new Vector2(0.5f, 0.5f);
+            barRt.pivot = new Vector2(0.5f, 0.5f);
+            barRt.sizeDelta = new Vector2(500f, 42f);
+            barRt.anchoredPosition = new Vector2(0f, yPos);
+
+            Button btnWheel = CreateBreakTabButton(barGo.transform, "TabWheel", LocalizationManager.Get("opt_break_wheel"), font,
+                new Vector2(-128f, 0f), new Vector2(244f, 40f),
+                out breakTabWheelBg, out breakTabWheelFrame, out breakTabWheelStrip, out breakTabWheelText);
+            btnWheel.onClick.AddListener(() => SelectOnlineBreakMethod(FirstBreakMethod.RandomWheel, true));
+
+            Button btnLag = CreateBreakTabButton(barGo.transform, "TabLag", LocalizationManager.Get("opt_break_lag"), font,
+                new Vector2(128f, 0f), new Vector2(244f, 40f),
+                out breakTabLagBg, out breakTabLagFrame, out breakTabLagStrip, out breakTabLagText);
+            btnLag.onClick.AddListener(() => SelectOnlineBreakMethod(FirstBreakMethod.LagShot, true));
+
+            selectedOnlineBreakMethod = GameSession.SavedFirstBreakMethod;
+            SelectOnlineBreakMethod(selectedOnlineBreakMethod, false);
+        }
+
+        private static Button CreateBreakTabButton(Transform parent, string name, string label, Font font, Vector2 pos, Vector2 size,
+            out SkewedPanelGraphic bg, out BorderProgressGraphic frame, out SkewedPanelGraphic bottomStrip, out Text txt)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(SkewedPanelGraphic), typeof(Button));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = pos;
+            rt.sizeDelta = size;
+
+            bg = go.GetComponent<SkewedPanelGraphic>();
+            bg.SetInsets(0f, 12f, 12f, 0f);
+            bg.SetBottomDarken(0.28f);
+            bg.raycastTarget = true;
+
+            var stripGo = new GameObject("SelectedStrip", typeof(RectTransform), typeof(CanvasRenderer), typeof(SkewedPanelGraphic));
+            stripGo.transform.SetParent(go.transform, false);
+            var sRt = stripGo.GetComponent<RectTransform>();
+            sRt.anchorMin = new Vector2(0f, 0f);
+            sRt.anchorMax = new Vector2(1f, 0f);
+            sRt.pivot = new Vector2(0.5f, 0f);
+            sRt.anchoredPosition = new Vector2(0f, 1f);
+            sRt.sizeDelta = new Vector2(-8f, 4.5f);
+            bottomStrip = stripGo.GetComponent<SkewedPanelGraphic>();
+            bottomStrip.SetInsets(0f, 4f, 4f, 0f);
+            bottomStrip.raycastTarget = false;
+
+            var frameGo = new GameObject("Frame", typeof(RectTransform), typeof(CanvasRenderer), typeof(BorderProgressGraphic));
+            frameGo.transform.SetParent(go.transform, false);
+            var fRt = frameGo.GetComponent<RectTransform>();
+            fRt.anchorMin = Vector2.zero;
+            fRt.anchorMax = Vector2.one;
+            fRt.offsetMin = Vector2.zero;
+            fRt.offsetMax = Vector2.zero;
+            frame = frameGo.GetComponent<BorderProgressGraphic>();
+            frame.SetInsets(0f, 12f, 12f, 0f);
+            frame.raycastTarget = false;
+
+            var txtGo = new GameObject("Label", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+            txtGo.transform.SetParent(go.transform, false);
+            var tRt = txtGo.GetComponent<RectTransform>();
+            tRt.anchorMin = Vector2.zero;
+            tRt.anchorMax = Vector2.one;
+            tRt.offsetMin = new Vector2(10f, 3f);
+            tRt.offsetMax = new Vector2(-10f, -2f);
+            txt = txtGo.GetComponent<Text>();
+            txt.font = font;
+            txt.fontSize = 13;
+            txt.fontStyle = FontStyle.Bold;
+            txt.alignment = TextAnchor.MiddleCenter;
+            txt.text = label;
+            txt.raycastTarget = false;
+
+            var btn = go.GetComponent<Button>();
+            btn.transition = Selectable.Transition.None;
+            btn.targetGraphic = bg;
+
+            UIHoverEffect.Attach(go, false, null, null, 0f, 1.035f);
+            return btn;
+        }
+
+        private void SelectOnlineBreakMethod(FirstBreakMethod method, bool savePreference = false)
+        {
+            selectedOnlineBreakMethod = method;
+            if (savePreference)
+            {
+                GameSession.SavedFirstBreakMethod = method;
+            }
+            bool isWheel = (method == FirstBreakMethod.RandomWheel);
+
+            Color activeBg = new Color(0.06f, 0.48f, 0.82f, 1.00f);
+            Color activeFrame = new Color(0.00f, 0.96f, 1.00f, 1.00f);
+            Color activeStrip = new Color(1.00f, 0.82f, 0.18f, 1.00f);
+            Color activeText = new Color(1.00f, 0.98f, 0.88f, 1.00f);
+
+            Color inactiveBg = new Color(0.05f, 0.08f, 0.14f, 0.88f);
+            Color inactiveFrame = new Color(0.24f, 0.34f, 0.48f, 0.42f);
+            Color inactiveStrip = new Color(0f, 0f, 0f, 0f);
+            Color inactiveText = new Color(0.48f, 0.60f, 0.74f, 0.75f);
+
+            if (breakTabWheelBg != null)
+            {
+                breakTabWheelBg.color = isWheel ? activeBg : inactiveBg;
+                breakTabWheelBg.SetAllDirty();
+                breakTabWheelBg.transform.localScale = isWheel ? new Vector3(1.02f, 1.02f, 1f) : Vector3.one;
+            }
+            if (breakTabWheelFrame != null)
+            {
+                breakTabWheelFrame.SetBaseColor(isWheel ? activeFrame : inactiveFrame);
+                breakTabWheelFrame.SetAllDirty();
+            }
+            if (breakTabWheelStrip != null)
+            {
+                breakTabWheelStrip.color = isWheel ? activeStrip : inactiveStrip;
+                breakTabWheelStrip.SetAllDirty();
+            }
+            if (breakTabWheelText != null)
+            {
+                string wheelLbl = LocalizationManager.Get("opt_break_wheel");
+                breakTabWheelText.text = isWheel ? $"● {wheelLbl}" : wheelLbl;
+                breakTabWheelText.color = isWheel ? activeText : inactiveText;
+            }
+
+            if (breakTabLagBg != null)
+            {
+                breakTabLagBg.color = !isWheel ? activeBg : inactiveBg;
+                breakTabLagBg.SetAllDirty();
+                breakTabLagBg.transform.localScale = !isWheel ? new Vector3(1.02f, 1.02f, 1f) : Vector3.one;
+            }
+            if (breakTabLagFrame != null)
+            {
+                breakTabLagFrame.SetBaseColor(!isWheel ? activeFrame : inactiveFrame);
+                breakTabLagFrame.SetAllDirty();
+            }
+            if (breakTabLagStrip != null)
+            {
+                breakTabLagStrip.color = !isWheel ? activeStrip : inactiveStrip;
+                breakTabLagStrip.SetAllDirty();
+            }
+            if (breakTabLagText != null)
+            {
+                string lagLbl = LocalizationManager.Get("opt_break_lag");
+                breakTabLagText.text = !isWheel ? $"● {lagLbl}" : lagLbl;
+                breakTabLagText.color = !isWheel ? activeText : inactiveText;
+            }
         }
 
         private Button roomConfigButton;
@@ -382,14 +577,16 @@ namespace Game.Billiards.UI
             rt.anchoredPosition = new Vector2(0f, y);
         }
 
-        /// <summary>Chủ phòng áp dụng Race/Timer đã chọn trong popup lên phòng (khách nhận qua thuộc tính phòng).</summary>
+        /// <summary>Chủ phòng áp dụng Race/Timer/BreakMethod đã chọn trong popup lên phòng (khách nhận qua thuộc tính phòng).</summary>
         private void ApplyOnlineRoomSettings()
         {
+            GameSession.SavedFirstBreakMethod = selectedOnlineBreakMethod;
             if (NetworkManager.Instance == null || !NetworkManager.Instance.IsInRoom || !NetworkManager.Instance.IsMaster) return;
 
             MatchSettings s = NetworkManager.Instance.ExtractSettingsFromRoomProperties();
             if (onlineRaceDropdown.value < raceOptions.Length) s.raceTarget = raceOptions[onlineRaceDropdown.value];
             if (onlineTimerDropdown.value < timerOptions.Length) s.shotTimer = timerOptions[onlineTimerDropdown.value];
+            s.firstBreakMethod = selectedOnlineBreakMethod;
             NetworkManager.Instance.UpdateRoomSettings(s);
         }
 
@@ -1039,6 +1236,10 @@ namespace Game.Billiards.UI
         private void RefreshAllLocalizedTexts()
         {
             // Menu chính
+            if (playVsAIButton != null && playVsAIButton.transform.parent != null && playVsAIButton.transform.parent.parent != null)
+            {
+                SetChildText(playVsAIButton.transform.parent.parent, "MenuHeader", LocalizationManager.Get("menu_header"));
+            }
             SetButtonText(playVsAIButton, LocalizationManager.Get("menu_play_ai"));
             SetButtonText(playOnlineButton, LocalizationManager.Get("menu_play_online"));
             SetButtonText(rulesButton, LocalizationManager.Get("menu_rules"));
@@ -1077,9 +1278,13 @@ namespace Game.Billiards.UI
                 SetButtonText(diffEasyButton, LocalizationManager.Get("diff_easy"));
                 SetButtonText(diffNormalButton, LocalizationManager.Get("diff_normal"));
                 SetButtonText(diffHardButton, LocalizationManager.Get("diff_hard"));
-                SetChildText(difficultyModalRoot.transform, "LblRace", LocalizationManager.Get("diff_race"));
-                SetChildText(difficultyModalRoot.transform, "LblTimer", LocalizationManager.Get("diff_timer"));
+                SetChildText(difficultyModalRoot.transform, "NameLabel", LocalizationManager.Get("diff_player_name"));
                 SetChildText(difficultyModalRoot.transform, "LblPlayerName", LocalizationManager.Get("diff_player_name"));
+                SetChildText(difficultyModalRoot.transform, "DiffLabel", LocalizationManager.Get("diff_level_header"));
+                SetChildText(difficultyModalRoot.transform, "RaceLabel", LocalizationManager.Get("diff_race"));
+                SetChildText(difficultyModalRoot.transform, "LblRace", LocalizationManager.Get("diff_race"));
+                SetChildText(difficultyModalRoot.transform, "TimerLabel", LocalizationManager.Get("diff_timer"));
+                SetChildText(difficultyModalRoot.transform, "LblTimer", LocalizationManager.Get("diff_timer"));
                 SetButtonText(startOfflineMatchButton, LocalizationManager.Get("diff_start"));
                 SetButtonText(closeDifficultyModalButton, LocalizationManager.Get("settings_close"));
 
@@ -1090,10 +1295,21 @@ namespace Game.Billiards.UI
                 if (introToggleTrans != null) SetChildText(introToggleTrans, "Label", LocalizationManager.Get("diff_rack_intro"));
             }
 
+            // Online Modal
+            if (onlineModalRoot != null)
+            {
+                SetChildText(onlineModalRoot.transform, "Title", LocalizationManager.Get("online_panel_title"));
+            }
+            if (onlineRoomUI != null)
+            {
+                onlineRoomUI.RefreshAllLocalizedTexts();
+            }
+
             // Quit Confirm Modal
             if (quitConfirmModalRoot != null)
             {
                 SetChildText(quitConfirmModalRoot.transform, "Title", LocalizationManager.Get("quit_title"));
+                SetChildText(quitConfirmModalRoot.transform, "ConfirmText", LocalizationManager.Get("quit_msg"));
                 SetChildText(quitConfirmModalRoot.transform, "Message", LocalizationManager.Get("quit_msg"));
                 SetButtonText(quitConfirmYesButton, LocalizationManager.Get("btn_yes"));
                 SetButtonText(quitConfirmNoButton, LocalizationManager.Get("btn_no"));
@@ -1103,7 +1319,13 @@ namespace Game.Billiards.UI
             if (rulesModalRoot != null)
             {
                 SetChildText(rulesModalRoot.transform, "Title", LocalizationManager.Get("rules_title"));
-                SetButtonText(closeRulesModalButton, LocalizationManager.Get("settings_close"));
+                string fullRules =
+                    $"<b>{LocalizationManager.Get("rules_tab_1_title")}</b>\n{LocalizationManager.Get("rules_tab_1_desc")}\n\n" +
+                    $"<b>{LocalizationManager.Get("rules_tab_2_title")}</b>\n{LocalizationManager.Get("rules_tab_2_desc")}\n\n" +
+                    $"<b>{LocalizationManager.Get("rules_tab_3_title")}</b>\n{LocalizationManager.Get("rules_tab_3_desc")}\n\n" +
+                    $"<b>{LocalizationManager.Get("rules_tab_4_title")}</b>\n{LocalizationManager.Get("rules_tab_4_desc")}";
+                SetChildText(rulesModalRoot.transform, "RulesBody", fullRules);
+                SetButtonText(closeRulesModalButton, LocalizationManager.Get("rules_close_btn"));
             }
 
             // Cập nhật Difficulty Cards nếu đã tạo
@@ -1123,6 +1345,8 @@ namespace Game.Billiards.UI
                 SetChildText(onlineConfigPopup.transform, "Title", LocalizationManager.Get("online_config_title"));
                 SetChildText(onlineConfigPopup.transform, "RaceLabel", LocalizationManager.Get("diff_race"));
                 SetChildText(onlineConfigPopup.transform, "TimerLabel", LocalizationManager.Get("diff_timer"));
+                SetChildText(onlineConfigPopup.transform, "BreakMethodLabel", LocalizationManager.Get("cfg_first_break"));
+                SelectOnlineBreakMethod(selectedOnlineBreakMethod);
                 Transform intro = onlineConfigPopup.transform.Find("PopupIntroToggle");
                 if (intro != null) SetChildText(intro, "Label", LocalizationManager.Get("diff_rack_intro"));
                 Transform aim = onlineConfigPopup.transform.Find("PopupAimToggle");
@@ -1133,6 +1357,10 @@ namespace Game.Billiards.UI
             if (roomConfigButton != null)
             {
                 ReplaceHudButtonIcon(roomConfigButton, LocalizationManager.Get("online_config_summary"), 16);
+            }
+            if (tableSelectorUI != null)
+            {
+                tableSelectorUI.RefreshAllDisplays();
             }
         }
 
@@ -1232,6 +1460,7 @@ namespace Game.Billiards.UI
             HideAllModals();
             SyncTickToggles();
             RefreshProfileViews();
+            if (tableSelectorUI != null) tableSelectorUI.RefreshAllDisplays();
             if (difficultyModalRoot != null) difficultyModalRoot.SetActive(true);
         }
 
@@ -1274,6 +1503,7 @@ namespace Game.Billiards.UI
 
         public void HideAllModals()
         {
+            if (tableSelectorUI != null) tableSelectorUI.CloseSelectorModal();
             if (onlineConfigPopup != null) onlineConfigPopup.SetActive(false);
             if (difficultyModalRoot != null) difficultyModalRoot.SetActive(false);
             if (onlineRoomUI != null) onlineRoomUI.CloseOnlinePanel();

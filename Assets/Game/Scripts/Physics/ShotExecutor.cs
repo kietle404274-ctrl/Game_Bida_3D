@@ -13,10 +13,20 @@ namespace Game.Billiards.Physics
         [SerializeField] private BallMovementMonitor movementMonitor;
 
         [Header("Break Shot")]
-        [Tooltip("Hệ số nhân lực cho cú phá bi (cú đầu khi dàn bi còn nguyên) để dàn bi nổ rộng như thực tế. Cú đánh thường không đổi.")]
-        [SerializeField] private float breakPowerMultiplier = 1.6f;
+        [Tooltip("Hệ số nhân lực cho cú phá bi (100% thanh lực tương đương 80% lực phá cũ = 1.36 * 0.80 = 1.088).")]
+        [SerializeField] private float breakPowerMultiplier = 1.088f;
+
+        private const float MaxBreakPowerMultiplier = 1.088f;
 
         public event Action<ShotCommand> OnShotExecuted;
+
+        private void Awake()
+        {
+            if (breakPowerMultiplier > MaxBreakPowerMultiplier)
+            {
+                breakPowerMultiplier = MaxBreakPowerMultiplier;
+            }
+        }
 
         public void Initialize(PhysicsConfig config, BallManager bManager, BallMovementMonitor monitor)
         {
@@ -66,7 +76,8 @@ namespace Game.Billiards.Physics
             }
 
             float shotPower = Mathf.Clamp01(command.power01);
-            float impulseMagnitude = shotPower * physicsConfig.MaxShotImpulse * (isBreakShot ? breakPowerMultiplier : 1f);
+            float breakMul = isBreakShot ? Mathf.Clamp(breakPowerMultiplier, 1f, MaxBreakPowerMultiplier) : 1f;
+            float impulseMagnitude = shotPower * physicsConfig.MaxShotImpulse * breakMul;
             Vector3 impulse = shotDir * impulseMagnitude;
 
             // Đảm bảo Rigidbody hoạt động ổn định và khóa hoàn toàn trục Y

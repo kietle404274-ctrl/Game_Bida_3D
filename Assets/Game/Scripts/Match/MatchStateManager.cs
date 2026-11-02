@@ -24,10 +24,11 @@ namespace Game.Billiards.Match
 
         public void RaiseRackStarted()
         {
+            OnPhaseChanged?.Invoke(matchState.phase);
             OnRackStarted?.Invoke();
         }
 
-        public void Initialize(MatchSettings settings, string playerAName = "Player 1", string playerBName = "AI / Player 2", bool playerBIsAi = false)
+        public void Initialize(MatchSettings settings, string playerAName = "Player 1", string playerBName = "AI / Player 2", bool playerBIsAi = false, int initialBreakerIndex = 0)
         {
             matchState = new MatchState
             {
@@ -38,7 +39,8 @@ namespace Game.Billiards.Match
                     new PlayerState(playerBName, playerBIsAi, 1)
                 }
             };
-            matchState.ResetForNewRack();
+            int clampedBreaker = (initialBreakerIndex == 1) ? 1 : 0;
+            matchState.ResetForNewRack(clampedBreaker);
         }
 
         public void SetPhase(MatchPhase newPhase)
@@ -101,13 +103,21 @@ namespace Game.Billiards.Match
             }
         }
 
-        /// <summary>Xử thắng toàn bộ trận đấu ngay lập tức (dành cho trường hợp đối thủ rời trận hoặc đầu hàng trận đấu).</summary>
+        /// <summary>Xử thắng toàn bộ trận đấu ngay lập tức (dành cho trường hợp đối thủ rời trận hoặc đầu hàng trận đấu): tỷ số xử thắng tuyệt đối N : 0.</summary>
         public void RecordMatchWon(int winnerIndex)
         {
             lastRackWinnerIndex = winnerIndex;
             int targetWins = (int)matchState.settings.raceTarget;
-            if (winnerIndex == 0) matchState.playerARackWins = targetWins;
-            else matchState.playerBRackWins = targetWins;
+            if (winnerIndex == 0)
+            {
+                matchState.playerARackWins = targetWins;
+                matchState.playerBRackWins = 0;
+            }
+            else
+            {
+                matchState.playerARackWins = 0;
+                matchState.playerBRackWins = targetWins;
+            }
 
             OnRackScoreChanged?.Invoke(matchState.playerARackWins, matchState.playerBRackWins);
             SetPhase(MatchPhase.MatchResult);

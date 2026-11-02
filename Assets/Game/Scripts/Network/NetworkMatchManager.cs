@@ -94,6 +94,20 @@ namespace Game.Billiards.Network
         /// <summary>Client đã chạy dự đoán cú đánh cục bộ và đang chờ kết quả chính thức từ Master (bỏ qua sự kiện bi dừng cục bộ).</summary>
         public bool AwaitingMasterResult { get; private set; }
 
+        /// <summary>Hạt giống tất định của trận đấu hiện tại để đồng bộ thứ tự 15 quả bi ngay trước khi chạy hoạt cảnh xếp khuôn (RackIntroSequence).</summary>
+        public int ActiveMatchSeed { get; private set; } = 123456;
+
+        public void ResetSyncStateForNewRack()
+        {
+            masterShotAcceptedAt = -100f;
+            masterSimActive = false;
+            masterSimStep = 0;
+            clientLocalStrikeActive = false;
+            AwaitingMasterResult = false;
+            predictedBackup = null;
+            ResetPredictionSim();
+        }
+
         // Client: snapshot vị trí bi trước khi dự đoán, dùng để khôi phục nếu Master từ chối lệnh
         private struct PredictedBallBackup { public BallController ball; public Vector3 pos; public bool pocketed; }
         private PredictedBallBackup[] predictedBackup;
@@ -170,15 +184,25 @@ namespace Game.Billiards.Network
             tickInterval = 1f / Mathf.Max(networkTickRate, 30f);
 
             var session = GameSession.Instance;
-            isOnlineMatch = (session != null && session.CurrentGameMode == GameMode.OnlinePvP);
-            localPlayerIndex = (session != null && session.CurrentGameMode == GameMode.OnlinePvP)
-                ? (session.IsOnlineMaster ? 0 : 1)
-                : (PhotonNetwork.IsMasterClient ? 0 : 1);
+            isOnlineMatch = (session != null && session.CurrentGameMode == GameMode.OnlinePvP) || PhotonNetwork.InRoom;
+            localPlayerIndex = PhotonNetwork.InRoom
+                ? (PhotonNetwork.IsMasterClient ? 0 : 1)
+                : ((session != null && session.CurrentGameMode == GameMode.OnlinePvP)
+                    ? (session.IsOnlineMaster ? 0 : 1)
+                    : 0);
 
             lastPacketReceivedTime = Time.unscaledTime;
             lastBallsSyncReceivedTime = Time.unscaledTime;
             clientBallsSettledWaitDuration = 0f;
             highPingDuration = 0f;
+
+            if (PhotonNetwork.InRoom && PhotonNetwork.CurrentRoom != null && PhotonNetwork.CurrentRoom.CustomProperties != null)
+            {
+                if (PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(NetworkConstants.PROP_SPIN_SEED, out object ssObj))
+                {
+                    try { ActiveMatchSeed = System.Convert.ToInt32(ssObj); } catch { }
+                }
+            }
 
             Debug.Log($"[NetworkMatchManager] Khởi tạo trận đấu mạng: IsOnline={isOnlineMatch}, LocalPlayerIndex={localPlayerIndex} ({(localPlayerIndex == 0 ? "Chủ phòng / Master" : "Khách / Client")})");
 
@@ -224,8 +248,8 @@ namespace Game.Billiards.Network
                     shotExecutor.OnShotExecuted += HandleShotExecutedForSync;
                 }
 
-                // Cập nhật quyền điều khiển theo lượt hiện tại
-                UpdateInputPermissions();
+                // Đồng bộ khuôn bi ván 1 và cập nhật quyền điều khiển theo lượt hiện tại
+                HandleRackStarted();
 
                 // Kiểm tra nếu đã xảy ra mất kết nối trong lúc LoadingScreen hoặc RackIntroSequence (trước khi Initialize chạy)
                 if (LocalDisconnected || !PhotonNetwork.IsConnected || !PhotonNetwork.InRoom)
@@ -407,6 +431,7 @@ namespace Game.Billiards.Network
         public void UpdateInputPermissions()
         {
             if (!isOnlineMatch || inputController == null || matchStateManager == null) return;
+            if (LagForBreakController.IsRunning) return;
 
             bool isMyTurn = (matchStateManager.CurrentPlayerIndex == localPlayerIndex);
             bool isAimPhase = (matchStateManager.CurrentPhase == MatchPhase.Aiming || 
@@ -536,6 +561,7 @@ namespace Game.Billiards.Network
                 predictedBackup = null;
             }
             if (movementMonitor != null) movementMonitor.ResetToResting();
+            if (cameraDirector != null) cameraDirector.ClearPocketCameraLock();
             AwaitingMasterResult = false;
             ResetPredictionSim();
         }
@@ -558,6 +584,9 @@ namespace Game.Billiards.Network
 
         private object[] PackShotCommand(ShotCommand cmd)
         {
+            Vector3 cuePos = (ballManager != null && ballManager.CueBall != null)
+                ? ballManager.CueBall.transform.position
+                : Vector3.zero;
             return new object[]
             {
                 cmd.shooterActorId,
@@ -568,7 +597,8 @@ namespace Game.Billiards.Network
                 cmd.calledPocketId,
                 cmd.calledSafety,
                 matchStateManager != null ? matchStateManager.State.turnSequence : 0,
-                cmd.cueElevationDeg
+                cmd.cueElevationDeg,
+                cuePos.x, cuePos.y, cuePos.z
             };
         }
 
@@ -677,7 +707,7 @@ namespace Game.Billiards.Network
                                     rbd.velocity = targetVel;
                                     desyncedBalls.Add(ballNum);
                                 }
-                                else if (e > 0.004f)
+                                else if (e > 0.004f && !ball.RecentlyBounced(0.16f))
                                 {
                                     Vector3 d = rerr * 0.5f;
                                     Vector3 hv = predVelHistory[masterStep][ballNum];
@@ -691,6 +721,17 @@ namespace Game.Billiards.Network
                                         predVelHistory[h][ballNum] += dv;
                                     }
                                 }
+                                idx += stride;
+                                continue;
+                            }
+
+                            // Nếu quả bi trên máy Client vừa nảy khỏi băng/bi khác (< 0.16s) mà gói tin cũ của Master
+                            // vẫn mang vận tốc hướng ngược lại (trước thời điểm nảy), bỏ qua bước kéo ngược để tránh va chạm đúp.
+                            if (ball.RecentlyBounced(0.16f) &&
+                                rbd.velocity.sqrMagnitude > 0.01f &&
+                                targetVel.sqrMagnitude > 0.01f &&
+                                Vector3.Dot(rbd.velocity, targetVel) < 0f)
+                            {
                                 idx += stride;
                                 continue;
                             }
@@ -736,7 +777,7 @@ namespace Game.Billiards.Network
             // Đóng gói MatchState delta và kết quả lượt đánh
             var state = matchStateManager.State;
             bool wasBreakShot = turnManager != null && turnManager.LastShotWasBreak;
-            bool headStringOnly = result.foul == FoulType.IllegalBreak || (wasBreakShot && result.foul == FoulType.CueBallScratch);
+            bool headStringOnly = false;
             ExitGames.Client.Photon.Hashtable outcomeData = new ExitGames.Client.Photon.Hashtable
             {
                 { "phase", (int)state.phase },
@@ -1096,7 +1137,14 @@ namespace Game.Billiards.Network
         private void HandleReceivedShotCommand(object rawData)
         {
             if (rawData == null) return;
-            ShotCommand cmd = UnpackShotCommand((object[])rawData);
+            object[] dataArr = (object[])rawData;
+            ShotCommand cmd = UnpackShotCommand(dataArr);
+            bool hasCuePos = dataArr.Length >= 15 && dataArr[12] is float && dataArr[13] is float && dataArr[14] is float;
+            Vector3 sentCuePos = hasCuePos
+                ? new Vector3((float)dataArr[12], (float)dataArr[13], (float)dataArr[14])
+                : Vector3.zero;
+            bool isBreakTurn = matchStateManager != null && matchStateManager.State != null &&
+                (matchStateManager.State.turnSequence == 0 || matchStateManager.CurrentPhase == MatchPhase.BreakSetup);
 
             if (IsMaster)
             {
@@ -1111,12 +1159,22 @@ namespace Game.Billiards.Network
                     masterShotAcceptedAt = Time.time;
                     if (turnManager != null) turnManager.StopShotTimer();
 
+                    // Nếu là cú phá bi và Client đã dịch chuyển bi cái trong vùng Bếp (Kitchen), đồng bộ vị trí bi cái trước khi đánh
+                    if (isBreakTurn && hasCuePos && ballInHandController != null)
+                    {
+                        ballInHandController.PlaceCueBallInKitchen(sentCuePos, false);
+                    }
+
                     Debug.Log($"[NetworkMatchManager] [Master] Phê duyệt ShotCommand từ Client: Power={cmd.power01:F2}, Dir={cmd.direction}. Thực thi authoritative simulation...");
                     
                     // Broadcast cho Client biết để trigger animation
                     BroadcastShotCommand(cmd);
 
                     // Master hiển thị animation gậy cơ của Client trên màn hình Master
+                    if (cameraDirector != null)
+                    {
+                        cameraDirector.TryActivatePredictedEightBallPocketCamera(cmd, ballManager);
+                    }
                     if (cueController != null)
                     {
                         cueController.SetAimingState(true);
@@ -1150,7 +1208,7 @@ namespace Game.Billiards.Network
                 // Client nhận xác nhận thực thi từ Master -> chuyển sang ShotInProgress và chạy hoạt họa đánh!
                 Debug.Log("[NetworkMatchManager] [Client] Nhận lệnh ShotCommand từ Master -> chạy hoạt họa đánh!");
                 // Client đã dự đoán cú đánh cục bộ (bi đang lăn, phase đã là ShotInProgress): không mở khóa/đổi phase lần nữa
-                if (!AwaitingMasterResult)
+                if (!AwaitingMasterResult && !clientLocalStrikeActive)
                 {
                     if (ballManager != null)
                     {
@@ -1163,6 +1221,10 @@ namespace Game.Billiards.Network
                 }
                 // Nếu Client đã tự chạy hoạt ảnh đánh ngay khi bấm thì không chạy lại lần 2 (tránh cơ giật 2 lần)
                 bool alreadyAnimated = clientLocalStrikeActive;
+                if (!alreadyAnimated && cameraDirector != null)
+                {
+                    cameraDirector.TryActivatePredictedEightBallPocketCamera(cmd, ballManager);
+                }
                 if (cueController != null && !alreadyAnimated)
                 {
                     cueController.SetAimingState(true);
@@ -1170,6 +1232,10 @@ namespace Game.Billiards.Network
                     cueController.UpdateAim(cmd.direction, cmd.power01);
                     cueController.TriggerStrikeAnimation(() =>
                     {
+                        if (Audio.AudioManager.Instance != null)
+                        {
+                            Audio.AudioManager.Instance.PlayCueHit(cmd.power01, isBreakTurn);
+                        }
                         if (cameraDirector != null)
                         {
                             if (matchStateManager != null && matchStateManager.CurrentPlayerIndex == localPlayerIndex)
@@ -1188,6 +1254,7 @@ namespace Game.Billiards.Network
 
         private void SendAimSync(Vector3 aim, float pwr, float elev)
         {
+            if (!PhotonNetwork.InRoom) return;
             float[] payload = new float[] { aim.x, aim.z, pwr, elev };
             RaiseEventOptions options = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
             PhotonNetwork.RaiseEvent(NetworkConstants.EVENT_AIM_SYNC, payload, options, SendOptions.SendUnreliable);
@@ -1195,6 +1262,7 @@ namespace Game.Billiards.Network
 
         private void HandleReceivedAimSync(object rawData)
         {
+            if (LagForBreakController.IsRunning) return;
             if (IsMyTurn) return;
             if (!IsPhaseAllowingRemoteAim()) return; // gói unreliable đến muộn sau khi đã bắn/kết thúc ván
             if (rawData is float[] data && data.Length >= 4)
@@ -1266,16 +1334,24 @@ namespace Game.Billiards.Network
             {
                 Vector3 pos = new Vector3(coords[0], coords[1], coords[2]);
 
-                // Master thẩm định vị trí Client đặt bi: phải trong mặt bàn và (nếu lỗi khai cuộc) sau vạch đầu bàn.
-                // Chỉ kiểm tra khi controller đặt bi của Master đang hoạt động (đúng trạng thái BallInHand) để không làm sai lệch trường hợp hợp lệ.
-                if (IsMaster && ballInHandController != null && ballInHandController.IsActive
+                // Master thẩm định vị trí Client đặt bi: phải trong mặt bàn và (nếu lỗi khai cuộc hoặc lượt phá bi) sau vạch đầu bàn.
+                bool isBreakTurn = matchStateManager != null
+                    && matchStateManager.State != null
+                    && (matchStateManager.State.turnSequence == 0 || matchStateManager.CurrentPhase == MatchPhase.BreakSetup);
+                bool mustBeInKitchen = isBreakTurn || (ballInHandController != null && ballInHandController.IsActive && ballInHandController.BehindHeadStringOnly);
+
+                if (IsMaster && ((ballInHandController != null && ballInHandController.IsActive) || isBreakTurn)
                     && ballManager != null && ballManager.TableWrapper != null)
                 {
                     var tw = ballManager.TableWrapper;
                     Vector3 fixedPos = pos;
                     float r = (ballManager.PhysicsConfig != null) ? ballManager.PhysicsConfig.BallRadius : 0.02855f;
                     if (!tw.IsInsidePlayArea(fixedPos, r + 0.01f)) fixedPos = tw.ClampToPlayArea(fixedPos, 0.035f);
-                    if (ballInHandController.BehindHeadStringOnly && !tw.IsBehindHeadString(fixedPos)) fixedPos = tw.HeadSpot;
+                    if (mustBeInKitchen)
+                    {
+                        float minKitchenX = Mathf.Max(tw.HeadStringX, 0.582f);
+                        if (fixedPos.x < minKitchenX) fixedPos.x = minKitchenX;
+                    }
 
                     if ((fixedPos - pos).sqrMagnitude > 0.000001f)
                     {
@@ -1310,18 +1386,27 @@ namespace Game.Billiards.Network
         private void HandleRackStarted()
         {
             if (!isOnlineMatch) return;
+            ResetSyncStateForNewRack();
+
             if (IsMaster)
             {
-                int[] newRack = BallManager.GenerateWpaRackBallNumbersStatic();
-                var props = new ExitGames.Client.Photon.Hashtable { { NetworkConstants.PROP_RACK_BALLS, newRack } };
-                PhotonNetwork.CurrentRoom.SetCustomProperties(props);
+                int rackNo = (matchStateManager != null && matchStateManager.State != null) ? matchStateManager.State.rackNumber : 1;
+                int[] currentRack = (ballManager != null && ballManager.LastRackBallNumbers != null && ballManager.LastRackBallNumbers.Length == 15)
+                    ? ballManager.LastRackBallNumbers
+                    : BallManager.GenerateWpaRackBallNumbersStatic(ActiveMatchSeed + rackNo * 9973);
+
+                if (PhotonNetwork.InRoom && PhotonNetwork.CurrentRoom != null)
+                {
+                    var props = new ExitGames.Client.Photon.Hashtable { { NetworkConstants.PROP_RACK_BALLS, currentRack } };
+                    PhotonNetwork.CurrentRoom.SetCustomProperties(props);
+                }
 
                 RaiseEventOptions options = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
-                PhotonNetwork.RaiseEvent(NetworkConstants.EVENT_RACK_SYNC, newRack, options, SendOptions.SendReliable);
+                PhotonNetwork.RaiseEvent(NetworkConstants.EVENT_RACK_SYNC, currentRack, options, SendOptions.SendReliable);
 
-                if (ballManager != null)
+                if (ballManager != null && (ballManager.LastRackBallNumbers == null || ballManager.GetActiveObjectBalls().Count < 15))
                 {
-                    ballManager.ResetRack(newRack);
+                    ballManager.ResetRack(currentRack);
                 }
             }
             UpdateInputPermissions();
@@ -1330,12 +1415,31 @@ namespace Game.Billiards.Network
         private void HandleReceivedRackSync(object rawData)
         {
             if (IsMaster) return;
+            if (LagForBreakController.IsRunning) return;
             if (rawData is int[] rack && rack.Length == 15)
             {
-                Debug.Log("[NetworkMatchManager] [Client] Nhận rack mới từ Master. Xếp lại dàn bi...");
                 if (ballManager != null)
                 {
-                    ballManager.ResetRack(rack);
+                    bool alreadyMatches = ballManager.LastRackBallNumbers != null
+                        && ballManager.LastRackBallNumbers.Length == 15
+                        && ballManager.GetActiveObjectBalls().Count == 15;
+                    if (alreadyMatches)
+                    {
+                        for (int i = 0; i < 15; i++)
+                        {
+                            if (ballManager.LastRackBallNumbers[i] != rack[i])
+                            {
+                                alreadyMatches = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!alreadyMatches)
+                    {
+                        Debug.Log("[NetworkMatchManager] [Client] Đồng bộ lại dàn bi 15 quả từ Master...");
+                        ballManager.ResetRack(rack);
+                    }
                 }
             }
         }
@@ -1407,34 +1511,55 @@ namespace Game.Billiards.Network
         {
             if (IsMaster) return;
             Debug.Log("[NetworkMatchManager] [Client] Nhận lệnh chuyển ván EVENT_NEXT_RACK từ Master.");
-            var resultUI = FindObjectOfType<ResultUI>();
+            var resultUI = FindObjectOfType<ResultUI>(true);
             if (resultUI != null)
             {
                 resultUI.AdvanceToNextRackFromMaster();
             }
         }
 
-        public void BroadcastRematch()
+        public void BroadcastRematch(int firstBreaker, int spinSeed)
         {
             if (!isOnlineMatch || !IsMaster) return;
+            ActiveMatchSeed = spinSeed;
+            ResetSyncStateForNewRack();
+            if (PhotonNetwork.InRoom && PhotonNetwork.CurrentRoom != null)
+            {
+                var props = new ExitGames.Client.Photon.Hashtable
+                {
+                    { NetworkConstants.PROP_FIRST_BREAKER, firstBreaker },
+                    { NetworkConstants.PROP_SPIN_SEED, spinSeed }
+                };
+                PhotonNetwork.CurrentRoom.SetCustomProperties(props);
+            }
+            int[] payload = new int[] { firstBreaker, spinSeed };
             RaiseEventOptions options = new RaiseEventOptions { Receivers = ReceiverGroup.Others };
-            PhotonNetwork.RaiseEvent(NetworkConstants.EVENT_REMATCH, null, options, SendOptions.SendReliable);
-            Debug.Log("[NetworkMatchManager] [Master] Đã broadcast EVENT_REMATCH.");
+            PhotonNetwork.RaiseEvent(NetworkConstants.EVENT_REMATCH, payload, options, SendOptions.SendReliable);
+            Debug.Log($"[NetworkMatchManager] [Master] Đã broadcast EVENT_REMATCH (firstBreaker={firstBreaker}, spinSeed={spinSeed}).");
         }
 
         private void HandleReceivedRematch(object rawData)
         {
             if (IsMaster) return;
-            Debug.Log("[NetworkMatchManager] [Client] Nhận lệnh đấu lại EVENT_REMATCH từ Master.");
-            var statsPanel = FindObjectOfType<StatsPanelUI>();
+            int firstBreaker = 0;
+            int spinSeed = 123456;
+            if (rawData is int[] arr && arr.Length >= 2)
+            {
+                firstBreaker = arr[0] == 1 ? 1 : 0;
+                spinSeed = arr[1];
+            }
+            ActiveMatchSeed = spinSeed;
+            ResetSyncStateForNewRack();
+            Debug.Log($"[NetworkMatchManager] [Client] Nhận lệnh đấu lại EVENT_REMATCH từ Master (firstBreaker={firstBreaker}, spinSeed={spinSeed}).");
+            var statsPanel = FindObjectOfType<StatsPanelUI>(true);
             if (statsPanel != null)
             {
                 statsPanel.CloseResult();
             }
-            var resultUI = FindObjectOfType<ResultUI>();
+            var resultUI = FindObjectOfType<ResultUI>(true);
             if (resultUI != null)
             {
-                resultUI.RematchFromMaster();
+                resultUI.RematchFromMaster(firstBreaker, spinSeed);
             }
         }
 
@@ -1697,6 +1822,16 @@ namespace Game.Billiards.Network
 
         private void CleanupOnMatchInterrupted()
         {
+            LagForBreakController.AbortIfRunning();
+
+            var wheel = FindObjectOfType<BreakTossWheelUI>(true);
+            if (wheel != null)
+            {
+                wheel.StopAllCoroutines();
+                HudModalState.Release("spin_wheel");
+                Destroy(wheel.gameObject);
+            }
+
             if (turnManager != null)
             {
                 turnManager.StopShotTimer();
@@ -1730,7 +1865,7 @@ namespace Game.Billiards.Network
             // Trận đã kết thúc (ví dụ người thắng bấm Về sảnh): giữ nguyên kết quả, chỉ ẩn nút Chơi lại
             if (matchStateManager.CurrentPhase == MatchPhase.MatchResult)
             {
-                var statsPanel = FindObjectOfType<StatsPanelUI>();
+                var statsPanel = FindObjectOfType<StatsPanelUI>(true);
                 if (statsPanel != null) statsPanel.SetLobbyOnly(true);
                 return;
             }
@@ -1757,7 +1892,7 @@ namespace Game.Billiards.Network
             // Nếu trận đã kết thúc (đang xem bảng thống kê cuối trận) mà bị rớt mạng: khóa nút Chơi lại, chỉ giữ nút Về sảnh
             if (matchStateManager.CurrentPhase == MatchPhase.MatchResult)
             {
-                var statsPanel = FindObjectOfType<StatsPanelUI>();
+                var statsPanel = FindObjectOfType<StatsPanelUI>(true);
                 if (statsPanel != null) statsPanel.SetLobbyOnly(true);
                 OnMatchDisconnected?.Invoke(loseMsg);
                 return;

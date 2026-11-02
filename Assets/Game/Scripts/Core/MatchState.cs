@@ -18,18 +18,26 @@ namespace Game.Billiards.Core
         Seconds60 = 60
     }
 
+    public enum FirstBreakMethod
+    {
+        RandomWheel = 0,
+        LagShot = 1
+    }
+
     [Serializable]
     public struct MatchSettings
     {
         public RaceTarget raceTarget;
         public ShotTimerOption shotTimer;
         public bool useWpaRules;
+        [NonSerialized] public FirstBreakMethod firstBreakMethod;
 
         public static MatchSettings Default => new MatchSettings
         {
             raceTarget = RaceTarget.RaceTo5,
             shotTimer = ShotTimerOption.Seconds30,
-            useWpaRules = true
+            useWpaRules = true,
+            firstBreakMethod = FirstBreakMethod.RandomWheel
         };
     }
 

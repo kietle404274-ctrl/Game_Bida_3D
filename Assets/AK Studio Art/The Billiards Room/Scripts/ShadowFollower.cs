@@ -11,23 +11,76 @@ namespace AKStudioArt.BilliardsRoom
         public float yOffset = 0.028f; // Y-axis offset so the shadow plane stays below the ball
 
         private GameObject shadowInstance; // Instance of the shadow plane
+        private Vector3 lastBallPosition = new Vector3(float.MinValue, float.MinValue, float.MinValue);
 
         void Start()
         {
-            if (shadowPrefab != null)
+            EnsureShadowInstance();
+            SyncShadow(true);
+        }
+
+        void OnEnable()
+        {
+            EnsureShadowInstance();
+            SyncShadow(true);
+        }
+
+        private void EnsureShadowInstance()
+        {
+            if (shadowInstance == null && shadowPrefab != null)
             {
                 // Instantiate the shadow plane Prefab
                 shadowInstance = Instantiate(shadowPrefab);
             }
         }
 
-        void Update()
+        void OnDisable()
         {
             if (shadowInstance != null)
             {
+                shadowInstance.SetActive(false);
+            }
+        }
+
+        void OnDestroy()
+        {
+            if (shadowInstance != null)
+            {
+                Destroy(shadowInstance);
+                shadowInstance = null;
+            }
+        }
+
+        void Update()
+        {
+            SyncShadow(false);
+        }
+
+        private void SyncShadow(bool forcePositionUpdate)
+        {
+            if (shadowInstance == null) return;
+
+            Vector3 currentPos = transform.position;
+            bool shouldBeVisible = gameObject.activeInHierarchy
+                                   && transform.localScale.sqrMagnitude > 1e-6f
+                                   && currentPos.y > 0f;
+
+            if (shadowInstance.activeSelf != shouldBeVisible)
+            {
+                shadowInstance.SetActive(shouldBeVisible);
+                if (shouldBeVisible)
+                {
+                    forcePositionUpdate = true;
+                }
+            }
+
+            if (!shouldBeVisible) return;
+
+            if (forcePositionUpdate || (currentPos - lastBallPosition).sqrMagnitude > 1e-8f)
+            {
+                lastBallPosition = currentPos;
                 // Update the position of the shadow plane to follow the ball on the X and Z axes, but with an offset on the Y axis
-                Vector3 newShadowPosition = new Vector3(transform.position.x, transform.position.y - yOffset, transform.position.z);
-                shadowInstance.transform.position = newShadowPosition;
+                shadowInstance.transform.position = new Vector3(currentPos.x, currentPos.y - yOffset, currentPos.z);
             }
         }
     }
@@ -54,4 +107,3 @@ namespace AKStudioArt.BilliardsRoom
     }
 #endif
 }
-

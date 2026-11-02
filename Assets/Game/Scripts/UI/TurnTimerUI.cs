@@ -45,9 +45,8 @@ namespace Game.Billiards.UI
 
             if (numberText != null)
             {
-                numberText.enabled = true;
-                numberText.color = c;
-                numberText.text = whole + "<size=18>s</size>";
+                if (!numberText.enabled) numberText.enabled = true;
+                if (numberText.color != c) numberText.color = c;
             }
 
             if (border != null)
@@ -58,6 +57,10 @@ namespace Game.Billiards.UI
             if (whole != lastWholeSecond)
             {
                 lastWholeSecond = whole;
+                if (numberText != null)
+                {
+                    numberText.text = whole + "<size=18>s</size>";
+                }
                 if (remaining > 0f && remaining <= dangerThreshold)
                 {
                     pulse = 1f;

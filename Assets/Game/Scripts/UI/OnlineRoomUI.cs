@@ -68,6 +68,7 @@ namespace Game.Billiards.UI
             PlayerProfile.OnChanged += RefreshProfileName;
 
             RefreshProfileName();
+            RefreshAllLocalizedTexts();
         }
 
         /// <summary>Ô tên chỉ hiển thị (không cho sửa) - tên được đổi trong Cài đặt ở sảnh.</summary>
@@ -396,7 +397,8 @@ namespace Game.Billiards.UI
             {
                 raceTarget = race,
                 shotTimer = timer,
-                useWpaRules = true
+                useWpaRules = true,
+                firstBreakMethod = GameSession.SavedFirstBreakMethod
             };
 
             if (connectionStatusText != null)
@@ -523,7 +525,22 @@ namespace Game.Billiards.UI
             if (roomSettingsInfoText != null)
             {
                 string timerStr = settings.shotTimer == ShotTimerOption.Unlimited ? LocalizationManager.Get("opt_timer_unlimited") : $"{(int)settings.shotTimer}s";
-                roomSettingsInfoText.text = LocalizationManager.Format("online_settings_info", (int)settings.raceTarget, timerStr);
+                string breakMethodStr = settings.firstBreakMethod == FirstBreakMethod.LagShot
+                    ? LocalizationManager.Get("opt_break_lag")
+                    : LocalizationManager.Get("opt_break_wheel");
+                roomSettingsInfoText.text = $"{LocalizationManager.Format("online_settings_info", (int)settings.raceTarget, timerStr)}  |  {breakMethodStr}";
+            }
+
+            if (PhotonNetwork.InRoom &&
+                PhotonNetwork.CurrentRoom != null &&
+                PhotonNetwork.CurrentRoom.CustomProperties != null &&
+                PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue(NetworkConstants.PROP_TABLE_THEME, out object rawTheme))
+            {
+                int val = System.Convert.ToInt32(rawTheme);
+                if (val >= 0 && val <= (int)TableTheme.Grey)
+                {
+                    TableThemeApplier.ApplyThemeToCurrentScene((TableTheme)val);
+                }
             }
 
             // Player 1 (Host)
@@ -613,22 +630,57 @@ namespace Game.Billiards.UI
         {
             SetupDropdowns();
             UpdateConnectionStatusUI();
-            if (NetworkManager.Instance != null && NetworkManager.Instance.IsInRoom)
+            if (onlineRootPanel != null)
             {
-                RefreshRoomUI();
+                Transform title = onlineRootPanel.transform.Find("Title");
+                if (title != null && title.GetComponent<Text>() != null)
+                {
+                    title.GetComponent<Text>().text = LocalizationManager.Get("online_panel_title");
+                }
+            }
+            if (joinRoomCodeInput != null && joinRoomCodeInput.placeholder is Text joinPh)
+            {
+                joinPh.text = LocalizationManager.Get("online_join_code_hint");
+            }
+            if (connectCancelButton != null)
+            {
+                Text clt = connectCancelButton.GetComponentInChildren<Text>(true);
+                if (clt != null) clt.text = LocalizationManager.Get("online_btn_back");
             }
             if (createRoomButton != null) SetBtnText(createRoomButton, LocalizationManager.Get("online_btn_create"));
             if (joinRoomButton != null) SetBtnText(joinRoomButton, LocalizationManager.Get("online_btn_join"));
             if (connectButton != null) SetBtnText(connectButton, LocalizationManager.Get("online_btn_connect"));
+            if (copyRoomIdButton != null) SetBtnText(copyRoomIdButton, LocalizationManager.Get("online_btn_copy"));
             if (startMatchButton != null) SetBtnText(startMatchButton, LocalizationManager.Get("online_btn_start"));
             if (leaveRoomButton != null) SetBtnText(leaveRoomButton, LocalizationManager.Get("online_btn_leave"));
             if (backToMainMenuButton != null) SetBtnText(backToMainMenuButton, LocalizationManager.Get("online_btn_back"));
+            if (toggleReadyButton != null && (NetworkManager.Instance == null || !NetworkManager.Instance.IsInRoom))
+            {
+                SetBtnText(toggleReadyButton, LocalizationManager.Get("online_btn_ready"));
+            }
+            if (NetworkManager.Instance != null && NetworkManager.Instance.IsInRoom)
+            {
+                RefreshRoomUI();
+            }
         }
 
         private static void SetBtnText(Button b, string text)
         {
-            if (b == null) return;
-            var t = b.GetComponentInChildren<Text>();
+            if (b == null || string.IsNullOrEmpty(text)) return;
+            Transform lbl = b.transform.Find("Label");
+            Text t = lbl != null ? lbl.GetComponent<Text>() : null;
+            if (t == null)
+            {
+                foreach (var candidate in b.GetComponentsInChildren<Text>(true))
+                {
+                    if (candidate != null && candidate.gameObject.name != "Q")
+                    {
+                        t = candidate;
+                        break;
+                    }
+                }
+            }
+            if (t == null) t = b.GetComponentInChildren<Text>(true);
             if (t != null) t.text = text;
         }
     }

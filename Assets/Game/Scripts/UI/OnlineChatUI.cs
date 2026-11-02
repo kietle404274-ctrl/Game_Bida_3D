@@ -103,6 +103,7 @@ namespace Game.Billiards.UI
 
             public void SetBorderColor(Color c)
             {
+                if (borderColor == c) return;
                 borderColor = c;
                 SetVerticesDirty();
             }
@@ -356,6 +357,10 @@ namespace Game.Billiards.UI
             return FindObjectOfType<Canvas>();
         }
 
+        private float nextBindRetryTime = 0f;
+        private bool hasAppliedOnlineVisibility = false;
+        private bool lastAppliedOnlineVisibility = false;
+
         private bool IsOnlineModeActive()
         {
             if (ForceEnableForTest) return true;
@@ -365,7 +370,11 @@ namespace Game.Billiards.UI
             var session = GameSession.Instance;
             if (session != null && session.CurrentGameMode == GameMode.OnlinePvP) return true;
 
-            if (networkMatchManager == null) networkMatchManager = FindObjectOfType<NetworkMatchManager>();
+            if (networkMatchManager == null && Time.unscaledTime >= nextBindRetryTime)
+            {
+                nextBindRetryTime = Time.unscaledTime + 1.0f;
+                networkMatchManager = FindObjectOfType<NetworkMatchManager>();
+            }
             if (networkMatchManager != null && networkMatchManager.IsOnlineMatch) return true;
 
             return false;
@@ -381,8 +390,10 @@ namespace Game.Billiards.UI
             bool online = IsOnlineModeActive();
             isVisibleOnline = online;
 
-            if (rootCanvasGroup != null)
+            if (rootCanvasGroup != null && (!hasAppliedOnlineVisibility || lastAppliedOnlineVisibility != online))
             {
+                hasAppliedOnlineVisibility = true;
+                lastAppliedOnlineVisibility = online;
                 rootCanvasGroup.alpha = online ? 1f : 0f;
                 rootCanvasGroup.interactable = online;
                 rootCanvasGroup.blocksRaycasts = online;
@@ -390,7 +401,7 @@ namespace Game.Billiards.UI
 
             if (online)
             {
-                BindNetworkManager();
+                if (networkMatchManager == null) BindNetworkManager();
             }
             else if (isExpanded)
             {
@@ -419,6 +430,8 @@ namespace Game.Billiards.UI
         {
             if (networkMatchManager == null)
             {
+                if (Time.unscaledTime < nextBindRetryTime) return;
+                nextBindRetryTime = Time.unscaledTime + 1.0f;
                 networkMatchManager = FindObjectOfType<NetworkMatchManager>();
             }
             if (networkMatchManager != null)
@@ -883,7 +896,11 @@ namespace Game.Billiards.UI
             return btn;
         }
 
-        private void RefreshVoiceBarVisuals()
+        private bool lastVoiceLabelsInitialized;
+        private bool lastMicLabelState;
+        private bool lastSpkLabelState;
+
+        private void RefreshVoiceBarVisuals(bool forceLabels = false)
         {
             var voice = OnlineVoiceChatManager.Instance != null ? OnlineVoiceChatManager.Instance : OnlineVoiceChatManager.Ensure();
             if (voice == null) return;
@@ -915,11 +932,12 @@ namespace Game.Billiards.UI
             }
             if (micBtnBg != null)
             {
-                micBtnBg.color = micOn
+                Color targetBg = micOn
                     ? (localLvl > 0.04f ? new Color(0.08f, 0.20f, 0.26f, 0.96f) : OuterPanelColor)
                     : new Color(0.14f, 0.09f, 0.14f, 0.94f);
+                if (micBtnBg.color != targetBg) micBtnBg.color = targetBg;
             }
-            if (micLabelText != null)
+            if (micLabelText != null && (forceLabels || !lastVoiceLabelsInitialized || lastMicLabelState != micOn))
             {
                 string micWord = LocalizationManager.Get("voice_mic_short", "MIC");
                 string st = micOn
@@ -937,11 +955,12 @@ namespace Game.Billiards.UI
             }
             if (speakerBtnBg != null)
             {
-                speakerBtnBg.color = spkOn
+                Color targetBg = spkOn
                     ? (remoteLvl > 0.04f ? new Color(0.08f, 0.20f, 0.26f, 0.96f) : OuterPanelColor)
                     : new Color(0.14f, 0.09f, 0.14f, 0.94f);
+                if (speakerBtnBg.color != targetBg) speakerBtnBg.color = targetBg;
             }
-            if (speakerLabelText != null)
+            if (speakerLabelText != null && (forceLabels || !lastVoiceLabelsInitialized || lastSpkLabelState != spkOn))
             {
                 string spkWord = LocalizationManager.Get("voice_speaker_short", "LOA");
                 string st = spkOn
@@ -949,6 +968,10 @@ namespace Game.Billiards.UI
                     : $"<color=#FF6B6B>{LocalizationManager.Get("voice_off_short", "TẮT")}</color>";
                 speakerLabelText.text = $"{spkWord} {st}";
             }
+
+            lastVoiceLabelsInitialized = true;
+            lastMicLabelState = micOn;
+            lastSpkLabelState = spkOn;
         }
 
         private void BuildInnerRectBorder(RectTransform targetRect)
@@ -1461,7 +1484,7 @@ namespace Game.Billiards.UI
         {
             if (placeholderText != null) placeholderText.text = LocalizationManager.Get("chat_placeholder");
             if (sendButtonText != null) sendButtonText.text = LocalizationManager.Get("chat_send");
-            RefreshVoiceBarVisuals();
+            RefreshVoiceBarVisuals(forceLabels: true);
             RebuildMessageUI();
         }
 

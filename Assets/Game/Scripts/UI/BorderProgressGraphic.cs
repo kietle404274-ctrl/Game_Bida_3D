@@ -21,8 +21,17 @@ namespace Game.Billiards.UI
         [SerializeField, Range(0f, 1f)] private float progress = 1f;
         [SerializeField] private bool showProgress = false;
 
+        private static readonly Vector2[] s_PathPoints = new Vector2[6];
+
         public void SetInsets(float topLeft, float topRight, float bottomLeft, float bottomRight)
         {
+            if (Mathf.Approximately(topLeftInset, topLeft) &&
+                Mathf.Approximately(topRightInset, topRight) &&
+                Mathf.Approximately(bottomLeftInset, bottomLeft) &&
+                Mathf.Approximately(bottomRightInset, bottomRight))
+            {
+                return;
+            }
             topLeftInset = topLeft;
             topRightInset = topRight;
             bottomLeftInset = bottomLeft;
@@ -34,6 +43,7 @@ namespace Game.Billiards.UI
 
         public void SetBaseColor(Color c)
         {
+            if (baseColor == c) return;
             baseColor = c;
             SetVerticesDirty();
         }
@@ -41,8 +51,13 @@ namespace Game.Billiards.UI
         /// <summary>Bật đoạn viền sáng với tỷ lệ còn lại 0..1 và màu <paramref name="arcColor"/>.</summary>
         public void SetProgress(float value01, Color arcColor)
         {
+            float clamped = Mathf.Clamp01(value01);
+            if (showProgress && Mathf.Abs(progress - clamped) < 0.0005f && color == arcColor)
+            {
+                return;
+            }
             showProgress = true;
-            progress = Mathf.Clamp01(value01);
+            progress = clamped;
             color = arcColor;
             SetVerticesDirty();
         }
@@ -70,24 +85,39 @@ namespace Game.Billiards.UI
             // Đường đi theo chiều kim đồng hồ bắt đầu từ giữa cạnh trên
             // Panel phải (xiên ở góc trên-trái) chạy ngược chiều kim đồng hồ để đối xứng với panel trái
             bool counterClockwise = topLeftInset > topRightInset;
-            var path = counterClockwise
-                ? new List<Vector2> { mid, tl, bl, br, tr, mid }
-                : new List<Vector2> { mid, tr, br, bl, tl, mid };
+            if (counterClockwise)
+            {
+                s_PathPoints[0] = mid;
+                s_PathPoints[1] = tl;
+                s_PathPoints[2] = bl;
+                s_PathPoints[3] = br;
+                s_PathPoints[4] = tr;
+                s_PathPoints[5] = mid;
+            }
+            else
+            {
+                s_PathPoints[0] = mid;
+                s_PathPoints[1] = tr;
+                s_PathPoints[2] = br;
+                s_PathPoints[3] = bl;
+                s_PathPoints[4] = tl;
+                s_PathPoints[5] = mid;
+            }
 
-            AddPath(vh, path, 1f, baseColor, h);
+            AddPath(vh, s_PathPoints, 6, 1f, baseColor, h);
             if (showProgress && progress > 0.0005f)
             {
-                AddPath(vh, path, progress, color, h);
+                AddPath(vh, s_PathPoints, 6, progress, color, h);
             }
         }
 
-        private static void AddPath(VertexHelper vh, List<Vector2> path, float fraction, Color col, float halfThickness)
+        private static void AddPath(VertexHelper vh, Vector2[] path, int count, float fraction, Color col, float halfThickness)
         {
             float total = 0f;
-            for (int i = 0; i < path.Count - 1; i++) total += Vector2.Distance(path[i], path[i + 1]);
+            for (int i = 0; i < count - 1; i++) total += Vector2.Distance(path[i], path[i + 1]);
 
             float remaining = total * fraction;
-            for (int i = 0; i < path.Count - 1 && remaining > 0.001f; i++)
+            for (int i = 0; i < count - 1 && remaining > 0.001f; i++)
             {
                 Vector2 a = path[i];
                 Vector2 b = path[i + 1];

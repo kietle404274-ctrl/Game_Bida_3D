@@ -113,12 +113,16 @@ namespace Game.Billiards.Audio
                 sfxMainSource = gameObject.AddComponent<AudioSource>();
                 sfxMainSource.playOnAwake = false;
             }
+            sfxMainSource.spatialBlend = 0f;
+            sfxMainSource.priority = 64;
 
             if (uiSource == null)
             {
                 uiSource = gameObject.AddComponent<AudioSource>();
                 uiSource.playOnAwake = false;
             }
+            uiSource.spatialBlend = 0f;
+            uiSource.priority = 32;
 
             if (musicSource == null)
             {
@@ -126,6 +130,11 @@ namespace Game.Billiards.Audio
                 musicSource.playOnAwake = false;
                 musicSource.loop = true;
             }
+            musicSource.spatialBlend = 0f;
+            musicSource.priority = 0; // Ưu tiên cao nhất tuyệt đối trong FMOD để không bao giờ bị ngắt quãng
+            musicSource.bypassEffects = true;
+            musicSource.bypassListenerEffects = true;
+            musicSource.bypassReverbZones = true;
 
             if (timerSource == null)
             {
@@ -133,6 +142,8 @@ namespace Game.Billiards.Audio
                 timerSource.playOnAwake = false;
                 timerSource.loop = false;
             }
+            timerSource.spatialBlend = 0f;
+            timerSource.priority = 48;
 
             // Tạo pool AudioSource cho các va chạm bi đồng thời
             sfxPool.Clear();
@@ -140,6 +151,8 @@ namespace Game.Billiards.Audio
             {
                 var src = gameObject.AddComponent<AudioSource>();
                 src.playOnAwake = false;
+                src.spatialBlend = 0f;
+                src.priority = 96;
                 sfxPool.Add(src);
             }
         }
@@ -191,13 +204,18 @@ namespace Game.Billiards.Audio
                 musicSource = gameObject.AddComponent<AudioSource>();
                 musicSource.loop = true;
             }
+            musicSource.spatialBlend = 0f;
+            musicSource.priority = 0;
+            musicSource.bypassEffects = true;
+            musicSource.bypassListenerEffects = true;
+            musicSource.bypassReverbZones = true;
 
             if (musicSource.clip == targetClip && musicSource.isPlaying)
             {
                 return; // Đang phát bài này rồi
             }
 
-            float musicDuck = Mathf.Lerp(1.0f, 0.18f, voiceDuckFactor);
+            float musicDuck = Mathf.Lerp(1.0f, 0.12f, voiceDuckFactor);
             musicSource.Stop();
             musicSource.clip = targetClip;
             musicSource.time = 0f;
@@ -242,17 +260,17 @@ namespace Game.Billiards.Audio
         private void ApplyVolumes()
         {
             AudioListener.volume = masterVolume;
-            float musicDuck = Mathf.Lerp(1.0f, 0.18f, voiceDuckFactor);
+            float musicDuck = Mathf.Lerp(1.0f, 0.12f, voiceDuckFactor);
             float sfxDuck = Mathf.Lerp(1.0f, 0.55f, voiceDuckFactor);
 
             if (musicSource != null) musicSource.volume = musicVolume * masterVolume * musicDuck;
-            if (sfxMainSource != null) sfxMainSource.volume = sfxVolume * masterVolume * sfxDuck;
-            if (uiSource != null) uiSource.volume = sfxVolume * masterVolume * sfxDuck;
-            if (timerSource != null) timerSource.volume = sfxVolume * masterVolume * sfxDuck;
+            if (sfxMainSource != null) sfxMainSource.volume = masterVolume * sfxDuck;
+            if (uiSource != null) uiSource.volume = masterVolume * sfxDuck;
+            if (timerSource != null) timerSource.volume = masterVolume * sfxDuck;
 
             foreach (var src in sfxPool)
             {
-                if (src != null) src.volume = sfxVolume * masterVolume * sfxDuck;
+                if (src != null) src.volume = masterVolume * sfxDuck;
             }
         }
 
@@ -327,6 +345,18 @@ namespace Game.Billiards.Audio
             ApplyVolumes();
         }
 
+        private float lastCueHitTime = -10f;
+
+        /// <summary>
+        /// Khi mở 2 cửa sổ (Host + Client) trên cùng 1 máy tính để test Online (runInBackground = true),
+        /// chỉ cửa sổ đang active (isFocused) mới phát âm thanh hiệu ứng mặt bàn để tránh tiếng vang đúp lệch ping.
+        /// Khi chơi trên 2 máy tính độc lập, mỗi người chơi đều focus vào cửa sổ của mình nên nghe đầy đủ 100%.
+        /// </summary>
+        private static bool ShouldSuppressBackgroundOnlineSfx()
+        {
+            return Application.isPlaying && !Application.isFocused && Photon.Pun.PhotonNetwork.InRoom;
+        }
+
         private AudioSource GetNextSfxSource()
         {
             if (sfxPool == null || sfxPool.Count == 0) return sfxMainSource;
@@ -338,6 +368,9 @@ namespace Game.Billiards.Audio
         public void PlayCueHit(float power01, bool isBreak = false)
         {
             if (audioLibrary == null) return;
+            if (ShouldSuppressBackgroundOnlineSfx()) return;
+            if (Time.unscaledTime - lastCueHitTime < 0.22f) return;
+            lastCueHitTime = Time.unscaledTime;
 
             if (isBreak && audioLibrary.BreakShotClip != null)
             {
@@ -362,6 +395,7 @@ namespace Game.Billiards.Audio
         public void PlayBallHit(float relativeSpeed)
         {
             if (audioLibrary == null || audioLibrary.BallHitClip == null) return;
+            if (ShouldSuppressBackgroundOnlineSfx()) return;
             if (relativeSpeed < 0.05f) return;
 
             float norm = Mathf.Clamp01(relativeSpeed / 6.0f);
@@ -376,6 +410,7 @@ namespace Game.Billiards.Audio
         public void PlayCushionHit(float speed)
         {
             if (audioLibrary == null || audioLibrary.CushionHitClip == null) return;
+            if (ShouldSuppressBackgroundOnlineSfx()) return;
             if (speed < 0.15f) return;
 
             float norm = Mathf.Clamp01(speed / 5.0f);
@@ -390,6 +425,7 @@ namespace Game.Billiards.Audio
         public void PlayPocketDrop()
         {
             if (audioLibrary == null || audioLibrary.PocketDropClip == null) return;
+            if (ShouldSuppressBackgroundOnlineSfx()) return;
             RegisterSfxImpulse(sfxVolume);
 
             var src = GetNextSfxSource();
@@ -428,42 +464,168 @@ namespace Game.Billiards.Audio
             }
         }
 
-        /// <summary>
-        /// Phát âm thanh thông báo thắng mỗi ván (Tieng_Ngon_Thi.mp3).
-        /// </summary>
-        public void PlayRackWin()
-        {
-            if (audioLibrary == null) return;
-            AudioClip clip = audioLibrary.RackWinClip != null ? audioLibrary.RackWinClip : audioLibrary.WinFanfareClip;
-            if (clip == null) return;
+        private AudioSource rackCrowdSource;
+        private AudioSource rackAmbienceSource;
+        private Coroutine rackResultAudioRoutine;
 
-            StopTimerTick();
-            RegisterSfxImpulse(sfxVolume);
-            if (sfxMainSource != null)
+        private void EnsureRackCrowdSources()
+        {
+            float duck = Mathf.Lerp(1.0f, 0.55f, voiceDuckFactor);
+            if (rackCrowdSource == null)
             {
-                sfxMainSource.Stop();
-                sfxMainSource.pitch = 1.0f;
-                sfxMainSource.PlayOneShot(clip, sfxVolume);
+                rackCrowdSource = gameObject.AddComponent<AudioSource>();
+                rackCrowdSource.playOnAwake = false;
+                rackCrowdSource.loop = false;
+                rackCrowdSource.spatialBlend = 0f;
+                rackCrowdSource.priority = 52;
+            }
+            rackCrowdSource.volume = masterVolume * duck;
+
+            if (rackAmbienceSource == null)
+            {
+                rackAmbienceSource = gameObject.AddComponent<AudioSource>();
+                rackAmbienceSource.playOnAwake = false;
+                rackAmbienceSource.loop = false;
+                rackAmbienceSource.spatialBlend = 0f;
+                rackAmbienceSource.priority = 60;
+            }
+            rackAmbienceSource.volume = masterVolume * duck;
+        }
+
+        private void StopRackCrowdSources()
+        {
+            if (rackResultAudioRoutine != null)
+            {
+                StopCoroutine(rackResultAudioRoutine);
+                rackResultAudioRoutine = null;
+            }
+            if (rackCrowdSource != null && rackCrowdSource.isPlaying)
+            {
+                rackCrowdSource.Stop();
+            }
+            if (rackAmbienceSource != null && rackAmbienceSource.isPlaying)
+            {
+                rackAmbienceSource.Stop();
             }
         }
 
+        private AudioClip cachedRackWinClip;
+        private AudioClip cachedRackLoseClip;
+
         /// <summary>
-        /// Phát âm thanh thông báo thua mỗi ván (Tieng_Meo_Khoc.mp3).
+        /// Phát âm thanh thông báo thắng mỗi ván (Tieng_Vo_Tay_1.mp3 đã cắt gọn ~2.1s kèm fade-out mượt ở cuối).
         /// </summary>
-        public void PlayRackLose()
+        public void PlayRackWin()
         {
-            if (audioLibrary == null) return;
-            AudioClip clip = audioLibrary.RackLoseClip != null ? audioLibrary.RackLoseClip : audioLibrary.FoulClip;
+            if (audioLibrary == null)
+            {
+                audioLibrary = Resources.Load<AudioLibrary>("DefaultAudioLibrary");
+            }
+
+            if (cachedRackWinClip == null)
+            {
+                cachedRackWinClip = Resources.Load<AudioClip>("Audio/Tieng_Vo_Tay_1");
+            }
+
+            AudioClip clip = cachedRackWinClip;
+            if (clip == null && audioLibrary != null)
+            {
+                AudioClip libClip = audioLibrary.RackWinClip;
+                if (libClip != null && !libClip.name.Contains("Ngon_Thi"))
+                {
+                    clip = libClip;
+                }
+                else
+                {
+                    clip = audioLibrary.WinFanfareClip;
+                }
+            }
             if (clip == null) return;
 
             StopTimerTick();
-            RegisterSfxImpulse(sfxVolume);
-            if (sfxMainSource != null)
+            StopRackCrowdSources();
+            if (sfxMainSource != null) sfxMainSource.Stop();
+
+            RegisterSfxImpulse(Mathf.Clamp01(sfxVolume));
+            rackResultAudioRoutine = StartCoroutine(PlayRackClipWithEnvelopeRoutine(clip, 1.0f, 0.45f));
+        }
+
+        /// <summary>
+        /// Phát âm thanh thông báo thua mỗi ván (Tieng_Thua_Game.mp3 đã cắt gọn ~1.7s kèm fade-out mượt ở cuối).
+        /// </summary>
+        public void PlayRackLose()
+        {
+            if (audioLibrary == null)
             {
-                sfxMainSource.Stop();
-                sfxMainSource.pitch = 1.0f;
-                sfxMainSource.PlayOneShot(clip, sfxVolume);
+                audioLibrary = Resources.Load<AudioLibrary>("DefaultAudioLibrary");
             }
+
+            if (cachedRackLoseClip == null)
+            {
+                cachedRackLoseClip = Resources.Load<AudioClip>("Audio/Tieng_Thua_Game");
+            }
+
+            AudioClip clip = cachedRackLoseClip;
+            if (clip == null && audioLibrary != null)
+            {
+                AudioClip libClip = audioLibrary.RackLoseClip;
+                if (libClip != null && !libClip.name.Contains("Meo_Khoc"))
+                {
+                    clip = libClip;
+                }
+                else
+                {
+                    clip = audioLibrary.FoulClip;
+                }
+            }
+            if (clip == null) return;
+
+            StopTimerTick();
+            StopRackCrowdSources();
+            if (sfxMainSource != null) sfxMainSource.Stop();
+
+            RegisterSfxImpulse(Mathf.Clamp01(sfxVolume));
+            rackResultAudioRoutine = StartCoroutine(PlayRackClipWithEnvelopeRoutine(clip, 1.0f, 0.38f));
+        }
+
+        private System.Collections.IEnumerator PlayRackClipWithEnvelopeRoutine(AudioClip clip, float gainMul, float fadeOutDuration)
+        {
+            EnsureRackCrowdSources();
+            if (rackCrowdSource == null || clip == null)
+            {
+                rackResultAudioRoutine = null;
+                yield break;
+            }
+
+            float duck = Mathf.Lerp(1.0f, 0.55f, voiceDuckFactor);
+            float baseVol = Mathf.Clamp01(masterVolume * sfxVolume * duck * gainMul);
+
+            rackCrowdSource.Stop();
+            rackCrowdSource.clip = clip;
+            rackCrowdSource.pitch = 1.0f;
+            rackCrowdSource.time = 0f;
+            rackCrowdSource.volume = baseVol;
+            rackCrowdSource.Play();
+
+            float totalDur = Mathf.Min(clip.length, 2.25f);
+            float fadeStart = Mathf.Max(0.1f, totalDur - Mathf.Max(0.1f, fadeOutDuration));
+            float elapsed = 0f;
+
+            while (elapsed < totalDur && rackCrowdSource != null && rackCrowdSource.isPlaying)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                duck = Mathf.Lerp(1.0f, 0.55f, voiceDuckFactor);
+                baseVol = Mathf.Clamp01(masterVolume * sfxVolume * duck * gainMul);
+
+                float fadeOut = elapsed > fadeStart
+                    ? Mathf.SmoothStep(1f, 0f, (elapsed - fadeStart) / (totalDur - fadeStart))
+                    : 1f;
+                rackCrowdSource.volume = baseVol * fadeOut;
+                yield return null;
+            }
+
+            if (rackCrowdSource != null) rackCrowdSource.Stop();
+            rackResultAudioRoutine = null;
         }
 
         /// <summary>
@@ -476,6 +638,7 @@ namespace Game.Billiards.Audio
             if (clip == null) return;
 
             StopTimerTick();
+            StopRackCrowdSources();
             RegisterSfxImpulse(sfxVolume);
             if (sfxMainSource != null)
             {
@@ -495,6 +658,7 @@ namespace Game.Billiards.Audio
             if (clip == null) return;
 
             StopTimerTick();
+            StopRackCrowdSources();
             RegisterSfxImpulse(sfxVolume);
             if (sfxMainSource != null)
             {
@@ -510,6 +674,7 @@ namespace Game.Billiards.Audio
         public void StopMatchResultAudio()
         {
             StopTimerTick();
+            StopRackCrowdSources();
             if (sfxMainSource != null)
             {
                 sfxMainSource.Stop();
@@ -538,6 +703,204 @@ namespace Game.Billiards.Audio
 
         private AudioClip tickClip;
         private bool tickToggle;
+        private static AudioClip s_edmRoomJoinClip;
+        private static AudioClip s_edmRoomLeaveClip;
+        private float lastRoomEventSfxTime = -10f;
+
+        /// <summary>
+        /// Phát âm thanh "Vào phòng chờ" phong cách EDM Future-Bass (3 nhịp Pluck 1/16 F4 -> A4 -> C5
+        /// kết hợp Filter Sweep Uplifter bung ra hợp âm SuperSaw Fmaj7 + Sub-Bass 808 + LFO Wobble).
+        /// Khác biệt hoàn toàn với cấu trúc 2 nốt đơn của Discord.
+        /// </summary>
+        public void PlayRoomJoinSound()
+        {
+            if (Time.unscaledTime - lastRoomEventSfxTime < 0.08f) return;
+            lastRoomEventSfxTime = Time.unscaledTime;
+
+            if (s_edmRoomJoinClip == null) s_edmRoomJoinClip = BuildEdmRoomJoinClip();
+            var src = uiSource != null ? uiSource : GetNextSfxSource();
+            if (src == null) return;
+
+            float vol = Mathf.Clamp01(sfxVolume * 0.92f);
+            RegisterSfxImpulse(vol * 0.5f);
+            src.pitch = 1.0f;
+            src.PlayOneShot(s_edmRoomJoinClip, vol);
+        }
+
+        /// <summary>
+        /// Phát âm thanh "Đối thủ rời phòng chờ" phong cách EDM Tape-Stop / Pitch-Glide Downlifter
+        /// (hợp âm Synth Pluck lướt trượt tần số xuống + đóng bộ lọc Low-Pass + 808 Sub-Drop).
+        /// Chỉ phát ở sảnh phòng chờ Lobby, hoàn toàn khác Discord.
+        /// </summary>
+        public void PlayRoomLeaveSound()
+        {
+            if (Time.unscaledTime - lastRoomEventSfxTime < 0.08f) return;
+            lastRoomEventSfxTime = Time.unscaledTime;
+
+            if (s_edmRoomLeaveClip == null) s_edmRoomLeaveClip = BuildEdmRoomLeaveClip();
+            var src = uiSource != null ? uiSource : GetNextSfxSource();
+            if (src == null) return;
+
+            float vol = Mathf.Clamp01(sfxVolume * 0.88f);
+            RegisterSfxImpulse(vol * 0.5f);
+            src.pitch = 1.0f;
+            src.PlayOneShot(s_edmRoomLeaveClip, vol);
+        }
+
+        private static float SuperSawWave(float freq, float t)
+        {
+            // 5-voice detuned EDM SuperSaw (ấm, dày và sáng như synth Future Bass)
+            float s0 = Mathf.Repeat(freq * t, 1f) * 2f - 1f;
+            float s1 = Mathf.Repeat(freq * 1.0055f * t + 0.17f, 1f) * 2f - 1f;
+            float s2 = Mathf.Repeat(freq * 0.9945f * t + 0.43f, 1f) * 2f - 1f;
+            float s3 = Mathf.Repeat(freq * 1.0110f * t + 0.68f, 1f) * 2f - 1f;
+            float s4 = Mathf.Repeat(freq * 0.9890f * t + 0.89f, 1f) * 2f - 1f;
+            return (s0 * 0.32f + (s1 + s2) * 0.22f + (s3 + s4) * 0.12f);
+        }
+
+        private static float EdmPluckVoice(float freq, float dt)
+        {
+            // EDM Pluck: sóng hỗn hợp Sine + Saw qua bộ lọc bao hình (Filter Envelope đóng nhanh tạo tiếng "pluck" nảy)
+            float brightness = Mathf.Exp(-dt * 38f);
+            float fund = Mathf.Sin(2f * Mathf.PI * freq * dt);
+            float saw = SuperSawWave(freq, dt);
+            float h2 = Mathf.Sin(2f * Mathf.PI * (freq * 2f) * dt) * brightness;
+            float h3 = Mathf.Sin(2f * Mathf.PI * (freq * 3f) * dt) * brightness * brightness;
+            return fund * 0.52f + saw * (0.18f + 0.32f * brightness) + h2 * 0.24f + h3 * 0.12f;
+        }
+
+        private static AudioClip BuildEdmRoomJoinClip()
+        {
+            const int sampleRate = 44100;
+            int samples = (int)(sampleRate * 0.48f);
+            float[] data = new float[samples];
+
+            // Chuỗi 3 nốt EDM Pluck 1/16 nhanh (F4 -> A4 -> Hợp âm Future Bass Fmaj7: C5 + E5 + A5)
+            const float fSub = 87.31f;  // F2 (808 Sub-bass)
+            const float f1 = 349.23f;   // F4
+            const float f2 = 440.00f;   // A4
+            const float f3 = 523.25f;   // C5
+            const float fChordE = 659.25f; // E5
+            const float fChordA = 880.00f; // A5
+
+            const float t1 = 0.000f;
+            const float t2 = 0.062f;
+            const float t3 = 0.124f;
+
+            float lpState = 0f;
+
+            for (int i = 0; i < samples; i++)
+            {
+                float t = i / (float)sampleRate;
+                float sample = 0f;
+
+                // Nốt Pluck 1 (F4)
+                if (t >= t1)
+                {
+                    float dt = t - t1;
+                    float env = Mathf.Exp(-dt * 18f) * Mathf.Clamp01(dt / 0.002f);
+                    sample += EdmPluckVoice(f1, dt) * env * 0.50f;
+                }
+
+                // Nốt Pluck 2 (A4)
+                if (t >= t2)
+                {
+                    float dt = t - t2;
+                    float env = Mathf.Exp(-dt * 18f) * Mathf.Clamp01(dt / 0.002f);
+                    sample += EdmPluckVoice(f2, dt) * env * 0.56f;
+                }
+
+                // Nốt 3: Bung hợp âm Future-Bass SuperSaw (Fmaj7) + 808 Sub-Bass + LFO Wobble (14Hz)
+                if (t >= t3)
+                {
+                    float dt = t - t3;
+                    float env = Mathf.Exp(-dt * 6.5f) * Mathf.Clamp01(dt / 0.004f);
+                    float wobble = 0.82f + 0.18f * Mathf.Sin(2f * Mathf.PI * 14f * dt);
+
+                    float chord = EdmPluckVoice(f3, dt) * 0.45f
+                                + SuperSawWave(fChordE, dt) * 0.24f
+                                + SuperSawWave(f2, dt) * 0.22f
+                                + Mathf.Sin(2f * Mathf.PI * fChordA * dt) * 0.15f * Mathf.Exp(-dt * 11f);
+
+                    // 808 Sub-bass punch
+                    float subFreq = fSub + 45f * Mathf.Exp(-dt * 35f);
+                    float sub808 = Mathf.Sin(2f * Mathf.PI * subFreq * dt) * Mathf.Exp(-dt * 7.5f) * 0.42f;
+
+                    sample += chord * env * wobble * 0.78f + sub808;
+                }
+
+                // Bộ lọc Low-Pass Uplifter mở dần từ 0.00s -> 0.15s giúp âm thanh mượt và đậm chất EDM
+                float cutoff = Mathf.Lerp(0.22f, 0.72f, Mathf.Clamp01(t / 0.15f));
+                lpState += (sample - lpState) * cutoff;
+
+                if (t > 0.44f)
+                {
+                    lpState *= Mathf.Clamp01((0.48f - t) / 0.04f);
+                }
+
+                data[i] = lpState / (1f + Mathf.Abs(lpState));
+            }
+
+            var clip = AudioClip.Create("EdmRoomJoinFutureBass", samples, 1, sampleRate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        private static AudioClip BuildEdmRoomLeaveClip()
+        {
+            const int sampleRate = 44100;
+            int samples = (int)(sampleRate * 0.36f);
+            float[] data = new float[samples];
+
+            // Kỹ thuật EDM Tape-Stop / Pitch-Glide Downlifter: trượt mượt tần số từ hợp âm E5+A4 xuống kèm đóng bộ lọc Low-Pass
+            float phaseLead = 0f;
+            float phaseFifth = 0f;
+            float phaseSub = 0f;
+            float lpState = 0f;
+
+            for (int i = 0; i < samples; i++)
+            {
+                float t = i / (float)sampleRate;
+                float u = Mathf.Clamp01(t / 0.32f);
+
+                // Đường cong trượt tần số Tape-Stop (giữ nhẹ 35ms đầu rồi lướt mượt xuống 0.52x)
+                float glide = t < 0.035f ? 1.0f : Mathf.Lerp(1.0f, 0.52f, Mathf.Pow((t - 0.035f) / 0.285f, 1.35f));
+
+                float fLead = 587.33f * glide;  // D5 trượt xuống
+                float fFifth = 392.00f * glide; // G4 trượt xuống
+                float fSub = Mathf.Lerp(130.81f, 48.0f, u); // 808 Sub-drop
+
+                phaseLead += fLead / sampleRate;
+                phaseLead -= Mathf.Floor(phaseLead);
+
+                phaseFifth += fFifth / sampleRate;
+                phaseFifth -= Mathf.Floor(phaseFifth);
+
+                phaseSub += 2f * Mathf.PI * fSub / sampleRate;
+
+                float env = Mathf.Exp(-t * 7.8f) * Mathf.Clamp01(t / 0.003f);
+                float sawLead = (phaseLead * 2f - 1f) * 0.30f + Mathf.Sin(phaseLead * 2f * Mathf.PI) * 0.45f;
+                float sawFifth = (phaseFifth * 2f - 1f) * 0.22f + Mathf.Sin(phaseFifth * 2f * Mathf.PI) * 0.35f;
+                float subDrop = Mathf.Sin(phaseSub) * Mathf.Exp(-t * 9.0f) * 0.48f;
+
+                float raw = (sawLead * 0.52f + sawFifth * 0.42f) * env + subDrop;
+
+                // Đóng dần bộ lọc Low-Pass (Filter Down-Sweep) từ sáng -> trầm ấm
+                float cutoff = Mathf.Lerp(0.55f, 0.08f, u);
+                lpState += (raw - lpState) * cutoff;
+
+                if (t > 0.32f)
+                {
+                    lpState *= Mathf.Clamp01((0.36f - t) / 0.04f);
+                }
+
+                data[i] = lpState / (1f + Mathf.Abs(lpState));
+            }
+
+            var clip = AudioClip.Create("EdmRoomLeaveTapeStop", samples, 1, sampleRate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
 
         public void PlayTimerTick()
         {
@@ -552,7 +915,7 @@ namespace Game.Billiards.Audio
                 RegisterSfxImpulse(sfxVolume * 0.6f);
                 timerSource.Stop();
                 timerSource.pitch = 1.0f;
-                timerSource.volume = sfxVolume * masterVolume * Mathf.Lerp(1.0f, 0.55f, voiceDuckFactor);
+                timerSource.volume = masterVolume * Mathf.Lerp(1.0f, 0.55f, voiceDuckFactor);
                 timerSource.PlayOneShot(customTick, sfxVolume);
                 return;
             }

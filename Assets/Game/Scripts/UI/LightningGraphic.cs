@@ -17,6 +17,8 @@ namespace Game.Billiards.UI
         private float intensity = 0.6f;
         private float timer;
 
+        public float CurrentIntensity => intensity;
+
         public void Setup(Vector2 a, Vector2 b, Color c, float amp)
         {
             raycastTarget = false;
@@ -24,10 +26,18 @@ namespace Game.Billiards.UI
             Reroll();
         }
 
-        public void Tick(float dt)
+        /// <summary>
+        /// Cập nhật nhịp phóng điện của tia sét. Trả về true nếu ở nhịp này tia sét vừa bùng sáng cực đại (intensity >= 0.95f).
+        /// </summary>
+        public bool Tick(float dt)
         {
             timer -= dt;
-            if (timer <= 0f) Reroll();
+            if (timer <= 0f)
+            {
+                Reroll();
+                return intensity >= 0.95f;
+            }
+            return false;
         }
 
         private void Reroll()

@@ -22,6 +22,10 @@ namespace Game.Billiards.UI
         private NetworkMatchManager netMatchManager;
         private float nextSearchTime;
         private float currentWidth = 108f;
+        private int lastDisplayedPing = -1;
+        private bool lastDelayingState = false;
+        private bool lastConnectionLostState = false;
+        private float nextPingTextRefreshTime = 0f;
 
         private static readonly Color BodyNormal = new Color(0.05f, 0.11f, 0.20f, 0.90f);
         private static readonly Color BodyWarning = new Color(0.34f, 0.07f, 0.09f, 0.96f);
@@ -180,8 +184,17 @@ namespace Game.Billiards.UI
             wifiIcon.SetSignal(bars, isDelaying, accent);
 
             float targetWidth = isDelaying ? 340f : 108f;
-            currentWidth = Mathf.Lerp(currentWidth, targetWidth, Time.unscaledDeltaTime * 12f);
-            pillRt.sizeDelta = new Vector2(currentWidth, isDelaying ? 30f : 26f);
+            float targetHeight = isDelaying ? 30f : 26f;
+            if (Mathf.Abs(currentWidth - targetWidth) > 0.05f || lastDelayingState != isDelaying)
+            {
+                currentWidth = Mathf.Lerp(currentWidth, targetWidth, Time.unscaledDeltaTime * 12f);
+                if (Mathf.Abs(currentWidth - targetWidth) <= 0.05f) currentWidth = targetWidth;
+                pillRt.sizeDelta = new Vector2(currentWidth, targetHeight);
+            }
+
+            int clampedPing = Mathf.Clamp(ping, 1, 999);
+            bool stateChanged = (lastDelayingState != isDelaying) || (lastConnectionLostState != connectionLost);
+            bool shouldUpdateText = stateChanged || (clampedPing != lastDisplayedPing && Time.unscaledTime >= nextPingTextRefreshTime);
 
             if (isDelaying)
             {
@@ -189,19 +202,35 @@ namespace Game.Billiards.UI
                 bodyGraphic.color = Color.Lerp(BodyWarning, new Color(0.48f, 0.09f, 0.12f, 0.98f), pulse);
                 borderGraphic.SetBaseColor(Color.Lerp(new Color(1f, 0.30f, 0.30f, 0.65f), new Color(1f, 0.45f, 0.45f, 1f), pulse));
 
-                string msg = connectionLost
-                    ? LocalizationManager.Get("net_connection_unstable")
-                    : $"{LocalizationManager.Get("net_weak_syncing")} ({Mathf.Clamp(ping, 1, 999)} ms)";
-                statusText.text = msg;
+                if (shouldUpdateText)
+                {
+                    lastDisplayedPing = clampedPing;
+                    nextPingTextRefreshTime = Time.unscaledTime + 0.5f;
+                    string msg = connectionLost
+                        ? LocalizationManager.Get("net_connection_unstable")
+                        : $"{LocalizationManager.Get("net_weak_syncing")} ({clampedPing} ms)";
+                    statusText.text = msg;
+                }
                 statusText.color = Color.Lerp(new Color(1f, 0.82f, 0.82f, 1f), Color.white, pulse);
             }
             else
             {
-                bodyGraphic.color = BodyNormal;
+                if (stateChanged)
+                {
+                    bodyGraphic.color = BodyNormal;
+                }
                 borderGraphic.SetBaseColor(new Color(accent.r, accent.g, accent.b, 0.55f));
-                statusText.text = $"{Mathf.Clamp(ping, 1, 999)} ms";
-                statusText.color = accent;
+                if (shouldUpdateText)
+                {
+                    lastDisplayedPing = clampedPing;
+                    nextPingTextRefreshTime = Time.unscaledTime + 0.5f;
+                    statusText.text = $"{clampedPing} ms";
+                }
+                if (statusText.color != accent) statusText.color = accent;
             }
+
+            lastDelayingState = isDelaying;
+            lastConnectionLostState = connectionLost;
         }
     }
 

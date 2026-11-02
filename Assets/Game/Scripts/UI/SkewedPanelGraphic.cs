@@ -19,12 +19,20 @@ namespace Game.Billiards.UI
 
         public void SetBottomDarken(float value)
         {
+            if (Mathf.Approximately(bottomDarken, value)) return;
             bottomDarken = value;
             SetVerticesDirty();
         }
 
         public void SetInsets(float topLeft, float topRight, float bottomLeft, float bottomRight)
         {
+            if (Mathf.Approximately(topLeftInset, topLeft) &&
+                Mathf.Approximately(topRightInset, topRight) &&
+                Mathf.Approximately(bottomLeftInset, bottomLeft) &&
+                Mathf.Approximately(bottomRightInset, bottomRight))
+            {
+                return;
+            }
             topLeftInset = topLeft;
             topRightInset = topRight;
             bottomLeftInset = bottomLeft;

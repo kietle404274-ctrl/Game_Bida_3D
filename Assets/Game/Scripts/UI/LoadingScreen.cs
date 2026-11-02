@@ -27,6 +27,9 @@ namespace Game.Billiards.UI
 
         private static LoadingScreen current;
 
+        /// <summary>True khi màn hình tải đang hiển thị và chờ người chơi (chưa bắt đầu mờ dần).</summary>
+        public static bool IsActive => current != null && !current.fadingOut;
+
         private Kind kind;
         private CanvasGroup group;
         private RectTransform artRect;
@@ -46,6 +49,17 @@ namespace Game.Billiards.UI
         private float fade;
         private bool fadingOut;
         private string statusOverride;
+
+        // Hệ thống âm thanh dòng điện điện ảnh (VS Charge & Clash + Plasma Hum + Synchronized Electric Zaps)
+        private static AudioClip s_vsChargeAndClashClip;
+        private static AudioClip s_electricHumLoopClip;
+        private static AudioClip[] s_electricZapClips;
+        private AudioSource electricOneShotSource;
+        private AudioSource electricHumSource;
+        private bool playedChargeAndClash;
+        private bool startedHumLoop;
+        private float nextZapAllowedTime;
+        private int lastZapVariant = -1;
 
         private static readonly string[] StatusVi =
         {
@@ -117,6 +131,8 @@ namespace Game.Billiards.UI
 
         private void OnDestroy()
         {
+            if (electricHumSource != null && electricHumSource.isPlaying) electricHumSource.Stop();
+            if (electricOneShotSource != null && electricOneShotSource.isPlaying) electricOneShotSource.Stop();
             if (current == this) current = null;
         }
 
@@ -141,7 +157,11 @@ namespace Game.Billiards.UI
 
             bool vi = LoadingUiKit.Vi;
             if (kind == Kind.Lobby) BuildLobbyHeader(root, vi);
-            else BuildMatchHeaderAndCards(root, vi);
+            else
+            {
+                BuildMatchHeaderAndCards(root, vi);
+                SetupElectricAudio();
+            }
 
             bar = LoadingBar.Build(root, new Vector2(0.5f, 0.5f), new Vector2(0f, -360f), 1000f);
             SetProgress(0f);
@@ -699,15 +719,19 @@ namespace Game.Billiards.UI
                     vsPulse.rectTransform.localScale = Vector3.one * (1f + ph * 0.45f);
                     Color pc = vsPulse.color; pc.a = 0.5f * (1f - ph); vsPulse.color = pc;
                 }
+                bool anyBoltSurged = false;
                 if (bolts != null)
+                {
                     for (int i = 0; i < bolts.Length; i++)
                     {
-                        bolts[i].Tick(dt);
+                        if (bolts[i].Tick(dt)) anyBoltSurged = true;
                         bolts[i].canvasRenderer.SetAlpha(v);
                     }
+                }
                 if (embersGroup != null) embersGroup.alpha = v;
                 UpdateEmbers(t, dt);
                 UpdateStrips(t, dt, v);
+                UpdateElectricAudio(t, v, anyBoltSurged);
             }
 
             if (bar != null && bar.Status != null)
@@ -721,6 +745,304 @@ namespace Game.Billiards.UI
                     bar.Status.text = st[idx] + (idx == 4 ? "" : dots);
                 }
             }
+        }
+
+        // ------------------------------------------------------------------ âm thanh dòng điện điện ảnh
+
+        private void SetupElectricAudio()
+        {
+            EnsureElectricClipsSynthesized();
+
+            electricOneShotSource = gameObject.AddComponent<AudioSource>();
+            electricOneShotSource.playOnAwake = false;
+            electricOneShotSource.loop = false;
+            electricOneShotSource.spatialBlend = 0f;
+            electricOneShotSource.priority = 40;
+
+            electricHumSource = gameObject.AddComponent<AudioSource>();
+            electricHumSource.playOnAwake = false;
+            electricHumSource.loop = true;
+            electricHumSource.spatialBlend = 0f;
+            electricHumSource.priority = 56;
+            electricHumSource.clip = s_electricHumLoopClip;
+            electricHumSource.volume = 0f;
+
+            playedChargeAndClash = false;
+            startedHumLoop = false;
+            nextZapAllowedTime = 0.62f;
+        }
+
+        private static float GetEffectiveSfxVolume()
+        {
+            // Tránh phát trùng âm thanh trên cửa sổ phụ khi test 2 cửa sổ Online trên cùng 1 máy
+            if (Application.isPlaying && !Application.isFocused && PhotonNetwork.InRoom)
+                return 0f;
+
+            var am = Audio.AudioManager.Instance;
+            if (am != null)
+            {
+                return Mathf.Clamp01(am.MasterVolume * am.SFXVolume);
+            }
+
+            float master = PlayerPrefs.GetFloat("Volume_Master", 1.0f);
+            float sfx = PlayerPrefs.GetFloat("Volume_SFX", 1.0f);
+            return Mathf.Clamp01(master * sfx);
+        }
+
+        private void UpdateElectricAudio(float t, float vsVisibility, bool anyBoltSurged)
+        {
+            if (electricOneShotSource == null || electricHumSource == null) return;
+
+            float sfxVol = GetEffectiveSfxVolume();
+            float fadeFactor = Mathf.Clamp01(fade);
+
+            // Pha 1 & 2: Phát tiếng tụ điện khi 2 thẻ cơ thủ trượt vào (t = 0.08s) + tiếng nổ hồ quang khi chữ VS đập xuống (t = 0.50s)
+            if (!playedChargeAndClash && t >= 0.08f)
+            {
+                playedChargeAndClash = true;
+                if (s_vsChargeAndClashClip != null && sfxVol > 0.001f)
+                {
+                    electricOneShotSource.pitch = 1.0f;
+                    electricOneShotSource.volume = 1.0f;
+                    electricOneShotSource.PlayOneShot(s_vsChargeAndClashClip, sfxVol * 0.88f);
+                }
+            }
+
+            // Pha 3a: Duy trì âm nền dòng điện cao thế (Plasma Hum + Micro-Crackle) từ lúc chữ VS và 4 tia sét xuất hiện
+            if (!startedHumLoop && t >= 0.48f && !fadingOut)
+            {
+                startedHumLoop = true;
+                if (s_electricHumLoopClip != null)
+                {
+                    electricHumSource.volume = fadeFactor * vsVisibility * sfxVol * 0.34f;
+                    electricHumSource.Play();
+                }
+            }
+
+            if (startedHumLoop && electricHumSource != null)
+            {
+                if (fadingOut && fadeFactor <= 0.02f)
+                {
+                    if (electricHumSource.isPlaying) electricHumSource.Stop();
+                }
+                else
+                {
+                    // Điều biến nhẹ âm lượng hum theo xung nhịp chữ VS để dòng điện nghe "sống"
+                    float humPulse = 0.88f + 0.12f * Mathf.Sin(t * 14f);
+                    electricHumSource.volume = fadeFactor * vsVisibility * sfxVol * 0.34f * humPulse;
+                }
+            }
+
+            // Pha 3b: Đồng bộ trực tiếp với nhịp phóng hồ quang cực đại (intensity == 1.0f) của 4 tia sét LightningGraphic
+            if (!fadingOut && vsVisibility > 0.65f && anyBoltSurged && t >= nextZapAllowedTime && sfxVol > 0.001f)
+            {
+                if (s_electricZapClips != null && s_electricZapClips.Length > 0)
+                {
+                    int idx = Random.Range(0, s_electricZapClips.Length);
+                    if (s_electricZapClips.Length > 1 && idx == lastZapVariant)
+                    {
+                        idx = (idx + 1) % s_electricZapClips.Length;
+                    }
+                    lastZapVariant = idx;
+
+                    electricOneShotSource.pitch = Random.Range(0.88f, 1.16f);
+                    float zapVol = fadeFactor * sfxVol * Random.Range(0.48f, 0.72f);
+                    electricOneShotSource.PlayOneShot(s_electricZapClips[idx], zapVol);
+
+                    // Giãn cách tự nhiên giữa các cú sẹt lớn để tiếng điện giật nghe đanh, sắc nét như phim điện ảnh
+                    nextZapAllowedTime = t + Random.Range(0.18f, 0.34f);
+                }
+            }
+        }
+
+        private static void EnsureElectricClipsSynthesized()
+        {
+            if (s_vsChargeAndClashClip != null && s_electricHumLoopClip != null && s_electricZapClips != null)
+                return;
+
+            const int sampleRate = 44100;
+
+            // 1. Tổng hợp VS Charge-Up + Thunder Arc Clash (~0.96s)
+            {
+                int samples = (int)(sampleRate * 0.96f);
+                float[] data = new float[samples];
+                System.Random rnd = new System.Random(20261102);
+                float phaseSweep = 0f;
+                float phaseImpact = 0f;
+                float phaseBuzz = 0f;
+                float lpNoise = 0f;
+                float bpState1 = 0f;
+                float bpState2 = 0f;
+
+                for (int i = 0; i < samples; i++)
+                {
+                    float t = i / (float)sampleRate;
+                    float sample = 0f;
+
+                    // [0.00s .. 0.42s] Hai thẻ cơ thủ trượt vào: Whoosh tụ điện trầm vút lên
+                    if (t < 0.44f)
+                    {
+                        float u = Mathf.Clamp01(t / 0.42f);
+                        float env = Mathf.Sin(u * Mathf.PI) * Mathf.Pow(u, 0.65f);
+                        float freq = Mathf.Lerp(58f, 235f, u * u);
+                        phaseSweep += 2f * Mathf.PI * freq / sampleRate;
+
+                        float hum = Mathf.Sin(phaseSweep) * 0.55f
+                                  + Mathf.Sin(phaseSweep * 2f) * 0.28f
+                                  + Mathf.Sin(phaseSweep * 3f) * 0.17f;
+
+                        float white = (float)(rnd.NextDouble() * 2.0 - 1.0);
+                        lpNoise += (white - lpNoise) * (0.04f + 0.14f * u);
+                        sample += (hum * 0.48f + lpNoise * 0.35f) * env * 0.65f;
+                    }
+
+                    // [0.42s .. 0.96s] Huy hiệu VS đập xuống (tương ứng t = 0.50s trên màn hình) & Bùng nổ 4 tia sét!
+                    if (t >= 0.40f)
+                    {
+                        float tc = t - 0.40f;
+                        // Cú nổ trầm điện từ (Sub-bass impact)
+                        float impactFreq = 38f + 78f * Mathf.Exp(-tc * 22f);
+                        phaseImpact += 2f * Mathf.PI * impactFreq / sampleRate;
+                        float impactEnv = Mathf.Exp(-tc * 8.5f) * Mathf.Clamp01(tc / 0.005f);
+                        float subImpact = Mathf.Sin(phaseImpact) * impactEnv * 0.78f;
+
+                        // Chùm tia hồ quang cao thế (High-voltage electric arc burst)
+                        float arcEnv = Mathf.Exp(-tc * 5.2f) * Mathf.Clamp01(tc / 0.003f);
+                        float buzzFreq = 118f + 22f * Mathf.Sin(tc * 55f);
+                        phaseBuzz += buzzFreq / sampleRate;
+                        phaseBuzz -= Mathf.Floor(phaseBuzz);
+                        float saw = (phaseBuzz * 2f - 1f);
+
+                        // Tạo các gai phóng điện răng cưa ngẫu nhiên (Spark crackle)
+                        float white = (float)(rnd.NextDouble() * 2.0 - 1.0);
+                        bpState1 += (white - bpState1) * 0.32f;
+                        bpState2 += (bpState1 - bpState2) * 0.08f;
+                        float highCrackle = bpState1 - bpState2;
+
+                        // Điều biến biên độ dạng chớp hồ quang (Gated plasma sputter)
+                        float gate = 0.55f + 0.45f * Mathf.Sin(tc * 95f) * Mathf.Cos(tc * 143f);
+                        float rawArc = (saw * 0.38f + highCrackle * 1.35f) * gate * arcEnv;
+
+                        sample += subImpact + SoftClip(rawArc * 0.90f);
+                    }
+
+                    data[i] = SoftClip(sample);
+                }
+
+                s_vsChargeAndClashClip = AudioClip.Create("VS_ElectricChargeClash", samples, 1, sampleRate, false);
+                s_vsChargeAndClashClip.SetData(data, 0);
+            }
+
+            // 2. Tổng hợp Plasma Hum + Micro-Crackle Loop (1.60s liền mạch không có tiếng khấc ở điểm nối)
+            {
+                const float duration = 1.60f;
+                int samples = (int)(sampleRate * duration);
+                float[] data = new float[samples];
+                System.Random rnd = new System.Random(88421);
+                float lp1 = 0f, lp2 = 0f;
+                float sparkEnv = 0f;
+
+                for (int i = 0; i < samples; i++)
+                {
+                    float t = i / (float)sampleRate;
+                    // Các tần số là bội số nguyên của 1 / 1.60s (0.625 Hz) để nối vòng 100% trùng pha
+                    float f60 = 2f * Mathf.PI * 60f * t;
+                    float f120 = 2f * Mathf.PI * 120f * t;
+                    float f180 = 2f * Mathf.PI * 180f * t;
+                    float f240 = 2f * Mathf.PI * 240f * t;
+                    float f360 = 2f * Mathf.PI * 360f * t;
+
+                    float modSlow = 0.78f + 0.22f * Mathf.Sin(2f * Mathf.PI * 2.5f * t);
+                    float modFast = 0.85f + 0.15f * Mathf.Cos(2f * Mathf.PI * 7.5f * t);
+
+                    float transformerHum =
+                        (Mathf.Sin(f60) * 0.32f +
+                         Mathf.Sin(f120) * 0.38f +
+                         Mathf.Sin(f180 + 0.6f) * 0.16f +
+                         Mathf.Sin(f240 + 1.2f) * 0.12f +
+                         Mathf.Sin(f360) * 0.08f) * modSlow * modFast;
+
+                    // Tiếng lách tách hồ quang vi mô (Corona micro-sparks)
+                    if (rnd.NextDouble() < 0.0045)
+                    {
+                        sparkEnv = 0.45f + (float)rnd.NextDouble() * 0.55f;
+                    }
+                    sparkEnv *= 0.965f;
+
+                    float white = (float)(rnd.NextDouble() * 2.0 - 1.0);
+                    lp1 += (white - lp1) * 0.28f;
+                    lp2 += (lp1 - lp2) * 0.06f;
+                    float bandSpark = (lp1 - lp2) * sparkEnv * 0.65f;
+
+                    // Làm mượt 15ms ở 2 đầu biên để vòng lặp tuyệt đối êm
+                    float edgeFade = 1f;
+                    int edgeSamples = (int)(sampleRate * 0.015f);
+                    if (i < edgeSamples) edgeFade = i / (float)edgeSamples;
+                    else if (i > samples - edgeSamples) edgeFade = (samples - i) / (float)edgeSamples;
+
+                    data[i] = SoftClip((transformerHum * 0.48f + bandSpark * edgeFade) * 0.75f);
+                }
+
+                s_electricHumLoopClip = AudioClip.Create("VS_ElectricHumLoop", samples, 1, sampleRate, false);
+                s_electricHumLoopClip.SetData(data, 0);
+            }
+
+            // 3. Tổng hợp 3 biến thể tiếng Sẹt Điện (Crispy Electric Arc Zap, ~0.15s) khớp nhịp giật của tia sét
+            s_electricZapClips = new AudioClip[3];
+            float[] baseFreqs = { 125f, 148f, 108f };
+            float[] reStrikeTimes = { 0.048f, 0.062f, 0.039f };
+
+            for (int v = 0; v < 3; v++)
+            {
+                int samples = (int)(sampleRate * 0.155f);
+                float[] data = new float[samples];
+                System.Random rnd = new System.Random(55100 + v * 997);
+                float phase = 0f;
+                float bpFast = 0f;
+                float bpSlow = 0f;
+                float baseF = baseFreqs[v];
+                float reStrikeT = reStrikeTimes[v];
+
+                for (int i = 0; i < samples; i++)
+                {
+                    float t = i / (float)sampleRate;
+
+                    // Xung phóng điện chính (Main snap) + Xung nhánh phụ (Secondary branch arc)
+                    float envMain = Mathf.Exp(-t * 28f) * Mathf.Clamp01(t / 0.0015f);
+                    float envBranch = t >= reStrikeT
+                        ? Mathf.Exp(-(t - reStrikeT) * 34f) * Mathf.Clamp01((t - reStrikeT) / 0.0015f) * 0.72f
+                        : 0f;
+                    float env = Mathf.Max(envMain, envBranch);
+
+                    // Sóng mang răng cưa biến thiên tần số tạo âm "rè sẹt" đặc trưng của tia hồ quang
+                    float f = baseF * (1f + 0.35f * Mathf.Sin(t * 210f));
+                    phase += f / sampleRate;
+                    phase -= Mathf.Floor(phase);
+                    float buzz = (phase * 2f - 1f);
+
+                    // Nhiễu dải thông (Band-passed noise 1.2kHz - 3.8kHz) tạo tiếng "tách/xẹt" sắc nét mà không chói
+                    float white = (float)(rnd.NextDouble() * 2.0 - 1.0);
+                    bpFast += (white - bpFast) * 0.36f;
+                    bpSlow += (bpFast - bpSlow) * 0.09f;
+                    float crackle = bpFast - bpSlow;
+
+                    // Cú nhấp đầu tia lửa (Initial spark transient < 8ms)
+                    float snap = t < 0.008f ? white * Mathf.Exp(-t * 320f) * 0.9f : 0f;
+
+                    float flutter = 0.60f + 0.40f * Mathf.Sin(t * 165f + v * 1.3f);
+                    float raw = (buzz * 0.42f + crackle * 1.45f) * env * flutter + snap;
+                    data[i] = SoftClip(raw * 0.92f);
+                }
+
+                var clip = AudioClip.Create($"VS_ElectricZap_{v}", samples, 1, sampleRate, false);
+                clip.SetData(data, 0);
+                s_electricZapClips[v] = clip;
+            }
+        }
+
+        private static float SoftClip(float x)
+        {
+            return x / (1f + Mathf.Abs(x));
         }
     }
 }

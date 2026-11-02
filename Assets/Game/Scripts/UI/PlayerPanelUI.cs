@@ -42,6 +42,9 @@ namespace Game.Billiards.UI
         // Hiển thị Avatar thực tế từ AvatarLibrary + Vòng viền sáng (AvatarRing)
         private Image avatarRingImage;
         private int currentAvatarIndex = -1;
+        private bool hasAppliedTextLayoutState;
+        private bool lastAppliedOnlineTextLayout;
+        private float nextOfflineRefreshTime;
 
         public BallTrackerUI BallTracker => ballTracker;
         public RectTransform VoiceClusterRect => voiceClusterRt;
@@ -78,8 +81,17 @@ namespace Game.Billiards.UI
 
         private void Update()
         {
-            RefreshResolvedAvatar();
-            RefreshVoiceStatusCluster();
+            if (IsOnlineModeActive())
+            {
+                RefreshResolvedAvatar();
+                RefreshVoiceStatusCluster();
+            }
+            else if (Time.unscaledTime >= nextOfflineRefreshTime)
+            {
+                nextOfflineRefreshTime = Time.unscaledTime + 0.5f;
+                RefreshResolvedAvatar();
+                RefreshVoiceStatusCluster();
+            }
         }
 
         private void DetectCardSide()
@@ -266,8 +278,10 @@ namespace Game.Billiards.UI
             }
 
             // Thu gọn nhẹ chiều rộng vùng chữ Tên/Nhóm khi hiện cụm icon Mic/Loa để không bao giờ đè lên chữ
-            if (originalTextRectsCaptured)
+            if (originalTextRectsCaptured && (!hasAppliedTextLayoutState || lastAppliedOnlineTextLayout != online))
             {
+                hasAppliedTextLayoutState = true;
+                lastAppliedOnlineTextLayout = online;
                 if (online)
                 {
                     const float trimmedW = 224f;

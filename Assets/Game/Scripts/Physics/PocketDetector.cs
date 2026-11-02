@@ -88,6 +88,10 @@ namespace Game.Billiards.Physics
                 // Bi chạy nhanh phải đi sâu hơn vào lòng lỗ mới rơi (bi nhanh dễ bật khỏi lỗ)
                 float speed = ball.Rigidbody != null ? ball.Rigidbody.velocity.magnitude : 0f;
                 float effective = Mathf.Max(minCap, baseCap - fastSpeedShrink * Mathf.Max(0f, speed - 2f));
+                if (ball.IsEightBall && EightBallPocketPredictor.ActivePredictedPocketId == pocketId)
+                {
+                    effective *= 1.08f;
+                }
                 if (dist <= effective)
                 {
                     ball.MarkPocketed(pocketId, transform.position);

@@ -29,8 +29,8 @@ namespace Game.Billiards.UI
         private RectTransform shineClip;
         private Coroutine routine;
 
-        private const float PanelW = 820f;
-        private const float PanelH = 118f;
+        private const float PanelW = 900f;
+        private const float PanelH = 122f;
         private const float Skew = 26f;
         private static readonly Vector2 BasePos = new Vector2(0f, 250f);
 
@@ -40,7 +40,7 @@ namespace Game.Billiards.UI
         private static readonly Color WinColor = new Color(0.25f, 0.98f, 0.50f, 1f);
         private static readonly Color NavyText = new Color(0.05f, 0.09f, 0.18f, 1f);
 
-        private enum PopupSound { Foul, RackWin, RackLose, BreakPocket }
+        private enum PopupSound { None, Foul, RackWin, RackLose, BreakPocket }
 
         public static void Show(FoulType foul)
         {
@@ -77,12 +77,35 @@ namespace Game.Billiards.UI
 
         private static readonly Color BodyBreak = new Color(0.04f, 0.18f, 0.32f, 0.98f);
         private static readonly Color BreakColor = new Color(0f, 0.88f, 1f, 1f); // Neon Cyan
+        private static readonly Color BodyAmber = new Color(0.28f, 0.15f, 0.03f, 0.98f);
+        private static readonly Color AmberColor = new Color(1f, 0.78f, 0.16f, 1f); // Gold Amber
 
         /// <summary>Banner thông báo cú phá bi có bi vào lỗ thành công.</summary>
         public static void ShowBreakSuccess(string title, string subtitle, float holdSeconds = 2.4f)
         {
             Ensure();
             instance.DisplayCustom(title, subtitle, LocalizationManager.Get("break_badge"), BreakColor, BodyBreak, false, holdSeconds, PopupSound.BreakPocket);
+        }
+
+        /// <summary>
+        /// Banner công bố kết quả Đua Bi Băng Ngắn (Lag Shot):
+        /// styleMode: 0 = Thắng (Cyan/Win), 1 = Đối thủ thắng (Gold Amber), 2 = Hòa Đua Lại (Orange/Foul shake nhẹ).
+        /// </summary>
+        public static void ShowLagResult(string badgeLabel, string title, string subtitle, int styleMode, float holdSeconds = 2.4f)
+        {
+            Ensure();
+            if (styleMode == 0)
+            {
+                instance.DisplayCustom(title, subtitle, badgeLabel, BreakColor, BodyBreak, false, holdSeconds, PopupSound.None);
+            }
+            else if (styleMode == 1)
+            {
+                instance.DisplayCustom(title, subtitle, badgeLabel, AmberColor, BodyAmber, false, holdSeconds, PopupSound.None);
+            }
+            else
+            {
+                instance.DisplayCustom(title, subtitle, badgeLabel, AmberColor, BodyAmber, true, holdSeconds, PopupSound.None);
+            }
         }
 
         private static void Ensure()
@@ -173,22 +196,40 @@ namespace Game.Billiards.UI
             badgeRt.anchoredPosition = new Vector2(30f, 4f);
             badgeRt.sizeDelta = new Vector2(176f, 60f);
             badgeText = MakeText(badgeRt, "BadgeText", 24, NavyText, TextAnchor.MiddleCenter, FontStyle.Bold);
-            Stretch(badgeText.rectTransform, 0f);
+            badgeText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            badgeText.verticalOverflow = VerticalWrapMode.Truncate;
+            badgeText.resizeTextForBestFit = true;
+            badgeText.resizeTextMinSize = 13;
+            badgeText.resizeTextMaxSize = 24;
+            badgeText.rectTransform.anchorMin = Vector2.zero;
+            badgeText.rectTransform.anchorMax = Vector2.one;
+            badgeText.rectTransform.offsetMin = new Vector2(10f, 4f);
+            badgeText.rectTransform.offsetMax = new Vector2(-10f, -4f);
 
-            titleText = MakeText(panel, "Title", 40, Color.white, TextAnchor.MiddleLeft, FontStyle.Bold);
+            titleText = MakeText(panel, "Title", 36, Color.white, TextAnchor.MiddleLeft, FontStyle.Bold);
+            titleText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            titleText.verticalOverflow = VerticalWrapMode.Truncate;
+            titleText.resizeTextForBestFit = true;
+            titleText.resizeTextMinSize = 18;
+            titleText.resizeTextMaxSize = 36;
             titleText.rectTransform.anchorMin = new Vector2(0f, 0.42f);
             titleText.rectTransform.anchorMax = new Vector2(1f, 1f);
             titleText.rectTransform.offsetMin = new Vector2(224f, 0f);
-            titleText.rectTransform.offsetMax = new Vector2(-40f, -8f);
+            titleText.rectTransform.offsetMax = new Vector2(-36f, -8f);
             var ts = titleText.gameObject.AddComponent<Shadow>();
             ts.effectColor = new Color(0f, 0f, 0f, 0.55f);
             ts.effectDistance = new Vector2(2f, -2f);
 
             subText = MakeText(panel, "Sub", 17, new Color(0.72f, 0.82f, 0.96f, 1f), TextAnchor.MiddleLeft, FontStyle.Bold);
+            subText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            subText.verticalOverflow = VerticalWrapMode.Truncate;
+            subText.resizeTextForBestFit = true;
+            subText.resizeTextMinSize = 11;
+            subText.resizeTextMaxSize = 17;
             subText.rectTransform.anchorMin = new Vector2(0f, 0f);
             subText.rectTransform.anchorMax = new Vector2(1f, 0f);
-            subText.rectTransform.offsetMin = new Vector2(226f, 16f);
-            subText.rectTransform.offsetMax = new Vector2(-40f, 44f);
+            subText.rectTransform.offsetMin = new Vector2(226f, 12f);
+            subText.rectTransform.offsetMax = new Vector2(-34f, 48f);
 
             // Vệt sáng quét ngang
             var clipGo = new GameObject("ShineClip", typeof(RectTransform), typeof(RectMask2D));
@@ -272,6 +313,8 @@ namespace Game.Billiards.UI
             {
                 switch (sound)
                 {
+                    case PopupSound.None:
+                        break;
                     case PopupSound.BreakPocket:
                         am.PlayPocketDrop();
                         break;

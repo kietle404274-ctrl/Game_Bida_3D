@@ -22,6 +22,7 @@ namespace Game.Billiards.Match
         public PhysicsConfig PhysicsConfig => physicsConfig;
         public TableWrapper TableWrapper => tableWrapper;
         public BallMovementMonitor MovementMonitor => movementMonitor;
+        public int[] LastRackBallNumbers { get; private set; }
 
         public event Action<BallController, int> OnAnyBallPocketed;
 
@@ -174,7 +175,7 @@ namespace Game.Billiards.Match
 
             float radius = physicsConfig.BallRadius;
             float diameter = radius * 2f;
-            float spacing = diameter * 1.002f; // Khoảng đệm vi mô 0.05mm chống va chạm lồng nhau
+            float spacing = diameter * 1.0008f; // Khoảng đệm sát thực tế (~0.045mm) giữa các bi trong khuôn
             float rowSpacing = spacing * 0.8660254f; // spacing * sqrt(3)/2
 
             Vector3 footSpot = tableWrapper.FootSpot;
@@ -191,19 +192,54 @@ namespace Game.Billiards.Match
             int[] rackBallNumbers = (customRackBallNumbers != null && customRackBallNumbers.Length == 15)
                 ? customRackBallNumbers
                 : GenerateWpaRackBallNumbersStatic();
+            LastRackBallNumbers = (int[])rackBallNumbers.Clone();
+
+            // Tạo seed tất định từ thứ tự 15 quả bi để sai số vi mô (±0.08mm) đồng bộ tuyệt đối 100% giữa Master & Client
+            int rackSeed = 17;
+            for (int i = 0; i < rackBallNumbers.Length; i++)
+            {
+                rackSeed = unchecked(rackSeed * 31 + rackBallNumbers[i]);
+            }
+            var rackRng = new System.Random(rackSeed);
+            Vector3[] placedRackPositions = new Vector3[15];
 
             int ballIndex = 0;
             for (int row = 0; row < 5; row++)
             {
                 int countInRow = row + 1;
                 // Đỉnh dàn bi đặt ở footSpot.x, các hàng tiếp theo lùi dần về phía chân bàn (-X)
-                float x = footSpot.x - (row * rowSpacing);
+                float baseX = footSpot.x - (row * rowSpacing);
 
                 for (int k = 0; k < countInRow; k++)
                 {
                     // Các bi trong cùng hàng trải đều theo trục ngang Z (đối xứng qua footSpot.z)
-                    float z = footSpot.z + ((k - (row * 0.5f)) * spacing);
-                    Vector3 ballPos = new Vector3(x, footSpot.y, z);
+                    float baseZ = footSpot.z + ((k - (row * 0.5f)) * spacing);
+
+                    // Sai số tiếp xúc vi mô thực tế (±0.08mm cho các hàng sau đỉnh khuôn) để phá bỏ tính đối xứng gương máy móc
+                    float jitterX = 0f;
+                    float jitterZ = 0f;
+                    if (row > 0)
+                    {
+                        jitterX = ((float)rackRng.NextDouble() * 2f - 1f) * 0.00008f;
+                        jitterZ = ((float)rackRng.NextDouble() * 2f - 1f) * 0.00008f;
+                    }
+
+                    Vector3 ballPos = new Vector3(baseX + jitterX, footSpot.y, baseZ + jitterZ);
+
+                    // Đảm bảo khoảng cách tối thiểu giữa các tâm bi không bao giờ chồng lấn (< diameter * 1.0002f)
+                    float minDist = diameter * 1.0002f;
+                    for (int prev = 0; prev < ballIndex; prev++)
+                    {
+                        Vector3 diff = ballPos - placedRackPositions[prev];
+                        diff.y = 0f;
+                        float dist = diff.magnitude;
+                        if (dist < minDist && dist > 1e-6f)
+                        {
+                            ballPos = placedRackPositions[prev] + (diff / dist) * minDist;
+                            ballPos.y = footSpot.y;
+                        }
+                    }
+                    placedRackPositions[ballIndex] = ballPos;
 
                     int number = rackBallNumbers[ballIndex];
                     if (number >= 1 && number <= 15 && balls[number] != null)

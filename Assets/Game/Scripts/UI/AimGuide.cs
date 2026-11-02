@@ -36,7 +36,7 @@ namespace Game.Billiards.UI
         private Material iceMat;
 
         private const int RingSegments = 40;
-        private readonly List<RaycastHit> hitBuffer = new List<RaycastHit>();
+        private readonly RaycastHit[] sphereCastHits = new RaycastHit[24];
 
         public void Initialize(BallManager bMgr, CameraDirector camDir, PlayerInputController inputCtrl)
         {
@@ -296,36 +296,30 @@ namespace Game.Billiards.UI
                 }
             }
 
-            // 2. Tìm giao điểm đầu tiên với thành băng bàn (bỏ qua các bi, trigger lỗ và mặt nỉ)
+            // 2. Tìm giao điểm đầu tiên với thành băng bàn (bỏ qua các bi, trigger lỗ và mặt nỉ) — Zero-GC với SphereCastNonAlloc
             float bestCushionDist = float.MaxValue;
             Vector3 bestCushionNormal = Vector3.zero;
 
-            RaycastHit[] hits = UnityEngine.Physics.SphereCastAll(origin, radius * 0.98f, dir, maxDistance,
+            int hitCount = UnityEngine.Physics.SphereCastNonAlloc(origin, radius * 0.98f, dir, sphereCastHits, maxDistance,
                 ~0, QueryTriggerInteraction.Ignore);
-            if (hits != null && hits.Length > 0)
+            for (int i = 0; i < hitCount; i++)
             {
-                Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+                var h = sphereCastHits[i];
+                if (h.collider == null) continue;
+                if (h.distance <= 0.0001f || h.distance >= bestCushionDist) continue;
 
-                for (int i = 0; i < hits.Length; i++)
-                {
-                    var h = hits[i];
-                    if (h.collider == null) continue;
+                // Bỏ qua mặt nỉ / sàn (pháp tuyến hướng lên)
+                if (Mathf.Abs(h.normal.y) > 0.6f) continue;
 
-                    // Đã giải giao điểm chính xác 2R cho bi ở bước 1 nên bỏ qua collider của bi tại đây
-                    if (h.collider.GetComponentInParent<BallController>() != null) continue;
+                // Chỉ nhận va chạm khi tia ngắm thực sự lao vào bề mặt (hướng ngược pháp tuyến: dot < 0).
+                // Bỏ qua các bề mặt mở rộng xuôi theo hướng tia ngắm (như má vát mở rộng của lỗ góc).
+                if (Vector3.Dot(dir, h.normal) >= -0.05f) continue;
 
-                    // Bỏ qua mặt nỉ / sàn (pháp tuyến hướng lên)
-                    if (Mathf.Abs(h.normal.y) > 0.6f) continue;
-                    if (h.distance <= 0.0001f) continue;
+                // Đã giải giao điểm chính xác 2R cho bi ở bước 1 nên bỏ qua collider của bi tại đây
+                if (h.collider.GetComponentInParent<BallController>() != null) continue;
 
-                    // Chỉ nhận va chạm khi tia ngắm thực sự lao vào bề mặt (hướng ngược pháp tuyến: dot < 0).
-                    // Bỏ qua các bề mặt mở rộng xuôi theo hướng tia ngắm (như má vát mở rộng của lỗ góc).
-                    if (Vector3.Dot(dir, h.normal) >= -0.05f) continue;
-
-                    bestCushionDist = h.distance;
-                    bestCushionNormal = h.normal;
-                    break;
-                }
+                bestCushionDist = h.distance;
+                bestCushionNormal = h.normal;
             }
 
             // 3. Chọn vật cản gần hơn giữa Bi mục tiêu và Băng bàn

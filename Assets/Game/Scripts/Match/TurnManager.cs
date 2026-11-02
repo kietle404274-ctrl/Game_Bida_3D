@@ -92,21 +92,28 @@ namespace Game.Billiards.Match
 
         private void OnDestroy()
         {
-            if (stateManager != null)
+            try
             {
-                stateManager.OnPhaseChanged -= HandlePhaseChanged;
-                stateManager.OnRackEnded -= HandleRackOrMatchEnded;
-                stateManager.OnMatchWon -= HandleMatchWonCleanup;
+                if (stateManager != null)
+                {
+                    stateManager.OnPhaseChanged -= HandlePhaseChanged;
+                    stateManager.OnRackEnded -= HandleRackOrMatchEnded;
+                    stateManager.OnMatchWon -= HandleMatchWonCleanup;
+                }
+
+                if (shotExecutor != null)
+                    shotExecutor.OnShotExecuted -= HandleShotExecuted;
+
+                if (movementMonitor != null)
+                    movementMonitor.OnAllBallsSettled -= HandleAllBallsSettled;
+
+                if (ballInHandController != null)
+                    ballInHandController.OnBallInHandConfirmed -= HandleBallInHandConfirmed;
             }
-
-            if (shotExecutor != null)
-                shotExecutor.OnShotExecuted -= HandleShotExecuted;
-
-            if (movementMonitor != null)
-                movementMonitor.OnAllBallsSettled -= HandleAllBallsSettled;
-
-            if (ballInHandController != null)
-                ballInHandController.OnBallInHandConfirmed -= HandleBallInHandConfirmed;
+            catch
+            {
+                // Bỏ qua ngoại lệ nếu đối tượng tham chiếu đã bị hủy khi unload scene
+            }
         }
 
         private void HandleMatchWonCleanup(int winnerIndex)
@@ -146,6 +153,16 @@ namespace Game.Billiards.Match
 
         private void HandlePhaseChanged(MatchPhase phase)
         {
+            if (phase == MatchPhase.Aiming || phase == MatchPhase.BallInHand || phase == MatchPhase.BreakSetup)
+            {
+                EightBallPocketPredictor.ClearPrediction();
+                var camDir = FindObjectOfType<Camera.CameraDirector>();
+                if (camDir != null)
+                {
+                    camDir.ClearPocketCameraLock();
+                }
+            }
+
             if (phase == MatchPhase.Aiming)
             {
                 StartShotTimer();
@@ -311,8 +328,8 @@ namespace Game.Billiards.Match
 
                 if (ballInHandController != null)
                 {
-                    bool headStringOnly = (result.foul == FoulType.IllegalBreak || (isBreakShot && result.foul == FoulType.CueBallScratch));
-                    ballInHandController.EnterBallInHand(headStringOnly);
+                    // Mọi lỗi phạm phải (kể cả rơi bi cái hoặc lỗi khai cuộc) đều cấp quyền đặt bi tự do toàn bàn cho đối thủ
+                    ballInHandController.EnterBallInHand(false);
                 }
                 return;
             }

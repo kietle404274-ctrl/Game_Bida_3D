@@ -22,13 +22,16 @@ namespace Game.Billiards.Input
         [Tooltip("Bước tăng giảm lực khi lăn con lăn chuột")]
         [SerializeField] private float powerScrollStep = 0.05f;
 
-        [Tooltip("Lực bắn mặc định khi mới vào lượt (0..1)")]
+        [Tooltip("Lực bắn mặc định khi mới vào lượt thường (0..1)")]
         [SerializeField] private float resetPower01 = 0.25f;
+
+        [Tooltip("Lực bắn mặc định khi vào lượt phá bi đầu ván (0..1)")]
+        [SerializeField] private float breakResetPower01 = 0.85f;
 
         [Tooltip("Lực bắn tối thiểu để có thể phát bóng")]
         [SerializeField] private float minPower01 = 0.05f;
 
-        private float currentPower01 = 0.35f;
+        private float currentPower01 = 0.85f;
         private Vector2 cueContact01 = Vector2.zero;
         private int calledBallNumber = -1;
         private int calledPocketId = -1;
@@ -43,6 +46,9 @@ namespace Game.Billiards.Input
         public int CalledBallNumber => calledBallNumber;
         public int CalledPocketId => calledPocketId;
         public bool CalledSafety => calledSafety;
+        public CueController CueController => cueController;
+        public CameraDirector CameraDirector => cameraDirector;
+        public BallMovementMonitor MovementMonitor => movementMonitor;
         public bool IsAimingAllowed => isTurnActive && !isShotInProgress && !IsOpponentTurn() &&
                                        (ballInHandController == null || !ballInHandController.IsActive) &&
                                        (movementMonitor == null || movementMonitor.AreAllBallsResting);
@@ -63,7 +69,11 @@ namespace Game.Billiards.Input
             if (session != null && session.CurrentGameMode == GameMode.OnlinePvP)
             {
                 if (networkMatchManager == null) networkMatchManager = FindObjectOfType<Network.NetworkMatchManager>();
-                return networkMatchManager != null && networkMatchManager.IsOnlineMatch && cur != networkMatchManager.LocalPlayerIndex;
+                if (networkMatchManager != null && networkMatchManager.IsOnlineMatch)
+                {
+                    return cur != networkMatchManager.LocalPlayerIndex;
+                }
+                return cur != (session.IsOnlineMaster ? 0 : 1);
             }
 
             if (session != null && session.CurrentGameMode == GameMode.LocalPractice) return false;
@@ -71,13 +81,17 @@ namespace Game.Billiards.Input
             return players[cur].isAI;
         }
 
+        private bool isBreakPlacementConfirmed = false;
+        public bool IsBreakPlacementConfirmed => isBreakPlacementConfirmed;
+
         public event Action<float> OnPowerChanged;
         public event Action<ShotCommand> OnShotInitiated;
         public event Action<int, int, bool> OnCallShotChanged; // (ball, pocket, isSafety)
+        public event Action OnBreakPlacementConfirmed;
 
         private void Start()
         {
-            currentPower01 = resetPower01;
+            currentPower01 = IsBreakTurn() ? breakResetPower01 : resetPower01;
             isTurnActive = true;
             isShotInProgress = false;
 
@@ -188,16 +202,44 @@ namespace Game.Billiards.Input
             }
         }
 
+        private bool IsBreakTurn()
+        {
+            if (matchStateManager == null || matchStateManager.State == null)
+                return true;
+            return matchStateManager.State.turnSequence == 0 || matchStateManager.CurrentPhase == MatchPhase.BreakSetup;
+        }
+
         /// <summary>
         /// Ván mới bắt đầu: reset cờ trạng thái bắn, đồng bộ lượt, camera và đặt lại cây cơ sau bi cái để phá bi.
         /// </summary>
         private void HandleRackStarted()
         {
             isShotInProgress = false;
-            currentPower01 = resetPower01;
+            isBreakPlacementConfirmed = false;
+            currentPower01 = breakResetPower01;
+            cueContact01 = Vector2.zero;
             calledBallNumber = -1;
             calledPocketId = -1;
             calledSafety = false;
+
+            if (contactSelector != null)
+            {
+                contactSelector.SetOpen(false);
+                contactSelector.ResetToCenter();
+            }
+            if (UI.CueElevationSelector.Instance != null)
+            {
+                UI.CueElevationSelector.Instance.SetOpen(false);
+                UI.CueElevationSelector.Instance.SetAngle(0f);
+            }
+            if (cueController != null)
+            {
+                cueController.SetElevation(0f);
+            }
+            if (VFX.VFXManager.Instance != null)
+            {
+                VFX.VFXManager.Instance.SetPocketCallMarker(Vector3.zero, false);
+            }
 
             HandleTurnChanged(matchStateManager != null ? matchStateManager.CurrentPlayerIndex : 0);
 
@@ -229,7 +271,7 @@ namespace Game.Billiards.Input
 
         private void ResetPowerToDefault()
         {
-            currentPower01 = resetPower01;
+            currentPower01 = IsBreakTurn() ? breakResetPower01 : resetPower01;
             OnPowerChanged?.Invoke(currentPower01);
         }
 
@@ -243,6 +285,10 @@ namespace Game.Billiards.Input
         private void HandleTurnChanged(int newPlayerIndex)
         {
             isShotInProgress = false;
+            if (IsBreakTurn())
+            {
+                isBreakPlacementConfirmed = false;
+            }
             ResetPowerToDefault();
             ResetCueContact();
             if (matchStateManager == null || matchStateManager.State == null) return;
@@ -289,7 +335,11 @@ namespace Game.Billiards.Input
             {
                 isShotInProgress = false;
             }
-            if (cueController != null)
+            else if (ballInHandController != null)
+            {
+                ballInHandController.SetBreakPlacementVisuals(false);
+            }
+            if (cueController != null && !Match.LagForBreakController.IsRunning)
             {
                 cueController.SetAimingState(IsAimingAllowed);
             }
@@ -343,6 +393,8 @@ namespace Game.Billiards.Input
 
         private void LateUpdate()
         {
+            if (Match.LagForBreakController.IsRunning) return;
+
             // Chốt chặn: lượt đối thủ nhưng chưa tới pha ngắm (đang xử lý lỗi / đối thủ đặt bi)
             // thì cây cơ của người chơi phải ẩn hẳn. AI chỉ tự hiện cơ khi đã vào pha Aiming/BreakSetup.
             if (cueController == null || !cueController.IsVisible || cueController.IsStriking) return;
@@ -358,6 +410,21 @@ namespace Game.Billiards.Input
 
         private void Update()
         {
+            if (Match.LagForBreakController.IsRunning) return;
+
+            if (ballInHandController != null)
+            {
+                bool showBreakArrows = IsAimingAllowed
+                    && IsBreakTurn()
+                    && !isBreakPlacementConfirmed
+                    && !ballInHandController.IsActive
+                    && (contactSelector == null || !contactSelector.IsOpen)
+                    && !UI.HudModalState.IsModalOpen
+                    && !UI.OnlineChatUI.IsChatOpen
+                    && !UI.OnlineChatUI.IsTyping;
+                ballInHandController.SetBreakPlacementVisuals(showBreakArrows);
+            }
+
             if (!IsAimingAllowed) return;
 
             // Popup chọn điểm cơ đang mở (phím J): giữ nguyên cây cơ, chỉ chọn điểm rồi nhấn Enter
@@ -375,9 +442,48 @@ namespace Game.Billiards.Input
                 cameraDirector.ToggleCloseAim();
             }
 
+            HandleBreakKitchenPlacement();
             HandleAimRotation();
             HandlePowerAdjustment();
             HandleShootInput();
+        }
+
+        /// <summary>
+        /// Ở lượt khai cuộc (Break Shot), cho phép cơ thủ dùng phím W/A/S/D hoặc phím mũi tên
+        /// để dịch chuyển bi cái trong vùng Bếp (phía sau Head String), sau đó nhấn Enter để chốt vị trí.
+        /// Khi đã nhấn Enter chốt vị trí, bi cái được khóa cố định, ẩn 4 mũi tên và ẩn thông báo đặt bi.
+        /// </summary>
+        private void HandleBreakKitchenPlacement()
+        {
+            if (!IsBreakTurn() || isBreakPlacementConfirmed || ballInHandController == null || ballInHandController.IsActive)
+                return;
+
+            // Nhấn Enter để chốt vị trí bi phá: khóa di chuyển W/A/S/D, ẩn 4 mũi tên và ẩn thông báo nhắc nhở
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Return) || UnityEngine.Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                isBreakPlacementConfirmed = true;
+                ballInHandController.ConfirmBreakKitchenPlacement();
+                OnBreakPlacementConfirmed?.Invoke();
+                return;
+            }
+
+            float h = 0f;
+            float v = 0f;
+            if (UnityEngine.Input.GetKey(KeyCode.W) || UnityEngine.Input.GetKey(KeyCode.UpArrow)) v += 1f;
+            if (UnityEngine.Input.GetKey(KeyCode.S) || UnityEngine.Input.GetKey(KeyCode.DownArrow)) v -= 1f;
+            if (UnityEngine.Input.GetKey(KeyCode.A) || UnityEngine.Input.GetKey(KeyCode.LeftArrow)) h -= 1f;
+            if (UnityEngine.Input.GetKey(KeyCode.D) || UnityEngine.Input.GetKey(KeyCode.RightArrow)) h += 1f;
+
+            if (Mathf.Abs(h) > 0.01f || Mathf.Abs(v) > 0.01f)
+            {
+                if (ballInHandController.TranslateCueBallInKitchen(h, v, Time.deltaTime))
+                {
+                    if (cueController != null && cameraDirector != null)
+                    {
+                        cueController.UpdateAim(cameraDirector.AimDirection, currentPower01);
+                    }
+                }
+            }
         }
 
         private void HandleAimRotation()
@@ -441,6 +547,9 @@ namespace Game.Billiards.Input
 
         private void HandleShootInput()
         {
+            // Ở lượt phá bi, người chơi cần nhấn Enter để chốt vị trí đặt bi trước khi nhấp chuột trái thực hiện cú đánh
+            if (IsBreakTurn() && !isBreakPlacementConfirmed) return;
+
             // Click chuột trái để bắn
             if (UnityEngine.Input.GetMouseButtonDown(0) && !UI.CueBallSpinWidgetUI.IsHovered)
             {
@@ -464,6 +573,10 @@ namespace Game.Billiards.Input
         private void ExecutePlayerShot()
         {
             isShotInProgress = true;
+            if (ballInHandController != null)
+            {
+                ballInHandController.SetBreakPlacementVisuals(false);
+            }
 
             var elevationSelector = UI.CueElevationSelector.Instance;
             float elevationDeg = elevationSelector != null ? elevationSelector.CurrentAngleDeg : 0f;
@@ -480,11 +593,16 @@ namespace Game.Billiards.Input
             );
 
             // Góc nâng cơ chỉ có hiệu lực cho 1 cú đánh: reset về 0° cho lượt sau (sau khi hoạt ảnh đánh đã bắt đầu để cơ không bị hạ xuống giữa chừng)
+            if (cameraDirector != null)
+            {
+                cameraDirector.TryActivatePredictedEightBallPocketCamera(command);
+            }
 
             OnShotInitiated?.Invoke(command);
 
             var session = Core.GameSession.Instance;
-            bool isOnlineClient = (session != null && session.CurrentGameMode == Core.GameMode.OnlinePvP && !Photon.Pun.PhotonNetwork.IsMasterClient);
+            bool isOnlineClient = (Photon.Pun.PhotonNetwork.InRoom && !Photon.Pun.PhotonNetwork.IsMasterClient) ||
+                                  (session != null && session.CurrentGameMode == Core.GameMode.OnlinePvP && !session.IsOnlineMaster);
 
             if (isOnlineClient)
             {
