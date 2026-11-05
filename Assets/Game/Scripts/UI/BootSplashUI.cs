@@ -117,11 +117,11 @@ namespace Game.Billiards.UI
             ballRing.rectTransform.anchorMin = ballRing.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
             ballRing.rectTransform.sizeDelta = new Vector2(170f, 170f);
 
-            Text t1 = LoadingUiKit.NewText(root, "Title1", "8-BALL", 124, Gold, TextAnchor.MiddleLeft, FontStyle.Bold);
-            PlaceLeft(t1.rectTransform, new Vector2(150f, 100f), new Vector2(1000f, 140f));
+            Text t1 = LoadingUiKit.NewText(root, "Title1", Vi ? "CƠ THỦ ĐẠI CHIẾN" : "CUE CLASH 3D", 84, Gold, TextAnchor.MiddleLeft, FontStyle.Bold);
+            PlaceLeft(t1.rectTransform, new Vector2(150f, 100f), new Vector2(1200f, 140f));
             t1.gameObject.AddComponent<Shadow>().effectDistance = new Vector2(4f, -4f);
 
-            Text t2 = LoadingUiKit.NewText(root, "Title2", "BILLIARDS 3D", 60, Color.white, TextAnchor.MiddleLeft, FontStyle.Bold);
+            Text t2 = LoadingUiKit.NewText(root, "Title2", Vi ? "ĐẤU TRƯỜNG BIDA 8 BI 3D" : "8-BALL BILLIARDS ARENA", 46, Color.white, TextAnchor.MiddleLeft, FontStyle.Bold);
             PlaceLeft(t2.rectTransform, new Vector2(156f, 0f), new Vector2(1000f, 80f));
             t2.gameObject.AddComponent<Shadow>().effectDistance = new Vector2(3f, -3f);
 

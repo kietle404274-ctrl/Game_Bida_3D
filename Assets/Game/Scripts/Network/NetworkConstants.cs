@@ -50,6 +50,7 @@ namespace Game.Billiards.Network
         public const byte EVENT_LAG_AIM_SYNC = 119;       // Đồng bộ hướng cơ thời gian thực trong pha Đua Băng (SendUnreliable)
         public const byte EVENT_LAG_SHOT_LOCK = 120;      // Chốt cú đánh Đua Băng (hướng + lực) để 2 bi xuất phát cùng lúc (SendReliable)
         public const byte EVENT_LAG_RESULT = 121;         // Master -> Client: Kết quả chấm điểm Đua Băng authoritative (SendReliable)
+        public const byte EVENT_EMOJI_REACTION = 122;     // Đồng bộ thả Emoji động thời gian thực trong trận Online (SendReliable)
 
         // Helper sinh mã phòng ngẫu nhiên (VD: "POOL-8821")
         public static string GenerateRoomId()

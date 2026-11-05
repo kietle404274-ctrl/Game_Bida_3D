@@ -76,6 +76,7 @@ namespace Game.Billiards.UI
             EnsureProfileSettings();
             SetupDropdowns();
             EnsureAimGuideToggle();
+            EnsureRulesModalTabs();
             StyleModals();
             SetupTableSelectorForModals();
             SetupOnlineConfigPopup();
@@ -159,9 +160,9 @@ namespace Game.Billiards.UI
             {
                 if (b == null) continue;
 
-                if (b == diffEasyButton || b == diffNormalButton || b == diffHardButton || b.GetComponentInParent<MusicTrackCarouselUI>() != null || b.gameObject.name == "SelectedTableBox" || b.gameObject.name == "TabWheel" || b.gameObject.name == "TabLag")
+                if (b == diffEasyButton || b == diffNormalButton || b == diffHardButton || b.GetComponentInParent<MusicTrackCarouselUI>() != null || b.gameObject.name == "SelectedTableBox" || b.gameObject.name == "TabWheel" || b.gameObject.name == "TabLag" || (b.transform.parent != null && b.transform.parent.name == "TabsBar"))
                 {
-                    continue; // thẻ độ khó / nút mũi tên chọn nhạc / tab chọn chế độ phá bi tự xử lý màu selected & hover
+                    continue; // thẻ độ khó / nút mũi tên chọn nhạc / tab chọn chế độ phá bi / tab luật chơi tự xử lý màu selected & hover
                 }
 
                 if (b == quitGameButton || b == quitConfirmYesButton)
@@ -1235,10 +1236,21 @@ namespace Game.Billiards.UI
 
         private void RefreshAllLocalizedTexts()
         {
-            // Menu chính
+            // Menu chính & Tiêu đề Game trên HeaderPanel
             if (playVsAIButton != null && playVsAIButton.transform.parent != null && playVsAIButton.transform.parent.parent != null)
             {
-                SetChildText(playVsAIButton.transform.parent.parent, "MenuHeader", LocalizationManager.Get("menu_header"));
+                Transform menuCard = playVsAIButton.transform.parent.parent;
+                SetChildText(menuCard, "MenuHeader", LocalizationManager.Get("menu_header"));
+                Transform canvasRoot = menuCard.parent;
+                if (canvasRoot != null)
+                {
+                    Transform headerPanel = canvasRoot.Find("HeaderPanel");
+                    if (headerPanel != null)
+                    {
+                        SetChildText(headerPanel, "TitleText", LocalizationManager.Get("game_title"));
+                        SetChildText(headerPanel, "SubTitleText", LocalizationManager.Get("game_subtitle"));
+                    }
+                }
             }
             SetButtonText(playVsAIButton, LocalizationManager.Get("menu_play_ai"));
             SetButtonText(playOnlineButton, LocalizationManager.Get("menu_play_online"));
@@ -1319,13 +1331,8 @@ namespace Game.Billiards.UI
             if (rulesModalRoot != null)
             {
                 SetChildText(rulesModalRoot.transform, "Title", LocalizationManager.Get("rules_title"));
-                string fullRules =
-                    $"<b>{LocalizationManager.Get("rules_tab_1_title")}</b>\n{LocalizationManager.Get("rules_tab_1_desc")}\n\n" +
-                    $"<b>{LocalizationManager.Get("rules_tab_2_title")}</b>\n{LocalizationManager.Get("rules_tab_2_desc")}\n\n" +
-                    $"<b>{LocalizationManager.Get("rules_tab_3_title")}</b>\n{LocalizationManager.Get("rules_tab_3_desc")}\n\n" +
-                    $"<b>{LocalizationManager.Get("rules_tab_4_title")}</b>\n{LocalizationManager.Get("rules_tab_4_desc")}";
-                SetChildText(rulesModalRoot.transform, "RulesBody", fullRules);
                 SetButtonText(closeRulesModalButton, LocalizationManager.Get("rules_close_btn"));
+                RefreshRulesModalTabsLocalized();
             }
 
             // Cập nhật Difficulty Cards nếu đã tạo
@@ -1492,7 +1499,270 @@ namespace Game.Billiards.UI
         public void ShowRulesModal()
         {
             HideAllModals();
-            if (rulesModalRoot != null) rulesModalRoot.SetActive(true);
+            if (rulesModalRoot != null)
+            {
+                rulesModalRoot.SetActive(true);
+                ShowRulesTab(currentRulesTabIndex);
+            }
+        }
+
+        private readonly Button[] rulesTabButtons = new Button[5];
+        private Text rulesHeadTitleText;
+        private Text rulesBodyContentText;
+        private int currentRulesTabIndex;
+
+        /// <summary>
+        /// Nâng cấp bảng Luật Thi Đấu ở sảnh thành giao diện 5 Tab (Khai Cuộc, Bàn Mở, Phạm Quy, Bi Số 8, Thắng/Thua)
+        /// đồng bộ 100% với bảng RulesUI trong trận đấu.
+        /// </summary>
+        private void EnsureRulesModalTabs()
+        {
+            if (rulesModalRoot == null) return;
+
+            RectTransform modalRt = rulesModalRoot.GetComponent<RectTransform>();
+            if (modalRt != null)
+            {
+                modalRt.sizeDelta = new Vector2(820f, 600f);
+            }
+
+            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+            Transform titleTr = rulesModalRoot.transform.Find("Title");
+            if (titleTr is RectTransform titleRt)
+            {
+                titleRt.anchorMin = titleRt.anchorMax = new Vector2(0.5f, 0.5f);
+                titleRt.pivot = new Vector2(0.5f, 0.5f);
+                titleRt.anchoredPosition = new Vector2(0f, 250f);
+                titleRt.sizeDelta = new Vector2(760f, 40f);
+            }
+
+            // Tạo hoặc lấy thanh TabsBar chứa 5 nút Tab kiểu HUD
+            Transform tabsBarTr = rulesModalRoot.transform.Find("TabsBar");
+            if (tabsBarTr == null)
+            {
+                GameObject tabsBarGo = new GameObject("TabsBar", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+                tabsBarGo.layer = rulesModalRoot.layer;
+                tabsBarGo.transform.SetParent(rulesModalRoot.transform, false);
+                tabsBarTr = tabsBarGo.transform;
+
+                RectTransform tabRt = tabsBarGo.GetComponent<RectTransform>();
+                tabRt.anchorMin = tabRt.anchorMax = new Vector2(0.5f, 0.5f);
+                tabRt.pivot = new Vector2(0.5f, 0.5f);
+                tabRt.anchoredPosition = new Vector2(0f, 195f);
+                tabRt.sizeDelta = new Vector2(760f, 40f);
+
+                HorizontalLayoutGroup tabHz = tabsBarGo.GetComponent<HorizontalLayoutGroup>();
+                tabHz.spacing = 8f;
+                tabHz.childAlignment = TextAnchor.MiddleCenter;
+                tabHz.childControlWidth = true;
+                tabHz.childControlHeight = true;
+                tabHz.childForceExpandWidth = true;
+                tabHz.childForceExpandHeight = true;
+            }
+
+            string[] tabNames = { "TabBreak", "TabOpen", "TabFoul", "TabEight", "TabWinLose" };
+            string[] tabKeys = { "rules_tab_1_btn", "rules_tab_2_btn", "rules_tab_3_btn", "rules_tab_4_btn", "rules_tab_5_btn" };
+
+            for (int i = 0; i < 5; i++)
+            {
+                Transform existingTab = tabsBarTr.Find(tabNames[i]);
+                Button tabBtn = existingTab != null
+                    ? existingTab.GetComponent<Button>()
+                    : CreateRulesTabHudButton(tabsBarTr, tabNames[i], LocalizationManager.Get(tabKeys[i]), font);
+
+                rulesTabButtons[i] = tabBtn;
+                int capturedIndex = i;
+                tabBtn.onClick.RemoveAllListeners();
+                tabBtn.onClick.AddListener(() => ShowRulesTab(capturedIndex));
+            }
+
+            if (tabsBarTr is RectTransform tbRt)
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(tbRt);
+            }
+
+            // Tiêu đề chi tiết mục đang chọn (RuleHeadText)
+            Transform headTr = rulesModalRoot.transform.Find("RuleHeadText");
+            if (headTr == null)
+            {
+                GameObject headGo = new GameObject("RuleHeadText", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+                headGo.layer = rulesModalRoot.layer;
+                headGo.transform.SetParent(rulesModalRoot.transform, false);
+                headTr = headGo.transform;
+            }
+            RectTransform headRt = headTr.GetComponent<RectTransform>();
+            headRt.anchorMin = headRt.anchorMax = new Vector2(0.5f, 0.5f);
+            headRt.pivot = new Vector2(0.5f, 0.5f);
+            headRt.anchoredPosition = new Vector2(0f, 140f);
+            headRt.sizeDelta = new Vector2(760f, 30f);
+
+            rulesHeadTitleText = headTr.GetComponent<Text>();
+            rulesHeadTitleText.font = font;
+            rulesHeadTitleText.fontSize = 18;
+            rulesHeadTitleText.fontStyle = FontStyle.Bold;
+            rulesHeadTitleText.alignment = TextAnchor.MiddleLeft;
+            rulesHeadTitleText.color = new Color(0.13f, 0.83f, 0.93f, 1f);
+            rulesHeadTitleText.raycastTarget = false;
+
+            // Nội dung chi tiết điều luật (RulesBody / RuleBodyText)
+            Transform bodyTr = rulesModalRoot.transform.Find("RulesBody") ?? rulesModalRoot.transform.Find("RuleBodyText");
+            if (bodyTr == null)
+            {
+                GameObject bodyGo = new GameObject("RulesBody", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+                bodyGo.layer = rulesModalRoot.layer;
+                bodyGo.transform.SetParent(rulesModalRoot.transform, false);
+                bodyTr = bodyGo.transform;
+            }
+            RectTransform bodyRt = bodyTr.GetComponent<RectTransform>();
+            bodyRt.anchorMin = bodyRt.anchorMax = new Vector2(0.5f, 0.5f);
+            bodyRt.pivot = new Vector2(0.5f, 0.5f);
+            bodyRt.anchoredPosition = new Vector2(-4f, -26f);
+            bodyRt.sizeDelta = new Vector2(690f, 270f);
+
+            rulesBodyContentText = bodyTr.GetComponent<Text>();
+            if (rulesBodyContentText.font == null) rulesBodyContentText.font = font;
+            rulesBodyContentText.fontSize = 15;
+            rulesBodyContentText.fontStyle = FontStyle.Normal;
+            rulesBodyContentText.alignment = TextAnchor.UpperLeft;
+            rulesBodyContentText.color = Color.white;
+            rulesBodyContentText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            rulesBodyContentText.verticalOverflow = VerticalWrapMode.Overflow;
+            rulesBodyContentText.lineSpacing = 1.35f;
+            rulesBodyContentText.supportRichText = true;
+            rulesBodyContentText.raycastTarget = false;
+
+            if (closeRulesModalButton != null)
+            {
+                RectTransform closeRt = closeRulesModalButton.GetComponent<RectTransform>();
+                if (closeRt != null)
+                {
+                    closeRt.anchorMin = closeRt.anchorMax = new Vector2(0.5f, 0.5f);
+                    closeRt.pivot = new Vector2(0.5f, 0.5f);
+                    closeRt.anchoredPosition = new Vector2(0f, -235f);
+                    closeRt.sizeDelta = new Vector2(380f, 44f);
+                }
+            }
+
+            ShowRulesTab(0);
+        }
+
+        private static Button CreateRulesTabHudButton(Transform parent, string name, string label, Font font)
+        {
+            const float s = 12f;
+            const float w = 140f;
+            const float h = 38f;
+            Color frameColor = new Color(0.42f, 0.56f, 0.74f, 1f);
+
+            GameObject go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(SkewedPanelGraphic), typeof(Button), typeof(LayoutElement));
+            go.layer = parent.gameObject.layer;
+            go.transform.SetParent(parent, false);
+            go.GetComponent<RectTransform>().sizeDelta = new Vector2(w, h);
+
+            LayoutElement le = go.GetComponent<LayoutElement>();
+            le.preferredWidth = w;
+            le.preferredHeight = h;
+
+            SkewedPanelGraphic g = go.GetComponent<SkewedPanelGraphic>();
+            g.color = new Color(0.16f, 0.27f, 0.44f, 0.96f);
+            g.raycastTarget = true;
+            g.SetInsets(0f, s, s, 0f);
+            g.SetBottomDarken(0.5f);
+
+            Button btn = go.GetComponent<Button>();
+            btn.targetGraphic = g;
+            ColorBlock cb = btn.colors;
+            cb.normalColor = new Color(0.82f, 0.86f, 0.92f, 1f);
+            cb.highlightedColor = Color.white;
+            cb.pressedColor = new Color(0.60f, 0.66f, 0.76f, 1f);
+            cb.selectedColor = cb.normalColor;
+            cb.disabledColor = new Color(0.4f, 0.4f, 0.4f, 0.6f);
+            cb.fadeDuration = 0.08f;
+            btn.colors = cb;
+
+            GameObject frameGo = new GameObject("Frame", typeof(RectTransform), typeof(CanvasRenderer), typeof(BorderProgressGraphic));
+            frameGo.layer = go.layer;
+            frameGo.transform.SetParent(go.transform, false);
+            RectTransform fr = frameGo.GetComponent<RectTransform>();
+            fr.anchorMin = Vector2.zero;
+            fr.anchorMax = Vector2.one;
+            fr.offsetMin = Vector2.zero;
+            fr.offsetMax = Vector2.zero;
+            BorderProgressGraphic bpg = frameGo.GetComponent<BorderProgressGraphic>();
+            bpg.raycastTarget = false;
+            bpg.SetInsets(0f, s, s, 0f);
+            bpg.SetBaseColor(frameColor);
+
+            float tStrip = 3f / h;
+            GameObject stripGo = new GameObject("AccentBottom", typeof(RectTransform), typeof(CanvasRenderer), typeof(SkewedPanelGraphic));
+            stripGo.layer = go.layer;
+            stripGo.transform.SetParent(go.transform, false);
+            RectTransform sr = stripGo.GetComponent<RectTransform>();
+            sr.anchorMin = new Vector2(0f, 0f);
+            sr.anchorMax = new Vector2(1f, 0f);
+            sr.pivot = new Vector2(0.5f, 0f);
+            sr.anchoredPosition = Vector2.zero;
+            sr.sizeDelta = new Vector2(0f, 3f);
+            SkewedPanelGraphic sg = stripGo.GetComponent<SkewedPanelGraphic>();
+            sg.raycastTarget = false;
+            sg.color = new Color(frameColor.r, frameColor.g, frameColor.b, 0.55f);
+            sg.SetInsets(Mathf.Lerp(s, 0f, tStrip), Mathf.Lerp(0f, s, tStrip), s, 0f);
+
+            GameObject lblGo = new GameObject("Label", typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+            lblGo.layer = go.layer;
+            lblGo.transform.SetParent(go.transform, false);
+            RectTransform lr = lblGo.GetComponent<RectTransform>();
+            lr.anchorMin = Vector2.zero;
+            lr.anchorMax = Vector2.one;
+            lr.offsetMin = Vector2.zero;
+            lr.offsetMax = Vector2.zero;
+            Text txt = lblGo.GetComponent<Text>();
+            txt.font = font;
+            txt.text = label;
+            txt.fontSize = 13;
+            txt.fontStyle = FontStyle.Bold;
+            txt.alignment = TextAnchor.MiddleCenter;
+            txt.color = Color.white;
+            txt.raycastTarget = false;
+
+            return btn;
+        }
+
+        private void RefreshRulesModalTabsLocalized()
+        {
+            if (rulesModalRoot == null) return;
+
+            Transform headTr = rulesModalRoot.transform.Find("RuleHeadText");
+            if (headTr != null && headTr.GetComponent<Text>() != null)
+            {
+                // Giữ đồng bộ với RulesUI trong trận
+            }
+
+            SetButtonText(rulesTabButtons[0], LocalizationManager.Get("rules_tab_1_btn"));
+            SetButtonText(rulesTabButtons[1], LocalizationManager.Get("rules_tab_2_btn"));
+            SetButtonText(rulesTabButtons[2], LocalizationManager.Get("rules_tab_3_btn"));
+            SetButtonText(rulesTabButtons[3], LocalizationManager.Get("rules_tab_4_btn"));
+            SetButtonText(rulesTabButtons[4], LocalizationManager.Get("rules_tab_5_btn"));
+
+            ShowRulesTab(currentRulesTabIndex);
+        }
+
+        public void ShowRulesTab(int tabIndex)
+        {
+            currentRulesTabIndex = Mathf.Clamp(tabIndex, 0, 4);
+
+            for (int i = 0; i < rulesTabButtons.Length; i++)
+            {
+                if (rulesTabButtons[i] == null) continue;
+                var fx = rulesTabButtons[i].GetComponent<UIHoverEffect>();
+                if (fx == null) fx = UIHoverEffect.Attach(rulesTabButtons[i].gameObject, true, null, null, 0f, 1.05f);
+                fx.SetSelected(i == currentRulesTabIndex);
+            }
+
+            string titleKey = $"rules_tab_{currentRulesTabIndex + 1}_title";
+            string descKey = $"rules_tab_{currentRulesTabIndex + 1}_desc";
+
+            if (rulesHeadTitleText != null) rulesHeadTitleText.text = LocalizationManager.Get(titleKey);
+            if (rulesBodyContentText != null) rulesBodyContentText.text = LocalizationManager.Get(descKey);
         }
 
         public void ShowQuitModal()

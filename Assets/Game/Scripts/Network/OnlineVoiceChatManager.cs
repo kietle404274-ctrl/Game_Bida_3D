@@ -31,21 +31,21 @@ namespace Game.Billiards.Network
         private const int MicClipLengthSec = 2;
         private const int RingBufferCapacity = NetworkSampleRate * 4; // 4 giây bộ đệm vòng
         private const int JitterStartThreshold = 600; // Đệm 75ms trước khi bắt đầu phát câu nói mới để giảm độ trễ và chống hụt mẫu
-        private const int MaxStarvationSamples = 320; // Cho phép thiếu mẫu tối đa 40ms trước khi quay lại trạng thái chờ đệm
+        private const int MaxStarvationSamples = 1600; // Cho phép chờ mạng trễ tới 200ms giữa câu nói mà không ngắt phát
         private const int MaxLatencySamples = NetworkSampleRate; // Tối đa 1 giây trễ trước khi tua kịp thời gian thực
 
-        // Ngưỡng nhận diện giọng người & Khử tạp âm chuẩn hóa từ đo đạc thực tế trên Microphone Array (Realtek):
-        // - Tiếng quạt tĩnh thực tế: VoiceRMS = 0.0016 .. 0.0023 -> đặt BaseVadRmsThreshold = 0.0045f (chặn 100% quạt)
-        // - Giọng nói thực tế: VoiceRMS = 0.0350 .. 0.1650 -> đặt TargetSpeechRms = 0.45f, AGC = 1.20x .. 9.00x + PreAmp 2.60x (khuếch đại cực rõ x4)
-        private const float BaseVadRmsThreshold = 0.0045f;
-        private const float TargetSpeechRms = 0.45f;
-        private const float MinAgcGain = 1.20f;
-        private const float MaxAgcGain = 9.00f;
-        private const float DefaultAgcGain = 4.20f;
-        private const float MicPreAmpBoost = 2.60f;
-        private const float VadHangoverDuration = 0.08f;
-        private const float EchoGuardDuration = 0.55f;
-        private const float PostSpeechEchoCooldown = 0.65f;
+        // Chuẩn hóa dải động & độ lợi giọng nói (Tránh tuyệt đối hiện tượng khuếch đại quá mức gây rè / vỡ tiếng):
+        // - TargetSpeechRms = 0.18f giữ đỉnh sóng giọng nói tự nhiên ở vùng 0.55f .. 0.80f (không bao giờ chạm trần ±1.0f)
+        // - VadHangoverDuration = 0.52f giữ cổng truyền mở liên tục qua mọi phụ âm và nhịp lấy hơi trong câu nói dài
+        private const float BaseVadRmsThreshold = 0.0038f;
+        private const float TargetSpeechRms = 0.18f;
+        private const float MinAgcGain = 0.85f;
+        private const float MaxAgcGain = 4.20f;
+        private const float DefaultAgcGain = 1.85f;
+        private const float MicPreAmpBoost = 1.00f;
+        private const float VadHangoverDuration = 0.52f;
+        private const float EchoGuardDuration = 0.18f;
+        private const float PostSpeechEchoCooldown = 0.12f;
         private const int SubFrameSamples = 40; // 5ms @ 8000 Hz (10 khung con trong mỗi gói 50ms)
         private const int NoiseHistorySize = 16; // Cửa sổ trượt 800ms theo dõi nền tiếng quạt tĩnh
         private const int MuLawBias = 0x84;
@@ -125,6 +125,9 @@ namespace Game.Billiards.Network
         private int outputSampleRate = 48000;
         private volatile float threadOutputGain = 1.15f;
         private volatile bool threadSpeakerActive = true;
+        private volatile bool tailDrainReady = false;
+        private float reconLp1;
+        private float reconLp2;
 
         private float lastPacketReceiveTime = -10f;
         private float vadHangoverUntil = -10f;
@@ -386,7 +389,7 @@ namespace Game.Billiards.Network
             bool online = IsOnlineVoiceActive();
             float effectiveMaster = Mathf.Max(master, 0.72f);
             threadSpeakerActive = online && isSpeakerEnabled && speakerVolume > 0.001f;
-            threadOutputGain = threadSpeakerActive ? Mathf.Clamp(effectiveMaster * speakerVolume * 3.00f, 0f, 3.40f) : 0f;
+            threadOutputGain = threadSpeakerActive ? Mathf.Clamp(effectiveMaster * speakerVolume * 1.25f, 0f, 1.35f) : 0f;
 
             if (playbackSource != null)
             {
@@ -473,8 +476,16 @@ namespace Game.Billiards.Network
                 BroadcastLocalVoiceState();
             }
 
-            // Nếu loa đang phát giọng của đối thủ, gia hạn Echo Guard để Microphone không bao giờ thu ngược tiếng loa gây lặp vòng lặp
-            if (!jitterBuffering && threadSpeakerActive)
+            // Đánh dấu cho phép xả nốt mẫu đuôi câu nói trong bộ đệm phát nếu đã quá 75ms không có gói mới tới
+            tailDrainReady = (Time.unscaledTime - lastPacketReceiveTime) > 0.075f;
+
+            // Chỉ gia hạn Echo Guard khi thực sự còn mẫu thoại của đối thủ đang chờ phát trong bộ đệm
+            bool hasActiveRemoteSamples;
+            lock (ringLock)
+            {
+                hasActiveRemoteSamples = threadSpeakerActive && ringAvailableSamples > 0;
+            }
+            if (hasActiveRemoteSamples)
             {
                 echoHoldUntil = Mathf.Max(echoHoldUntil, Time.unscaledTime + EchoGuardDuration);
             }
@@ -613,7 +624,7 @@ namespace Game.Billiards.Network
 
                 micClipTotalSamples = micHardwareRate * MicClipLengthSec;
                 micCaptureChunkSamples = Mathf.Max(80, micHardwareRate / 20); // 50ms mỗi gói (20 gói/giây)
-                if (rawHardwareCaptureBuf.Length < micCaptureChunkSamples)
+                if (rawHardwareCaptureBuf.Length != micCaptureChunkSamples)
                 {
                     rawHardwareCaptureBuf = new float[micCaptureChunkSamples];
                 }
@@ -722,12 +733,11 @@ namespace Game.Billiards.Network
             int currentPos = Microphone.GetPosition(activeMicDevice);
             if (currentPos < 0) return;
 
-            // Nếu bộ đệm vòng của Loa đang phát mẫu thoại ra phần cứng, liên tục gia hạn khóa Mic (echoHoldUntil)
-            // để tuyệt đối không mở Mic sớm khi Loa vẫn đang phát câu nói dài!
+            // Chỉ gia hạn khóa Mic (echoHoldUntil) khi thực sự còn mẫu thoại của đối thủ trong bộ đệm vòng
             bool isSpeakerPlayingNow;
             lock (ringLock)
             {
-                isSpeakerPlayingNow = threadSpeakerActive && (!jitterBuffering || ringAvailableSamples > 0);
+                isSpeakerPlayingNow = threadSpeakerActive && ringAvailableSamples > 0;
             }
             if (isSpeakerPlayingNow)
             {
@@ -735,8 +745,8 @@ namespace Game.Billiards.Network
             }
 
             // CHỐNG VỌNG ÂM LOA (Acoustic Echo Guard):
-            // Nếu loa đang phát giọng nói của đối thủ (hoặc trong 0.55s đuôi âm vang phòng sau khi loa vừa tắt),
-            // xả bỏ toàn bộ mẫu thu từ Mic để tuyệt đối không thu ngược tiếng loa gây lặp vô tận!
+            // Nếu loa đang phát giọng nói của đối thủ (hoặc trong 0.18s đuôi âm vang phòng sau khi loa vừa tắt),
+            // xả bỏ mẫu thu từ Mic để không thu ngược tiếng loa đối thủ.
             if (Time.unscaledTime < echoHoldUntil)
             {
                 lastMicReadPos = currentPos;
@@ -750,18 +760,18 @@ namespace Game.Billiards.Network
             int available = currentPos - lastMicReadPos;
             if (available < 0) available += micClipTotalSamples;
 
-            // Nếu bị trễ tích tụ quá 0.4 giây thì nhảy tới khung gần nhất
-            if (available > micClipTotalSamples / 2)
+            // Nếu bị trễ tích tụ quá 0.6 giây thì nhảy tới khung gần nhất
+            if (available > (micClipTotalSamples * 3) / 5)
             {
                 lastMicReadPos = (currentPos - micCaptureChunkSamples + micClipTotalSamples) % micClipTotalSamples;
                 available = micCaptureChunkSamples;
             }
 
-            // Tầng 1: Bộ lọc thông cao 120 Hz (cắt tiếng ù quạt < 120 Hz & rung động mặt bàn)
-            // kết hợp lọc thông thấp 3400 Hz và bộ nhấn nhẹ độ rõ giọng nói (Vocal Presence @ ~1.2 - 2.8 kHz)
-            const float hpAlpha = 0.910f;   // Cutoff ~120 Hz @ 8000 Hz
-            const float lpAlpha = 0.820f;   // Cutoff ~3400 Hz @ 8000 Hz
-            const float presAlpha = 0.515f; // High-pass nhánh Formant ~1200 Hz để tôn độ rõ chữ của giọng người
+            // Tầng 1: Bộ lọc thông cao ~90 Hz (giữ trọn âm trầm ấm của giọng nói, chỉ cắt tiếng ù điện 50/60Hz & gió quạt trầm)
+            // kết hợp lọc thông thấp 3600 Hz và nhấn nhẹ dải rõ chữ (0.14f thay vì 0.40f để tránh chói/rè tần số cao)
+            const float hpAlpha = 0.935f;   // Cutoff ~88 Hz @ 8000 Hz
+            const float lpAlpha = 0.865f;   // Cutoff ~3600 Hz @ 8000 Hz
+            const float presAlpha = 0.550f; // Nhánh Presence nhẹ tôn độ rõ phụ âm
 
             while (available >= micCaptureChunkSamples)
             {
@@ -791,7 +801,7 @@ namespace Game.Billiards.Network
                     float absRaw = Mathf.Abs(x);
                     if (absRaw > rawPeak) rawPeak = absRaw;
 
-                    // Hai tầng High-Pass 120 Hz nối tiếp: cắt tiếng ù điện 50/60Hz, tiếng gió quạt trầm và tiếng đập bàn
+                    // Hai tầng High-Pass ~88 Hz nối tiếp: cắt DC offset và tiếng ù quạt trầm
                     float hp1 = hpAlpha * (hp1PrevOut + x - hp1PrevIn);
                     hp1PrevIn = x;
                     hp1PrevOut = hp1;
@@ -800,17 +810,17 @@ namespace Game.Billiards.Network
                     hp2PrevIn = hp1;
                     hp2PrevOut = hp2;
 
-                    // Low-Pass 3400 Hz cắt nhiễu rít tần số cao
+                    // Low-Pass 3600 Hz chống răng cưa trước khi mã hóa 8000 Hz
                     lpPrevOut += lpAlpha * (hp2 - lpPrevOut);
                     float bandPassed = lpPrevOut;
                     pitchBandBuf[i] = bandPassed;
 
-                    // Nhấn dải Formant giọng nói (1.2 kHz - 2.8 kHz) giúp giọng sáng và rõ chữ
+                    // Nhấn rất nhẹ dải rõ chữ (0.14f) để giọng trong trẻo, không bị gắt hay rè
                     float pres = presAlpha * (presPrevOut + bandPassed - presPrevIn);
                     presPrevIn = bandPassed;
                     presPrevOut = pres;
 
-                    float y = bandPassed + pres * 0.40f;
+                    float y = bandPassed + pres * 0.14f;
                     resampled8kBuf[i] = y;
                     voiceBandSqSum += y * y;
                     float absY = Mathf.Abs(y);
@@ -830,7 +840,6 @@ namespace Game.Billiards.Network
                 if (voiceBandRms > diagMaxVoiceRms) diagMaxVoiceRms = voiceBandRms;
 
                 // Tầng 2: Cập nhật lịch sử RMS 800ms & Học nền tiếng quạt tĩnh (Minimum-Statistics Noise Floor)
-                // Luôn theo dõi mức cực tiểu trong 800ms để không bao giờ bị kẹt nền quạt!
                 recentRmsHistory[rmsHistoryWriteIdx] = voiceBandRms;
                 rmsHistoryWriteIdx = (rmsHistoryWriteIdx + 1) % NoiseHistorySize;
                 if (rmsHistoryCount < NoiseHistorySize) rmsHistoryCount++;
@@ -848,22 +857,21 @@ namespace Game.Billiards.Network
                 float meanRecentRms = sumRecentRms / Mathf.Max(1, rmsHistoryCount);
                 float modulationIndex = (maxRecentRms - minRecentRms) / (meanRecentRms + 0.0001f);
 
-                // Cập nhật adaptiveNoiseFloor bám sát nền quạt thực tế (0.0015 .. 0.0085)
-                float floorCandidate = Mathf.Clamp(minRecentRms * 1.15f, 0.0008f, 0.0085f);
-                if (modulationIndex < 0.45f)
+                // Cập nhật adaptiveNoiseFloor chỉ khi đang im lặng để không bao giờ học nhầm giọng nói dài thành tiếng ồn nền!
+                float floorCandidate = Mathf.Clamp(minRecentRms * 1.12f, 0.0008f, 0.0065f);
+                if (!wasTransmittingLastFrame && modulationIndex < 0.40f)
                 {
-                    // Khi âm thanh phẳng đều (chỉ có quạt chạy), hội tụ nhanh về mức trung bình của quạt
-                    floorCandidate = Mathf.Clamp(meanRecentRms * 1.12f, 0.0008f, 0.0085f);
-                    adaptiveNoiseFloor = Mathf.Lerp(adaptiveNoiseFloor, floorCandidate, 0.18f);
+                    floorCandidate = Mathf.Clamp(meanRecentRms * 1.10f, 0.0008f, 0.0065f);
+                    adaptiveNoiseFloor = Mathf.Lerp(adaptiveNoiseFloor, floorCandidate, 0.14f);
                 }
-                else
+                else if (floorCandidate < adaptiveNoiseFloor)
                 {
-                    adaptiveNoiseFloor = Mathf.Lerp(adaptiveNoiseFloor, floorCandidate, 0.06f);
+                    adaptiveNoiseFloor = Mathf.Lerp(adaptiveNoiseFloor, floorCandidate, 0.20f);
                 }
 
-                float noiseRef = Mathf.Max(adaptiveNoiseFloor, 0.0018f);
+                float noiseRef = Mathf.Max(adaptiveNoiseFloor, 0.0015f);
 
-                // Tầng 3: Phân tích 10 khung con 5ms & Tính Pitch trên dải 120-3400 Hz để lọc bỏ Tiếng Gõ Bàn / Click Chuột
+                // Tầng 3: Phân tích 10 khung con 5ms & Tính Pitch để lọc xung gõ bàn / click chuột khi đang im lặng
                 int subFrameCount = NetworkChunkSamples / SubFrameSamples;
                 float maxSubRms = 0f;
                 float sumSubRms = 0f;
@@ -881,175 +889,110 @@ namespace Game.Billiards.Network
                     float subRms = Mathf.Sqrt(subSq / SubFrameSamples);
                     if (subRms > maxSubRms) maxSubRms = subRms;
                     sumSubRms += subRms;
-                    if (subRms > noiseRef * 1.45f) activeSubFrames++;
+                    if (subRms > noiseRef * 1.35f) activeSubFrames++;
                 }
 
                 float meanSubRms = sumSubRms / subFrameCount;
                 float subFrameCrest = maxSubRms / (meanSubRms + 0.00005f);
                 float peakToRmsCrest = bandPeak / (voiceBandRms + 0.00005f);
 
-                bool needPitchCheck = voiceBandRms >= BaseVadRmsThreshold * 0.70f
-                    || subFrameCrest > 1.70f
-                    || peakToRmsCrest > 3.80f;
+                bool inHangover = Time.unscaledTime <= vadHangoverUntil;
+                bool needPitchCheck = voiceBandRms >= BaseVadRmsThreshold * 0.65f;
                 float pitchCorr = needPitchCheck ? ComputePitchCorrelation(pitchBandBuf, NetworkChunkSamples) : 0f;
                 if (pitchCorr > diagMaxPitch) diagMaxPitch = pitchCorr;
 
-                // Nhận diện xung gõ bàn / click chuột:
-                // Tiếng gõ bàn có đỉnh nhọn đột biến (subFrameCrest > 1.95 hoặc peakToRmsCrest > 4.1)
-                // hoặc chỉ lóe lên ngắn <= 4 khung con 5ms và không có cấu trúc hài âm thanh quản mạnh!
-                bool isTransientKnock = (subFrameCrest > 1.95f && pitchCorr < 0.52f)
-                    || (peakToRmsCrest > 4.10f && pitchCorr < 0.50f)
-                    || (activeSubFrames <= 4 && subFrameCrest > 1.75f && pitchCorr < 0.45f);
+                // Chỉ lọc xung click chuột đơn lẻ khi KHÔNG đang nói (tránh bóp méo phụ âm bật p/t/k/ch khi đang nói câu dài)
+                bool isTransientKnock = !inHangover && !wasTransmittingLastFrame
+                    && ((subFrameCrest > 2.35f && pitchCorr < 0.28f)
+                        || (peakToRmsCrest > 4.80f && pitchCorr < 0.28f)
+                        || (activeSubFrames <= 2 && subFrameCrest > 2.00f && pitchCorr < 0.25f));
 
-                // Nếu phát hiện xung gõ bàn thực sự (không có cấu trúc hài âm thanh quản), lập tức dập xung đó về mức nền
-                // Lưu ý: tuyệt đối KHÔNG dùng "|| subFrameCrest > 1.90f" vì sẽ bóp nhầm các âm tiết đầu câu nói của người thật!
                 if (isTransientKnock)
                 {
-                    float clampTarget = Mathf.Max(noiseRef, meanSubRms * 0.70f);
-                    for (int sf = 0; sf < subFrameCount; sf++)
+                    float clampTarget = Mathf.Max(noiseRef, meanSubRms * 0.65f);
+                    for (int i = 0; i < NetworkChunkSamples; i++)
                     {
-                        int offset = sf * SubFrameSamples;
-                        float subSq = 0f;
-                        for (int k = 0; k < SubFrameSamples; k++)
-                        {
-                            float s = resampled8kBuf[offset + k];
-                            subSq += s * s;
-                        }
-                        float subRms = Mathf.Sqrt(subSq / SubFrameSamples);
-                        if (subRms > clampTarget * 1.25f)
-                        {
-                            float scale = clampTarget / (subRms + 0.00001f);
-                            for (int k = 0; k < SubFrameSamples; k++)
-                            {
-                                resampled8kBuf[offset + k] *= scale;
-                            }
-                        }
+                        resampled8kBuf[i] = Mathf.Clamp(resampled8kBuf[i], -clampTarget, clampTarget);
                     }
                 }
 
-                // Tầng 4: Nhận diện Giọng nói Con người Thực sự & Chặn Vọng Âm Loa khi mở 2 Tab trên 1 máy (Self-Echo Guard)
-                bool inSelfEchoWindow = (Time.unscaledTime - lastPacketSentTime) < 0.75f;
-                if (!inSelfEchoWindow)
-                {
-                    selfEchoEnvelope = 0f;
-                }
-
-                // Ngưỡng mở cổng thực tế: luôn cao hơn cả BaseVadRmsThreshold (0.0045f) VÀ gấp 2.3 lần nền tiếng quạt!
-                float effectiveVadThreshold = Mathf.Max(BaseVadRmsThreshold, noiseRef * 2.30f);
-
-                // Khi vừa dứt câu nói (trong 0.65s PostSpeechEchoCooldown) hoặc đã phát liên tục >= 150ms (khi tiếng Loa của Tab 2 bắt đầu dội về Mic):
-                // Sử dụng selfEchoEnvelope (không kẹp trần 0.045f cũ) để cắt đứt ngay tiếng Loa vọng lại yếu hơn giọng nói gốc!
-                if (!wasTransmittingLastFrame && Time.unscaledTime < postSpeechCooldownUntil)
-                {
-                    effectiveVadThreshold = Mathf.Max(effectiveVadThreshold, selfEchoEnvelope);
-                }
-                else if (wasTransmittingLastFrame && consecutiveVoicedFrames >= 3)
-                {
-                    effectiveVadThreshold = Mathf.Max(effectiveVadThreshold, selfEchoEnvelope * 0.68f);
-                }
-
+                // Tầng 4: Nhận diện Giọng nói (VAD) giữ trọn câu nói dài (Hangover 520ms):
+                // - Tuyệt đối KHÔNG dùng selfEchoEnvelope để tự nâng ngưỡng khóa Mic của chính người đang nói!
+                // - Khi đang nói (inHangover == true), cho phép mọi âm tiết, phụ âm nhẹ và âm cuối câu đi qua liên tục.
+                float effectiveVadThreshold = Mathf.Max(BaseVadRmsThreshold, noiseRef * 2.10f);
                 float snr = voiceBandRms / noiseRef;
-                bool inHangover = Time.unscaledTime <= vadHangoverUntil && Time.unscaledTime >= postSpeechCooldownUntil;
-                bool isZcrSpeechLike = zcr >= 0.025f && zcr <= 0.48f;
+                bool isZcrSpeechLike = zcr >= 0.015f && zcr <= 0.55f;
 
-                float minPitch = inHangover ? 0.34f : 0.36f;
-                bool isFrameVoiced = !isTransientKnock
-                    && voiceBandRms >= effectiveVadThreshold
-                    && snr >= (inHangover ? 2.05f : 2.30f)
-                    && isZcrSpeechLike
-                    && activeSubFrames >= (inHangover ? 4 : 5)
-                    && pitchCorr >= minPitch;
+                bool isFrameVoiced;
+                if (inHangover || wasTransmittingLastFrame)
+                {
+                    // Đang trong câu nói dài: giữ nhạy cao để bắt trọn mọi phụ âm, từ nối và âm đuôi nhỏ giọng
+                    isFrameVoiced = (voiceBandRms >= effectiveVadThreshold * 0.65f && snr >= 1.55f)
+                        || (pitchCorr >= 0.26f && voiceBandRms >= BaseVadRmsThreshold * 0.60f);
+                }
+                else
+                {
+                    // Bắt đầu mở câu nói mới từ trạng thái im lặng:
+                    isFrameVoiced = !isTransientKnock
+                        && voiceBandRms >= effectiveVadThreshold
+                        && snr >= 2.10f
+                        && isZcrSpeechLike
+                        && activeSubFrames >= 3
+                        && (pitchCorr >= 0.28f || snr >= 3.20f);
+                }
 
                 if (isFrameVoiced)
                 {
                     consecutiveVoicedFrames++;
-                    if (consecutiveVoicedFrames >= 2)
-                    {
-                        vadHangoverUntil = Time.unscaledTime + VadHangoverDuration;
-                        // Bám sát 85% biên độ giọng nói thực tế (mở trần lên 0.38f thay vì 0.045f cũ) để chặn hoàn toàn tiếng Loa to dội lại
-                        float echoRef = Mathf.Clamp(voiceBandRms * 0.85f, 0.0065f, 0.3800f);
-                        selfEchoEnvelope = echoRef > selfEchoEnvelope
-                            ? Mathf.Lerp(selfEchoEnvelope, echoRef, 0.60f)
-                            : selfEchoEnvelope * 0.94f;
-                    }
+                    vadHangoverUntil = Time.unscaledTime + VadHangoverDuration;
                 }
                 else
                 {
                     consecutiveVoicedFrames = 0;
-                    hasLookaheadPacket = false;
-                    // Giữ selfEchoEnvelope suy giảm chậm trong 0.65s sau khi dứt câu để chặn trọn vẹn đuôi Loa của Tab 2
-                    selfEchoEnvelope *= (Time.unscaledTime < postSpeechCooldownUntil) ? 0.95f : 0.82f;
                 }
 
-                // Yêu cầu tối thiểu 2 khung liên tiếp (100ms) có giọng người mới mở cổng truyền;
-                // Trong pha ngân ngắn cuối câu (inHangover 80ms), bắt buộc biên độ phải lớn hơn selfEchoEnvelope * 0.75f
-                // để không bao giờ giữ cổng truyền cho tiếng Loa vọng về sau 200ms!
-                float hangoverThreshold = Mathf.Max(effectiveVadThreshold * 0.85f, selfEchoEnvelope * 0.75f);
-                bool shouldTransmit = (consecutiveVoicedFrames >= 2)
-                    || (inHangover && !isTransientKnock && voiceBandRms >= hangoverThreshold);
-                bool isFirstLookaheadFrame = (consecutiveVoicedFrames == 1 && !shouldTransmit);
+                // Truyền liên tục ngay khi có giọng nói hoặc đang trong thời gian giữ cổng (VadHangoverDuration = 520ms)
+                bool shouldTransmit = isFrameVoiced || (Time.unscaledTime <= vadHangoverUntil);
+                bool isSilentPreRoll = !shouldTransmit;
 
-                if (wasTransmittingLastFrame && !shouldTransmit)
-                {
-                    postSpeechCooldownUntil = Time.unscaledTime + PostSpeechEchoCooldown;
-                    vadHangoverUntil = -10f;
-                }
                 wasTransmittingLastFrame = shouldTransmit;
 
-                // Tầng 5: Khử nền tiếng quạt Wiener & Khuếch đại Giọng nói Công suất cao (AGC 1.20x - 9.00x + PreAmp 2.60x)
+                // Tầng 5: Cổng âm lượng toàn khung mượt mà (KHÔNG đóng/ngắt 5ms tránh méo tiếng robot)
+                // & AGC tự nhiên (TargetSpeechRms = 0.18f, không bao giờ gây vỡ tiếng / clipping)
+                float targetFrameGate = shouldTransmit ? 1.0f : 0.0f;
+                float gateStep = shouldTransmit ? 0.35f : 0.08f;
+
                 float cleanSqSum = 0f;
-                const float overSubtraction = 0.85f;
-
-                for (int sf = 0; sf < subFrameCount; sf++)
+                for (int i = 0; i < NetworkChunkSamples; i++)
                 {
-                    int offset = sf * SubFrameSamples;
-                    float subSq = 0f;
-                    for (int k = 0; k < SubFrameSamples; k++)
-                    {
-                        float s = resampled8kBuf[offset + k];
-                        subSq += s * s;
-                    }
-                    float subRms = Mathf.Sqrt(subSq / SubFrameSamples);
-
-                    float targetGate = 0f;
-                    if ((shouldTransmit || isFirstLookaheadFrame) && subRms > noiseRef * 1.15f)
-                    {
-                        float cleanRatio = Mathf.Clamp01((subRms - noiseRef * overSubtraction) / (subRms + 0.00001f));
-                        targetGate = shouldTransmit ? Mathf.Max(0.90f, cleanRatio) : Mathf.Max(0.75f, cleanRatio);
-                    }
-
-                    for (int k = 0; k < SubFrameSamples; k++)
-                    {
-                        float gateSpeed = targetGate > currentNoiseGate ? 0.55f : 0.12f;
-                        currentNoiseGate = Mathf.Lerp(currentNoiseGate, targetGate, gateSpeed);
-                        float cleanVoice = resampled8kBuf[offset + k] * currentNoiseGate;
-                        resampled8kBuf[offset + k] = cleanVoice;
-                        cleanSqSum += cleanVoice * cleanVoice;
-                    }
+                    currentNoiseGate = Mathf.MoveTowards(currentNoiseGate, targetFrameGate, gateStep);
+                    float gateWeight = shouldTransmit ? Mathf.Max(0.92f, currentNoiseGate) : currentNoiseGate;
+                    float cleanVoice = resampled8kBuf[i] * gateWeight;
+                    resampled8kBuf[i] = cleanVoice;
+                    cleanSqSum += cleanVoice * cleanVoice;
                 }
 
                 float cleanSpeechRms = Mathf.Sqrt(cleanSqSum / NetworkChunkSamples);
 
-                // AGC & Khuếch đại tiền mã hóa (1.20x - 9.00x + PreAmp 2.60x):
-                // Chỉ cho phép AGC tăng độ lợi (desiredGain > currentAgcGain) khi là giọng nói trực tiếp (>= selfEchoEnvelope * 0.75f),
-                // tuyệt đối không tự động phóng đại âm đuôi / tiếng Loa vọng lại!
-                if (isFrameVoiced && cleanSpeechRms > noiseRef * 1.15f)
+                // AGC chuẩn hóa mượt mà: giữ giọng nói rõ ràng quanh RMS 0.18f mà không bao giờ ép đỉnh sóng vượt 0.85f
+                if (isFrameVoiced && cleanSpeechRms > noiseRef * 1.30f)
                 {
-                    float desiredGain = Mathf.Clamp(TargetSpeechRms / Mathf.Max(cleanSpeechRms, 0.018f), MinAgcGain, MaxAgcGain);
-                    if (desiredGain > currentAgcGain && voiceBandRms < selfEchoEnvelope * 0.75f)
+                    float desiredGain = Mathf.Clamp(TargetSpeechRms / Mathf.Max(cleanSpeechRms, 0.025f), MinAgcGain, MaxAgcGain);
+                    // Nếu đỉnh sóng sau khuếch đại vượt 0.82f thì tự động hạ ngay độ lợi để chống rè 100%
+                    if (bandPeak * desiredGain > 0.82f)
                     {
-                        desiredGain = currentAgcGain;
+                        desiredGain = Mathf.Max(MinAgcGain, 0.82f / (bandPeak + 0.0001f));
                     }
-                    float agcSpeed = desiredGain < currentAgcGain ? 0.35f : 0.28f;
+                    float agcSpeed = desiredGain < currentAgcGain ? 0.30f : 0.10f;
                     currentAgcGain = Mathf.Lerp(currentAgcGain, desiredGain, agcSpeed);
                 }
-                else if (!shouldTransmit && !isFirstLookaheadFrame)
+                else if (!shouldTransmit)
                 {
-                    currentAgcGain = Mathf.Lerp(currentAgcGain, DefaultAgcGain, 0.05f);
+                    currentAgcGain = Mathf.Lerp(currentAgcGain, DefaultAgcGain, 0.04f);
                 }
 
                 float sfxImpulse = AudioManager.Instance != null ? AudioManager.Instance.SfxImpulseEnvelope : 0f;
-                float sfxDampen = Mathf.Clamp(1.0f - sfxImpulse * 0.45f, 0.45f, 1.0f);
+                float sfxDampen = Mathf.Clamp(1.0f - sfxImpulse * 0.35f, 0.60f, 1.0f);
 
                 float totalGain = currentAgcGain * micVolume * MicPreAmpBoost * sfxDampen;
 
@@ -1062,7 +1005,7 @@ namespace Game.Billiards.Network
                     float cleanSample = SoftClipLimiter(amplified);
                     encodeByteBuf[i] = EncodeMuLaw(cleanSample);
 
-                    if (shouldTransmit || isFirstLookaheadFrame)
+                    if (shouldTransmit || isSilentPreRoll)
                     {
                         boostedRmsSum += cleanSample * cleanSample;
                         float absClean = Mathf.Abs(cleanSample);
@@ -1071,15 +1014,17 @@ namespace Game.Billiards.Network
                 }
 
                 float outRms = Mathf.Sqrt(boostedRmsSum / NetworkChunkSamples);
-                float frameLevel01 = Mathf.Clamp01(outRms * 3.0f + boostedPeak * 0.50f);
+                float frameLevel01 = Mathf.Clamp01(outRms * 3.8f + boostedPeak * 0.55f);
 
-                if (isFirstLookaheadFrame && outRms > 0.004f)
+                if (isSilentPreRoll)
                 {
+                    // Luôn lưu sẵn 1 khung đệm 50ms trước khi nói (Pre-Roll) để khi bắt đầu mở miệng nói không bao giờ mất âm đầu câu!
                     Buffer.BlockCopy(encodeByteBuf, 0, lookaheadEncodeBuf, 0, NetworkChunkSamples);
                     hasLookaheadPacket = true;
                     lookaheadLevel01 = frameLevel01;
+                    localVoiceLevel01 = Mathf.MoveTowards(localVoiceLevel01, 0f, 0.4f);
                 }
-                else if (shouldTransmit && outRms > 0.004f)
+                else if (shouldTransmit)
                 {
                     if (hasLookaheadPacket)
                     {
@@ -1103,41 +1048,35 @@ namespace Game.Billiards.Network
                         networkMatchManager.SendVoiceData(encodeByteBuf);
                     }
                 }
-                else
-                {
-                    hasLookaheadPacket = false;
-                    localVoiceLevel01 = Mathf.MoveTowards(localVoiceLevel01, 0f, 0.6f);
-                }
             }
         }
 
         /// <summary>
-        /// Bộ giới hạn đỉnh lõi tuyến tính trước khi nén G.711 μ-law (biên độ [-0.99f .. +0.99f]):
-        /// Giữ nguyên 100% độ lớn tín hiệu trong vùng |x| &lt;= 0.80f và uốn mượt tới 0.99f.
+        /// Bộ giới hạn đỉnh tuyến tính trước khi nén G.711 μ-law (biên độ [-0.95f .. +0.95f]):
+        /// Giữ nguyên 100% độ trung thực của giọng nói trong vùng |x| &lt;= 0.75f và uốn mượt tới 0.95f.
         /// </summary>
         private static float SoftClipLimiter(float x)
         {
             float abs = Mathf.Abs(x);
-            if (abs <= 0.80f) return x;
+            if (abs <= 0.75f) return x;
             float sign = x >= 0f ? 1f : -1f;
-            float excess = abs - 0.80f;
-            float compressed = 0.80f + 0.19f * (excess / (0.19f + excess));
-            return sign * Mathf.Min(compressed, 0.99f);
+            float excess = abs - 0.75f;
+            float compressed = 0.75f + 0.20f * (excess / (0.20f + excess));
+            return sign * Mathf.Min(compressed, 0.95f);
         }
 
         /// <summary>
-        /// Bộ giới hạn công suất đầu phát Loa (Output Power Limiter cho bộ trộn float32 của Unity):
-        /// Cho phép biên độ tuyến tính đạt tới ±1.65f và uốn mượt tới ±2.15f (tương đương PlayOneShot volumeScale > 1.8x),
-        /// giúp tiếng đàm thoại phát ra loa lớn gấp đôi mà không bị cắt đỉnh đột ngột.
+        /// Bộ giới hạn công suất đầu phát Loa chuẩn phần cứng âm thanh ([-0.96f .. +0.96f]):
+        /// Tuyệt đối không bao giờ cho phép mẫu âm thanh vượt quá ±1.0f чтобы tránh bị driver WASAPI cắt đỉnh sóng vuông gây rè!
         /// </summary>
         private static float OutputPowerLimiter(float x)
         {
             float abs = Mathf.Abs(x);
-            if (abs <= 1.65f) return x;
+            if (abs <= 0.78f) return x;
             float sign = x >= 0f ? 1f : -1f;
-            float excess = abs - 1.65f;
-            float compressed = 1.65f + 0.50f * (excess / (0.50f + excess));
-            return sign * Mathf.Min(compressed, 2.15f);
+            float excess = abs - 0.78f;
+            float compressed = 0.78f + 0.18f * (excess / (0.18f + excess));
+            return sign * Mathf.Min(compressed, 0.96f);
         }
 
         private void HandleVoiceStateReceived(int senderIndex, bool micOn, bool speakerOn)
@@ -1189,7 +1128,7 @@ namespace Game.Billiards.Network
             }
 
             int count = ulawData.Length;
-            const float makeupGain = 1.75f;
+            const float makeupGain = 1.00f;
             float sumSq = 0f;
             float peak = 0f;
 
@@ -1231,14 +1170,15 @@ namespace Game.Billiards.Network
             }
 
             float rms = Mathf.Sqrt(sumSq / count);
-            remoteTargetLevel01 = Mathf.Clamp01(rms * 2.4f + peak * 0.45f);
+            remoteTargetLevel01 = Mathf.Clamp01(rms * 2.8f + peak * 0.50f);
             lastPacketReceiveTime = Time.unscaledTime;
+            tailDrainReady = false;
         }
 
         /// <summary>
         /// Luồng âm thanh phần cứng của Unity (Audio Thread):
-        /// Đọc mẫu thoại 8000 Hz từ pcmRingBuffer, nội suy tuyến tính mượt mà lên tần số đầu ra (44100/48000 Hz)
-        /// và xuất thẳng ra các kênh loa (Stereo).
+        /// Đọc mẫu thoại 8000 Hz từ pcmRingBuffer, nội suy kết hợp bộ lọc thông thấp tái tạo 2 cực (3500 Hz)
+        /// lên tần số đầu ra (44100/48000 Hz) và xuất ra loa trong ngưỡng an toàn [-0.96f .. +0.96f].
         /// </summary>
         private void OnAudioFilterRead(float[] data, int channels)
         {
@@ -1250,7 +1190,10 @@ namespace Game.Billiards.Network
                 return;
             }
 
-            float step = (float)NetworkSampleRate / Mathf.Max(8000, outputSampleRate);
+            float outRate = Mathf.Max(8000, outputSampleRate);
+            float step = (float)NetworkSampleRate / outRate;
+            // Bộ lọc thông thấp tái tạo 2 cực ở tần số cắt ~3500 Hz để khử hoàn toàn tiếng rè bậc thang 8kHz
+            float reconAlpha = Mathf.Clamp(1f - Mathf.Exp(-2f * Mathf.PI * 3500f / outRate), 0.15f, 0.85f);
             float gain = threadOutputGain;
             int frames = data.Length / channels;
 
@@ -1258,7 +1201,8 @@ namespace Game.Billiards.Network
             {
                 if (jitterBuffering)
                 {
-                    if (ringAvailableSamples >= JitterStartThreshold)
+                    // Bắt đầu phát ngay khi đủ đệm 75ms HOẶC khi đang còn mẫu cuối câu tồn đọng (tailDrainReady)
+                    if (ringAvailableSamples >= JitterStartThreshold || (ringAvailableSamples > 0 && tailDrainReady))
                     {
                         jitterBuffering = false;
                         starvationSampleCount = 0;
@@ -1268,6 +1212,8 @@ namespace Game.Billiards.Network
                     }
                     else
                     {
+                        reconLp1 = 0f;
+                        reconLp2 = 0f;
                         Array.Clear(data, 0, data.Length);
                         return;
                     }
@@ -1286,8 +1232,8 @@ namespace Game.Billiards.Network
                         }
                         else
                         {
-                            // Giảm dần mượt về 0 và cho phép chờ ngắn (40ms) trước khi bật lại jitterBuffering
-                            currReadSample *= 0.85f;
+                            // Giảm dần mượt về 0 và cho phép chờ mạng tới 200ms trước khi quay về jitterBuffering
+                            currReadSample *= 0.90f;
                             starvationSampleCount++;
                             if (starvationSampleCount >= MaxStarvationSamples)
                             {
@@ -1298,8 +1244,14 @@ namespace Game.Billiards.Network
                         }
                     }
 
-                    float sample = OutputPowerLimiter(Mathf.Lerp(prevReadSample, currReadSample, resampleFracPhase) * gain);
+                    float rawInterp = Mathf.Lerp(prevReadSample, currReadSample, resampleFracPhase);
                     resampleFracPhase += step;
+
+                    // Hai cực lọc thông thấp liên tiếp làm trơn hoàn toàn sóng giọng nói sau nội suy
+                    reconLp1 += reconAlpha * (rawInterp - reconLp1);
+                    reconLp2 += reconAlpha * (reconLp1 - reconLp2);
+
+                    float sample = OutputPowerLimiter(reconLp2 * gain);
 
                     int baseIdx = f * channels;
                     for (int c = 0; c < channels; c++)
@@ -1331,6 +1283,8 @@ namespace Game.Billiards.Network
                 resampleFracPhase = 0f;
                 prevReadSample = 0f;
                 currReadSample = 0f;
+                reconLp1 = 0f;
+                reconLp2 = 0f;
                 starvationSampleCount = 0;
                 jitterBuffering = true;
             }

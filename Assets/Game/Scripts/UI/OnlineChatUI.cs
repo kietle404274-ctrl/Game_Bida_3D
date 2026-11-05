@@ -519,7 +519,7 @@ namespace Game.Billiards.UI
             headerToggleBtn.transition = Selectable.Transition.None;
             headerToggleBtn.onClick.AddListener(() => ToggleExpand(focusIfExpanding: true));
 
-            // Huy hiệu phím [0] dạng Hình Bình Hành nhỏ màu vàng đồng bộ phong cách HUD
+            // Huy hiệu phím [C] dạng Hình Bình Hành nhỏ màu vàng đồng bộ phong cách HUD
             var badgeGo = new GameObject("KeyBadge", typeof(RectTransform), typeof(CanvasRenderer), typeof(SkewedPanelGraphic));
             badgeGo.layer = gameObject.layer;
             badgeGo.transform.SetParent(headerRt, false);
@@ -536,7 +536,7 @@ namespace Game.Billiards.UI
             badgeGraphic.SetBottomDarken(0.82f);
             badgeGraphic.raycastTarget = false;
 
-            var badgeTxt = CreateText("KeyText", badgeRt, "0", 13, new Color(0.05f, 0.08f, 0.14f, 1f), FontStyle.Bold, TextAnchor.MiddleCenter);
+            var badgeTxt = CreateText("KeyText", badgeRt, "C", 13, new Color(0.05f, 0.08f, 0.14f, 1f), FontStyle.Bold, TextAnchor.MiddleCenter);
             StretchFull(badgeTxt.rectTransform);
 
             // Tiêu đề "TRÒ CHUYỆN" (hoặc xem trước tin nhắn mới nhất khi đang thu nhỏ)
@@ -1262,7 +1262,7 @@ namespace Game.Billiards.UI
                 outerParallelogramFrame.SetBorderColor(Color.Lerp(OuterBorderBase, CyanBright, 0.35f + 0.65f * pulse));
             }
 
-            bool pressedZero = UnityEngine.Input.GetKeyDown(KeyCode.Alpha0) || UnityEngine.Input.GetKeyDown(KeyCode.Keypad0);
+            bool pressedChatKey = UnityEngine.Input.GetKeyDown(KeyCode.C);
 
             if (isExpanded)
             {
@@ -1310,8 +1310,8 @@ namespace Game.Billiards.UI
                     return;
                 }
 
-                // Nhấn phím [0] khi KHÔNG đang gõ chữ trong InputField -> thu gọn về Hình Bình Hành nhỏ
-                if (!focused && pressedZero)
+                // Nhấn phím [C] khi KHÔNG đang gõ chữ trong InputField -> thu gọn về Hình Bình Hành nhỏ
+                if (!focused && pressedChatKey)
                 {
                     lastTypingFrame = Time.frameCount;
                     SetExpanded(false);
@@ -1320,8 +1320,8 @@ namespace Game.Billiards.UI
             }
             else
             {
-                // Khi đang thu nhỏ: nhấn phím [0] (nếu không có bảng modal khác đang mở) -> Phóng to & Focus gõ chữ ngay
-                if (!HudModalState.IsModalOpen && pressedZero)
+                // Khi đang thu nhỏ: nhấn phím [C] (nếu không có bảng modal khác đang mở) -> Phóng to & Focus gõ chữ ngay
+                if (!HudModalState.IsModalOpen && pressedChatKey)
                 {
                     lastTypingFrame = Time.frameCount;
                     SetExpanded(true, focusInput: true);

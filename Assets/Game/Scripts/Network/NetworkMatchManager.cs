@@ -103,8 +103,10 @@ namespace Game.Billiards.Network
             masterSimActive = false;
             masterSimStep = 0;
             clientLocalStrikeActive = false;
+            clientRemoteStrikePending = false;
             AwaitingMasterResult = false;
             predictedBackup = null;
+            pendingTurnResultData = null;
             ResetPredictionSim();
         }
 
@@ -117,9 +119,28 @@ namespace Game.Billiards.Network
         private int masterSimStep;
         private bool masterSimActive;
         private bool clientSimActive;
+        private bool clientRemoteStrikePending;
         private readonly List<Vector3[]> predPosHistory = new List<Vector3[]>();
         private readonly List<Vector3[]> predVelHistory = new List<Vector3[]>();
         private readonly HashSet<int> desyncedBalls = new HashSet<int>();
+
+        // Bộ đệm gói đồng bộ (EVENT_BALLS_SYNC) khi bước vật lý của Master (masterStep) đi trước Client (do Master đánh sớm hơn ~1 lần trễ mạng)
+        private readonly List<float[]> pendingSyncPackets = new List<float[]>();
+
+        // Lưu các bi mà Master đã xác nhận rơi lỗ nhưng trên máy Client bi vẫn đang lăn tới miệng lỗ (chưa chạm miệng lỗ)
+        // để dẫn hướng bi lăn vào đúng tâm lỗ 3D rồi mới gọi MarkPocketed.
+        private struct PendingPocketInfo
+        {
+            public int pocketId;
+            public Vector3 pocketPos;
+            public int masterStep;
+        }
+        private readonly Dictionary<int, PendingPocketInfo> pendingPocketBalls = new Dictionary<int, PendingPocketInfo>();
+        private static readonly List<int> pendingPocketRemoveBuffer = new List<int>(16);
+
+        // Bộ đệm kết quả lượt (EVENT_TURN_RESULT) nếu gói kết quả về tới Client khi bi vào lỗ trên Client vẫn đang lăn nốt vài cm cuối tới miệng lỗ
+        private ExitGames.Client.Photon.Hashtable pendingTurnResultData;
+        private float pendingTurnResultReceivedTime;
 
 
 
@@ -290,7 +311,7 @@ namespace Game.Billiards.Network
                 shotExecutor.OnShotExecuted -= HandleShotExecutedForSync;
         }
 
-        /// <summary>Cả hai máy: bắt đầu đếm bước vật lý ngay khi cú đánh được thực thi (Master: cú thật; Client: cú dự đoán).</summary>
+        /// <summary>Cả hai máy: bắt đầu đếm bước vật lý ngay khi cú đánh được thực thi (Master: cú thật; Client: cú dự đoán hoặc cú thực thi theo lệnh Master).</summary>
         private void HandleShotExecutedForSync(ShotCommand cmd)
         {
             if (!isOnlineMatch) return;
@@ -301,7 +322,10 @@ namespace Game.Billiards.Network
             }
             else
             {
-                ResetPredictionSim();
+                predPosHistory.Clear();
+                predVelHistory.Clear();
+                desyncedBalls.Clear();
+                pendingPocketBalls.Clear();
                 clientSimActive = true;
             }
         }
@@ -312,6 +336,8 @@ namespace Game.Billiards.Network
             predPosHistory.Clear();
             predVelHistory.Clear();
             desyncedBalls.Clear();
+            pendingSyncPackets.Clear();
+            pendingPocketBalls.Clear();
         }
 
         private void FixedUpdate()
@@ -330,7 +356,7 @@ namespace Game.Billiards.Network
                 return;
             }
 
-            if (!clientSimActive || !AwaitingMasterResult || ballManager == null || ballManager.AllBalls == null) return;
+            if (!clientSimActive || ballManager == null || ballManager.AllBalls == null) return;
 
             // FixedUpdate chạy TRƯỚC bước PhysX: trạng thái đang thấy = sau (history.Count) bước đã hoàn tất
             var balls = ballManager.AllBalls;
@@ -348,6 +374,31 @@ namespace Game.Billiards.Network
             }
             predPosHistory.Add(pos);
             predVelHistory.Add(vel);
+
+            // Khi Client vừa mô phỏng tới bước masterStep, áp dụng ngay gói đồng bộ tương ứng từ bộ đệm
+            if (pendingSyncPackets.Count > 0)
+            {
+                for (int p = 0; p < pendingSyncPackets.Count; p++)
+                {
+                    float[] pkt = pendingSyncPackets[p];
+                    int step = ExtractMasterStep(pkt);
+                    if (step < 0 || step < predPosHistory.Count)
+                    {
+                        pendingSyncPackets.RemoveAt(p);
+                        p--;
+                        ApplyBallsSyncPacketImmediate(pkt);
+                    }
+                }
+            }
+
+            // Dẫn hướng & bắt lỗ tự nhiên cho các bi mà Master đã xác nhận rơi lỗ
+            UpdatePendingPocketBalls();
+
+            // Nếu gói kết quả lượt (EVENT_TURN_RESULT) đang chờ bi rơi nốt vào miệng lỗ trên Client
+            if (pendingTurnResultData != null)
+            {
+                TryFlushPendingTurnResult();
+            }
         }
 
         private void Update()
@@ -363,6 +414,11 @@ namespace Game.Billiards.Network
             else
             {
                 highPingDuration = Mathf.MoveTowards(highPingDuration, 0f, dt * 2f);
+            }
+
+            if (!IsMaster && pendingTurnResultData != null)
+            {
+                TryFlushPendingTurnResult();
             }
 
             if (!IsMaster && matchStateManager != null && matchStateManager.CurrentPhase == MatchPhase.ShotInProgress)
@@ -655,20 +711,132 @@ namespace Game.Billiards.Network
             PhotonNetwork.RaiseEvent(NetworkConstants.EVENT_BALLS_SYNC, stream.ToArray(), options, SendOptions.SendUnreliable);
         }
 
+        private static int ExtractMasterStep(float[] stream)
+        {
+            if (stream == null || stream.Length < 1) return -1;
+            int count = Mathf.RoundToInt(stream[0]);
+            int stride = 8;
+            return stream.Length == 1 + count * stride + 1
+                ? Mathf.RoundToInt(stream[1 + count * stride])
+                : -1;
+        }
+
+        private bool TryFindNearestPocket(Vector3 worldPos, out int pocketId, out Vector3 pocketPos, out float distXZ)
+        {
+            pocketId = -1;
+            pocketPos = worldPos;
+            distXZ = float.MaxValue;
+
+            var tw = ballManager != null ? ballManager.TableWrapper : null;
+            if (tw == null || tw.Pockets == null || tw.Pockets.Length == 0)
+                return false;
+
+            Vector2 pXZ = new Vector2(worldPos.x, worldPos.z);
+            for (int i = 0; i < tw.Pockets.Length; i++)
+            {
+                var p = tw.Pockets[i];
+                if (p == null) continue;
+                Vector2 pkXZ = new Vector2(p.PocketPosition.x, p.PocketPosition.z);
+                float d = Vector2.Distance(pXZ, pkXZ);
+                if (d < distXZ)
+                {
+                    distXZ = d;
+                    pocketId = p.PocketId;
+                    pocketPos = p.PocketPosition;
+                }
+            }
+            return pocketId >= 0;
+        }
+
+        private void UpdatePendingPocketBalls()
+        {
+            if (pendingPocketBalls.Count == 0 || ballManager == null) return;
+            pendingPocketRemoveBuffer.Clear();
+
+            foreach (var kv in pendingPocketBalls)
+            {
+                int ballNum = kv.Key;
+                PendingPocketInfo info = kv.Value;
+                var ball = ballManager.GetBall(ballNum);
+                if (ball == null || ball.IsPocketed)
+                {
+                    pendingPocketRemoveBuffer.Add(ballNum);
+                    continue;
+                }
+
+                Vector2 ballXZ = new Vector2(ball.transform.position.x, ball.transform.position.z);
+                Vector2 pocketXZ = new Vector2(info.pocketPos.x, info.pocketPos.z);
+                Vector2 toPocket = pocketXZ - ballXZ;
+                float dist = toPocket.magnitude;
+
+                if (dist <= 0.115f)
+                {
+                    ball.MarkPocketed(info.pocketId, info.pocketPos);
+                    if (Audio.AudioManager.Instance != null)
+                    {
+                        Audio.AudioManager.Instance.PlayPocketDrop();
+                    }
+                    pendingPocketRemoveBuffer.Add(ballNum);
+                    continue;
+                }
+
+                var rbd = ball.Rigidbody;
+                if (rbd != null)
+                {
+                    if (rbd.isKinematic) rbd.isKinematic = false;
+                    Vector3 dir3D = new Vector3(toPocket.x, 0f, toPocket.y).normalized;
+                    float curSpeed = new Vector2(rbd.velocity.x, rbd.velocity.z).magnitude;
+                    float speedTowardPocket = Vector3.Dot(rbd.velocity, dir3D);
+                    float guideSpeed = Mathf.Clamp(Mathf.Max(curSpeed, 4.2f), 3.8f, 11.5f);
+                    if (speedTowardPocket < guideSpeed * 0.9f || Vector3.Dot(rbd.velocity.normalized, dir3D) < 0.94f)
+                    {
+                        rbd.velocity = dir3D * guideSpeed;
+                        const float r = 0.02855f;
+                        rbd.angularVelocity = new Vector3(rbd.velocity.z / r, 0f, -rbd.velocity.x / r);
+                    }
+                }
+            }
+
+            for (int i = 0; i < pendingPocketRemoveBuffer.Count; i++)
+            {
+                pendingPocketBalls.Remove(pendingPocketRemoveBuffer[i]);
+            }
+        }
+
         private void ApplyBallsSyncPacket(float[] stream)
+        {
+            if (ballManager == null || stream == null || stream.Length < 1) return;
+
+            int masterStep = ExtractMasterStep(stream);
+            // Nếu Client đang trong hoạt ảnh thọc cơ của Master (chưa chạm bi) hoặc bước vật lý của Master
+            // đi trước bước vật lý hiện tại của Client -> xếp vào hàng đợi đệm theo bước để không kéo bi sớm
+            if (clientRemoteStrikePending || (clientSimActive && masterStep >= 0 && masterStep >= predPosHistory.Count))
+            {
+                if (pendingSyncPackets.Count >= 24)
+                {
+                    pendingSyncPackets.RemoveAt(0);
+                }
+                pendingSyncPackets.Add(stream);
+                return;
+            }
+
+            ApplyBallsSyncPacketImmediate(stream);
+        }
+
+        private void ApplyBallsSyncPacketImmediate(float[] stream)
         {
             if (ballManager == null || stream == null || stream.Length < 1) return;
 
             int count = Mathf.RoundToInt(stream[0]);
             int stride = 8;
             int idx = 1;
-            // Cú đánh dự đoán của chính Client bắt đầu sớm hơn Master ~1 ping (nửa ping lệnh đi + nửa ping gói về) -> bù đủ 1 ping
             float lagComp = AwaitingMasterResult
                 ? Mathf.Clamp(PhotonNetwork.GetPing() * 0.001f, 0f, 0.4f)
                 : Mathf.Clamp(PhotonNetwork.GetPing() * 0.0005f, 0f, 0.15f);
 
             int masterStep = stream.Length == 1 + count * stride + 1 ? Mathf.RoundToInt(stream[1 + count * stride]) : -1;
-            bool reconcile = AwaitingMasterResult && clientSimActive && masterStep >= 0 && masterStep < predPosHistory.Count;
+            // Bật đối chiếu theo đúng bước vật lý (step-based reconciliation) cho CẢ lượt Master đánh lẫn lượt Client đánh
+            bool reconcile = clientSimActive && masterStep >= 0 && masterStep < predPosHistory.Count;
 
             for (int i = 0; i < count; i++)
             {
@@ -684,28 +852,80 @@ namespace Game.Billiards.Network
                 {
                     if (pocketed && !ball.IsPocketed)
                     {
-                        ball.MarkPocketed(-1);
+                        if (!TryFindNearestPocket(targetPos, out int nearPid, out Vector3 nearPPos, out _))
+                        {
+                            TryFindNearestPocket(ball.transform.position, out nearPid, out nearPPos, out _);
+                        }
+
+                        float clientDistToPocket = Vector2.Distance(
+                            new Vector2(ball.transform.position.x, ball.transform.position.z),
+                            new Vector2(nearPPos.x, nearPPos.z));
+
+                        // Chỉ cho bi rơi xuống lỗ khi quả bi trên màn hình Client đã thực sự lăn tới miệng lỗ (<= 12.5cm)
+                        if (clientDistToPocket <= 0.125f)
+                        {
+                            pendingPocketBalls.Remove(ballNum);
+                            ball.MarkPocketed(nearPid, nearPPos);
+                            if (Audio.AudioManager.Instance != null)
+                            {
+                                Audio.AudioManager.Instance.PlayPocketDrop();
+                            }
+                        }
+                        else
+                        {
+                            pendingPocketBalls[ballNum] = new PendingPocketInfo
+                            {
+                                pocketId = nearPid,
+                                pocketPos = nearPPos,
+                                masterStep = masterStep
+                            };
+                            UpdatePendingPocketBalls();
+                        }
                     }
                     else if (!ball.IsPocketed)
                     {
+                        if (pendingPocketBalls.ContainsKey(ballNum))
+                        {
+                            idx += stride;
+                            continue;
+                        }
+
                         var rbd = ball.Rigidbody;
                         if (rbd != null)
                         {
                             if (rbd.isKinematic) rbd.isKinematic = false;
 
-                            if (reconcile && ballNum >= 0 && ballNum < 16 && !desyncedBalls.Contains(ballNum))
+                            if (reconcile && ballNum >= 0 && ballNum < 16)
                             {
                                 Vector3 rerr = targetPos - predPosHistory[masterStep][ballNum];
                                 rerr.y = 0f;
                                 float e = rerr.magnitude;
-                                if (e > 0.15f)
+                                int stepsAhead = Mathf.Max(0, (predPosHistory.Count - 1) - masterStep);
+
+                                if (e > 0.14f)
                                 {
-                                    // Mô phỏng thật sự lệch (va chạm khác): snap về Master, ngoại suy theo số bước đã trôi
-                                    Vector3 sp = targetPos + new Vector3(targetVel.x, 0f, targetVel.z) * ((predPosHistory.Count - masterStep) * Time.fixedDeltaTime);
-                                    rbd.position = sp;
-                                    ball.transform.position = sp;
-                                    rbd.velocity = targetVel;
-                                    desyncedBalls.Add(ballNum);
+                                    if (stepsAhead == 0)
+                                    {
+                                        Vector3 sp = new Vector3(targetPos.x, rbd.position.y, targetPos.z);
+                                        rbd.position = sp;
+                                        ball.transform.position = sp;
+                                        rbd.velocity = targetVel;
+                                        predPosHistory[masterStep][ballNum] = sp;
+                                        predVelHistory[masterStep][ballNum] = targetVel;
+                                    }
+                                    else
+                                    {
+                                        Vector3 hv = predVelHistory[masterStep][ballNum];
+                                        Vector3 dv = new Vector3(targetVel.x - hv.x, 0f, targetVel.z - hv.z);
+                                        rbd.position += rerr;
+                                        ball.transform.position += rerr;
+                                        rbd.velocity += dv;
+                                        for (int h = masterStep; h < predPosHistory.Count; h++)
+                                        {
+                                            predPosHistory[h][ballNum] += rerr;
+                                            predVelHistory[h][ballNum] += dv;
+                                        }
+                                    }
                                 }
                                 else if (e > 0.004f && !ball.RecentlyBounced(0.16f))
                                 {
@@ -736,14 +956,13 @@ namespace Game.Billiards.Network
                                 continue;
                             }
 
-                            // Bù độ trễ gói (~nửa ping): vị trí Master gửi đã cũ, ngoại suy theo vận tốc
+                            // Fallback khi gói không có masterStep hợp lệ
                             Vector3 predictedPos = targetPos + new Vector3(targetVel.x, 0f, targetVel.z) * lagComp;
                             Vector3 err = predictedPos - ball.transform.position;
                             err.y = 0f;
 
                             if (err.magnitude > 0.25f)
                             {
-                                // Lệch quá xa: snap hẳn về vị trí Master
                                 rbd.position = predictedPos;
                                 ball.transform.position = predictedPos;
                                 rbd.velocity = targetVel;
@@ -754,7 +973,6 @@ namespace Game.Billiards.Network
                             }
                             else
                             {
-                                // Giữ mô phỏng vật lý cục bộ (mượt, có âm thanh va chạm) và kéo nhẹ về đích bằng vận tốc hiệu chỉnh
                                 rbd.velocity = targetVel + err * 6f;
                             }
                         }
@@ -822,14 +1040,90 @@ namespace Game.Billiards.Network
             Debug.Log($"[NetworkMatchManager] [Master] Đã broadcast EVENT_TURN_RESULT (NextPlayer: {state.currentPlayerIndex}, Phase: {state.phase})");
         }
 
+        private void TryFlushPendingTurnResult()
+        {
+            if (pendingTurnResultData == null) return;
+            UpdatePendingPocketBalls();
+
+            bool timedOut = (Time.unscaledTime - pendingTurnResultReceivedTime) >= 0.45f;
+            if ((!clientRemoteStrikePending && pendingPocketBalls.Count == 0) || timedOut)
+            {
+                var data = pendingTurnResultData;
+                pendingTurnResultData = null;
+                ApplyTurnResultPacketImmediate(data);
+            }
+        }
+
         private void ApplyTurnResultPacket(ExitGames.Client.Photon.Hashtable data)
         {
             if (matchStateManager == null || data == null) return;
+
+            // Kiểm tra xem có quả bi nào mà Master báo đã rơi lỗ nhưng trên máy Client vẫn đang trên đường lăn tới miệng lỗ
+            if (data.TryGetValue("ballSnap", out object snapCheckObj) && ballManager != null)
+            {
+                float[] snap = (float[])snapCheckObj;
+                int stride = 5;
+                for (int i = 0; i < snap.Length; i += stride)
+                {
+                    int num = Mathf.RoundToInt(snap[i]);
+                    Vector3 pos = new Vector3(snap[i + 1], snap[i + 2], snap[i + 3]);
+                    bool pocketed = snap[i + 4] > 0.5f;
+                    if (!pocketed) continue;
+
+                    var ball = ballManager.GetBall(num);
+                    if (ball != null && !ball.IsPocketed)
+                    {
+                        if (!TryFindNearestPocket(pos, out int nearPid, out Vector3 nearPPos, out _))
+                        {
+                            TryFindNearestPocket(ball.transform.position, out nearPid, out nearPPos, out _);
+                        }
+                        float distToPocket = Vector2.Distance(
+                            new Vector2(ball.transform.position.x, ball.transform.position.z),
+                            new Vector2(nearPPos.x, nearPPos.z));
+
+                        if (distToPocket <= 0.125f)
+                        {
+                            pendingPocketBalls.Remove(num);
+                            ball.MarkPocketed(nearPid, nearPPos);
+                            if (Audio.AudioManager.Instance != null)
+                            {
+                                Audio.AudioManager.Instance.PlayPocketDrop();
+                            }
+                        }
+                        else if (!pendingPocketBalls.ContainsKey(num))
+                        {
+                            pendingPocketBalls[num] = new PendingPocketInfo
+                            {
+                                pocketId = nearPid,
+                                pocketPos = nearPPos,
+                                masterStep = predPosHistory.Count
+                            };
+                        }
+                    }
+                }
+            }
+
+            if (clientRemoteStrikePending || pendingPocketBalls.Count > 0)
+            {
+                UpdatePendingPocketBalls();
+                pendingTurnResultData = data;
+                pendingTurnResultReceivedTime = Time.unscaledTime;
+                return;
+            }
+
+            ApplyTurnResultPacketImmediate(data);
+        }
+
+        private void ApplyTurnResultPacketImmediate(ExitGames.Client.Photon.Hashtable data)
+        {
+            if (matchStateManager == null || data == null) return;
+            pendingTurnResultData = null;
 
             var state = matchStateManager.State;
             // Hết lượt: xóa marker lỗ đã chỉ định của người vừa đánh trên máy người xem
             if (VFX.VFXManager.Instance != null) VFX.VFXManager.Instance.SetPocketCallMarker(Vector3.zero, false);
             clientLocalStrikeActive = false; // Kết quả lượt đã về: cú đánh cục bộ đã được Master xử lý xong
+            clientRemoteStrikePending = false;
             AwaitingMasterResult = false;
             ResetPredictionSim();
             predictedBackup = null;
@@ -858,7 +1152,15 @@ namespace Game.Billiards.Network
                     {
                         if (pocketed)
                         {
-                            if (!ball.IsPocketed) ball.MarkPocketed(-1);
+                            if (!ball.IsPocketed)
+                            {
+                                if (!TryFindNearestPocket(pos, out int nearPid, out Vector3 nearPPos, out _))
+                                {
+                                    TryFindNearestPocket(ball.transform.position, out nearPid, out nearPPos, out _);
+                                }
+                                ball.transform.position = new Vector3(nearPPos.x, ball.transform.position.y, nearPPos.z);
+                                ball.MarkPocketed(nearPid, nearPPos);
+                            }
                         }
                         else
                         {
@@ -1207,47 +1509,94 @@ namespace Game.Billiards.Network
             {
                 // Client nhận xác nhận thực thi từ Master -> chuyển sang ShotInProgress và chạy hoạt họa đánh!
                 Debug.Log("[NetworkMatchManager] [Client] Nhận lệnh ShotCommand từ Master -> chạy hoạt họa đánh!");
-                // Client đã dự đoán cú đánh cục bộ (bi đang lăn, phase đã là ShotInProgress): không mở khóa/đổi phase lần nữa
-                if (!AwaitingMasterResult && !clientLocalStrikeActive)
+                // Nếu Client đã tự chạy hoạt ảnh đánh ngay khi bấm thì không chạy lại lần 2 (tránh cơ giật 2 lần)
+                bool alreadyAnimated = clientLocalStrikeActive || AwaitingMasterResult;
+
+                if (!alreadyAnimated)
                 {
-                    if (ballManager != null)
-                    {
-                        ballManager.UnlockAllBallsKinematic();
-                    }
+                    ResetPredictionSim();
+                    pendingTurnResultData = null;
+                    clientRemoteStrikePending = true;
+
+                    // Đồng bộ chính xác tọa độ bi cái của Master trước khi đánh (cả lượt phá bi trong Bếp lẫn lượt thường)
+                    SyncRemoteCueBallPosition(hasCuePos, sentCuePos, isBreakTurn);
+
                     if (matchStateManager != null)
                     {
                         matchStateManager.SetPhase(MatchPhase.ShotInProgress);
                     }
-                }
-                // Nếu Client đã tự chạy hoạt ảnh đánh ngay khi bấm thì không chạy lại lần 2 (tránh cơ giật 2 lần)
-                bool alreadyAnimated = clientLocalStrikeActive;
-                if (!alreadyAnimated && cameraDirector != null)
-                {
-                    cameraDirector.TryActivatePredictedEightBallPocketCamera(cmd, ballManager);
-                }
-                if (cueController != null && !alreadyAnimated)
-                {
-                    cueController.SetAimingState(true);
-                    cueController.SetElevation(cmd.cueElevationDeg);
-                    cueController.UpdateAim(cmd.direction, cmd.power01);
-                    cueController.TriggerStrikeAnimation(() =>
+                    if (cameraDirector != null)
                     {
-                        if (Audio.AudioManager.Instance != null)
+                        cameraDirector.TryActivatePredictedEightBallPocketCamera(cmd, ballManager);
+                    }
+
+                    if (cueController != null)
+                    {
+                        cueController.SetAimingState(true);
+                        cueController.SetElevation(cmd.cueElevationDeg);
+                        cueController.UpdateAim(cmd.direction, cmd.power01);
+                        cueController.TriggerStrikeAnimation(() =>
                         {
-                            Audio.AudioManager.Instance.PlayCueHit(cmd.power01, isBreakTurn);
-                        }
-                        if (cameraDirector != null)
-                        {
-                            if (matchStateManager != null && matchStateManager.CurrentPlayerIndex == localPlayerIndex)
+                            clientRemoteStrikePending = false;
+                            if (cameraDirector != null)
                             {
-                                cameraDirector.SwitchToShotFollowCamera(cmd.direction);
+                                if (matchStateManager != null && matchStateManager.CurrentPlayerIndex == localPlayerIndex)
+                                {
+                                    cameraDirector.SwitchToShotFollowCamera(cmd.direction);
+                                }
+                                else
+                                {
+                                    cameraDirector.SwitchToOpponentCamera();
+                                }
                             }
-                            else
-                            {
-                                cameraDirector.SwitchToOpponentCamera();
-                            }
-                        }
-                    });
+                            ExecuteRemoteMasterShot(cmd, hasCuePos, sentCuePos, isBreakTurn);
+                        });
+                    }
+                    else
+                    {
+                        clientRemoteStrikePending = false;
+                        ExecuteRemoteMasterShot(cmd, hasCuePos, sentCuePos, isBreakTurn);
+                    }
+                }
+            }
+        }
+
+        private void SyncRemoteCueBallPosition(bool hasCuePos, Vector3 sentCuePos, bool isBreakTurn)
+        {
+            if (!hasCuePos || ballManager == null || ballManager.CueBall == null || ballManager.CueBall.IsPocketed)
+                return;
+
+            if (isBreakTurn && ballInHandController != null)
+            {
+                ballInHandController.PlaceCueBallInKitchen(sentCuePos, false);
+            }
+            else if ((ballManager.CueBall.transform.position - sentCuePos).sqrMagnitude > 0.000001f)
+            {
+                ballManager.CueBall.ResetTo(sentCuePos, ballManager.CueBall.transform.rotation);
+            }
+        }
+
+        private void ExecuteRemoteMasterShot(ShotCommand cmd, bool hasCuePos, Vector3 sentCuePos, bool isBreakTurn)
+        {
+            SyncRemoteCueBallPosition(hasCuePos, sentCuePos, isBreakTurn);
+            if (movementMonitor != null)
+            {
+                movementMonitor.ResetToResting();
+            }
+
+            if (shotExecutor != null && shotExecutor.ExecuteShot(cmd))
+            {
+                AwaitingMasterResult = true;
+            }
+            else
+            {
+                if (ballManager != null)
+                {
+                    ballManager.UnlockAllBallsKinematic();
+                }
+                if (Audio.AudioManager.Instance != null)
+                {
+                    Audio.AudioManager.Instance.PlayCueHit(cmd.power01, isBreakTurn);
                 }
             }
         }

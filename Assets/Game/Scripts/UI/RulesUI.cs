@@ -114,7 +114,8 @@ namespace Game.Billiards.UI
             {
                 if (tabs[i] == null) continue;
                 var fx = tabs[i].GetComponent<UIHoverEffect>();
-                if (fx == null) fx = UIHoverEffect.Attach(tabs[i].gameObject, tabs[i].targetGraphic is SkewedPanelGraphic);
+                if (fx == null) fx = UIHoverEffect.Attach(tabs[i].gameObject, tabs[i].targetGraphic is SkewedPanelGraphic, null, null, 0f, 1.05f);
+                else fx = UIHoverEffect.Attach(tabs[i].gameObject, tabs[i].targetGraphic is SkewedPanelGraphic, null, null, 0f, 1.05f);
                 fx.SetSelected(i == tabIndex);
             }
         }

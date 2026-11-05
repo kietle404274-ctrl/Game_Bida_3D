@@ -40,7 +40,7 @@ namespace Game.Billiards.Editor
             lcRt.anchorMax = new Vector2(0.5f, 0.5f);
             lcRt.sizeDelta = new Vector2(750f, 400f);
 
-            Text logoText = UIBuilderUtilities.CreateText(logoCard.transform, "LogoTitle", "🎱 8-BALL BILLIARDS 3D", 50, UIBuilderUtilities.ColorAccentGold, TextAnchor.MiddleCenter, FontStyle.Bold);
+            Text logoText = UIBuilderUtilities.CreateText(logoCard.transform, "LogoTitle", "🎱 CƠ THỦ ĐẠI CHIẾN", 50, UIBuilderUtilities.ColorAccentGold, TextAnchor.MiddleCenter, FontStyle.Bold);
             logoText.rectTransform.anchoredPosition = new Vector2(0f, 90f);
             logoText.rectTransform.sizeDelta = new Vector2(700f, 65f);
 

@@ -183,6 +183,7 @@ namespace Game.Billiards.UI
             }
 
             EnsureGameplayCanvasVisible();
+            OnlineEmojiController.Ensure(this);
             RefreshAllUI();
         }
 
@@ -246,6 +247,7 @@ namespace Game.Billiards.UI
             if (onlineChat == null) onlineChat = OnlineChatUI.Ensure(this);
             else onlineChat.RefreshModeVisibility();
 
+            OnlineEmojiController.Ensure(this);
             NetworkStatusIndicatorUI.Ensure(this);
         }
 
@@ -398,6 +400,13 @@ namespace Game.Billiards.UI
 
             if (UnityEngine.Input.GetKeyDown(KeyCode.Escape))
             {
+                // Nếu Khay chọn Emoji đang mở thì đóng khay Emoji trước
+                if (OnlineEmojiController.IsPickerOpen && OnlineEmojiController.Instance != null)
+                {
+                    OnlineEmojiController.Instance.SetTrayOpen(false);
+                    return;
+                }
+
                 // Nếu khung chat đang mở rộng thì đóng khung chat trước
                 if (OnlineChatUI.IsChatOpen && onlineChat != null)
                 {
@@ -418,8 +427,8 @@ namespace Game.Billiards.UI
                 }
             }
 
-            // Khi khung chat đang mở rộng: không mở chồng các bảng Hướng dẫn / Thống kê / Luật bằng phím tắt
-            if (OnlineChatUI.IsChatOpen) return;
+            // Khi khung chat hoặc khay Emoji đang mở: không mở chồng các bảng Hướng dẫn / Thống kê / Luật bằng phím tắt
+            if (OnlineChatUI.IsChatOpen || OnlineEmojiController.IsPickerOpen) return;
 
             if (UnityEngine.Input.GetKeyDown(KeyCode.H) || UnityEngine.Input.GetKeyDown(KeyCode.F1))
             {

@@ -78,7 +78,11 @@ namespace Game.Billiards.UI
             {
                 if (b == null) continue;
 
-                if (b.targetGraphic is SkewedPanelGraphic)
+                if (b.transform.parent != null && b.transform.parent.name == "TabsBar")
+                {
+                    Attach(b.gameObject, b.targetGraphic is SkewedPanelGraphic, null, null, 0f, 1.05f);
+                }
+                else if (b.targetGraphic is SkewedPanelGraphic)
                 {
                     Attach(b.gameObject, true);
                 }
@@ -129,7 +133,7 @@ namespace Game.Billiards.UI
         {
             if (selected) return;
             // Chỉ trả vị trí về gốc nếu đang bị dịch do hover (tránh ghi đè vị trí do layout sắp xếp)
-            if (t > 0f && rt != null) rt.anchoredPosition = basePosition;
+            if (t > 0f && rt != null && Mathf.Abs(shiftRight) > 0.001f) rt.anchoredPosition = basePosition;
             t = 0f;
             transform.localScale = baseScale;
             if (changeColor)
@@ -181,7 +185,7 @@ namespace Game.Billiards.UI
 
             float scale = Mathf.Lerp(1f, hoverScale, e) * (pressed ? 0.97f : 1f);
             transform.localScale = baseScale * scale;
-            if (rt != null) rt.anchoredPosition = basePosition + new Vector2(shiftRight * e, 0f);
+            if (rt != null && Mathf.Abs(shiftRight) > 0.001f) rt.anchoredPosition = basePosition + new Vector2(shiftRight * e, 0f);
 
             if (changeColor)
             {

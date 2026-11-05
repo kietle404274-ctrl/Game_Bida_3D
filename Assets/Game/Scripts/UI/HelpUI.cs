@@ -21,7 +21,7 @@ namespace Game.Billiards.UI
             new[] { "J",              "help_spin" },
             new[] { "K",              "help_elev" },
             new[] { "V",              "help_camera" },
-            new[] { "0",              "help_chat" },
+            new[] { "C",              "help_chat" },
             new[] { "M",              "help_mic" },
             new[] { "N",              "help_speaker" },
             new[] { "WASD",           "help_place" },

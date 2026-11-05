@@ -712,7 +712,7 @@ namespace Game.Billiards.Match
 
         private void HandleLocalLagInput(float dt, TurnSlideBannerUI slideBanner)
         {
-            if (OnlineChatUI.IsChatOpen || OnlineChatUI.IsTyping) return;
+            if (OnlineChatUI.IsChatOpen || OnlineChatUI.IsTyping || OnlineEmojiController.IsPickerOpen) return;
 
             // 1. Chỉnh nhẹ hướng ngắm trái/phải bằng phím A/D hoặc mũi tên
             float keyH = 0f;
@@ -914,15 +914,19 @@ namespace Game.Billiards.Match
 
             Shader lineShader = Shader.Find("Sprites/Default") ?? Shader.Find("UI/Default");
 
-            // Màu đặc trưng: Xanh Cyan (#00F0FF) luôn dành cho BẠN, Vàng Cam (#FFC828) luôn dành cho ĐỐI THỦ
-            Color colYou = new Color(0f, 0.94f, 1f, 0.92f);
+            TableTheme activeTheme = TableThemeApplier.ResolveActiveMatchTableTheme();
+            Color aimGuideCol = TableThemeApplier.GetAimGuideColorForTheme(activeTheme);
+            // Trên bàn Xanh Da Trời, dùng Trắng Sáng cho vòng/thước của BẠN thay vì Xanh Cyan để không bị chìm vào mặt bàn
+            Color colYou = (activeTheme == TableTheme.Blue)
+                ? new Color(1f, 1f, 1f, 0.95f)
+                : new Color(0f, 0.94f, 1f, 0.92f);
             Color colOpp = new Color(1f, 0.78f, 0.14f, 0.92f);
             Color colA = (localPlayerIndex == 0) ? colYou : colOpp;
             Color colB = (localPlayerIndex == 1) ? colYou : colOpp;
 
-            // 2. Tia ngắm ngắn định hướng của người chơi cục bộ
-            aimLineLocal = CreateLine("LocalLagAimLine", lineShader, 0.005f,
-                colYou, new Color(colYou.r, colYou.g, colYou.b, 0f));
+            // 2. Tia ngắm ngắn định hướng của người chơi cục bộ (đồng bộ màu thước ngắm theo bàn)
+            aimLineLocal = CreateLine("LocalLagAimLine", lineShader, 0.0055f,
+                aimGuideCol, new Color(aimGuideCol.r, aimGuideCol.g, aimGuideCol.b, 0f));
             aimLineLocal.positionCount = 2;
 
             // 3. Vòng tròn phát sáng dưới chân 2 bi cái để phân biệt trực quan cơ bên nào là của Bạn / Đối thủ

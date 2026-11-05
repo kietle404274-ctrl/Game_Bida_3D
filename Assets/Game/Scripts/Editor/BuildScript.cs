@@ -18,7 +18,7 @@ namespace Game.Billiards.Editor
         };
 
         private const string BuildOutputFolder = @"D:\TAI_LIEU_HOC_TAP\DoAnTotNghiep\Game_Build";
-        private const string ExecutableName = "Game_Bida_3D.exe";
+        private const string ExecutableName = "Co_Thu_Dai_Chien.exe";
 
         static BuildScript()
         {
@@ -144,11 +144,87 @@ namespace Game.Billiards.Editor
 
             if (!Application.isPlaying)
             {
+                SyncBrandingAndAppIcon();
                 SyncAudioLibraryAssets();
+                CleanBurstDebugDirs(BuildOutputFolder);
+                SyncDocumentationToTaiLieu();
                 AssetDatabase.SaveAssets();
             }
             SceneView.RepaintAll();
             Debug.Log("<color=green>[BuildScript] Đã gán lại vật liệu HDRP Balls Billiard.mat cho toàn bộ 16 bi!</color>");
+        }
+
+        private static void SyncDocumentationToTaiLieu()
+        {
+            try
+            {
+                string taiLieuDir = @"D:\TAI_LIEU_HOC_TAP\DoAnTotNghiep\TaiLieu";
+                if (!Directory.Exists(taiLieuDir)) Directory.CreateDirectory(taiLieuDir);
+
+                string tempDir = Path.Combine(Directory.GetCurrentDirectory(), "Temp");
+                string srcMd = Path.Combine(tempDir, "Tai_Lieu_Toan_Tap_Co_Thu_Dai_Chien_3D.md");
+                if (File.Exists(srcMd))
+                {
+                    File.Copy(srcMd, Path.Combine(taiLieuDir, "Huong_Dan_Toan_Tap_Co_Thu_Dai_Chien_3D.md"), true);
+                }
+
+                string srcDocx = Path.Combine(tempDir, "Huong_Dan_Toan_Tap_Co_Thu_Dai_Chien_3D.docx");
+                if (File.Exists(srcDocx))
+                {
+                    File.Copy(srcDocx, Path.Combine(taiLieuDir, "Huong_Dan_Toan_Tap_Co_Thu_Dai_Chien_3D.docx"), true);
+                }
+            }
+            catch { }
+        }
+
+        private static void CleanBurstDebugDirs(string dir)
+        {
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+            try
+            {
+                foreach (string subDir in Directory.GetDirectories(dir, "*_BurstDebugInformation_DoNotShip"))
+                {
+                    try { Directory.Delete(subDir, true); } catch { }
+                }
+            }
+            catch { }
+        }
+
+        private static void SyncBrandingAndAppIcon()
+        {
+            PlayerSettings.productName = "Cơ Thủ Đại Chiến";
+            PlayerSettings.companyName = "CueClashStudio";
+
+            const string iconPath = "Assets/Game/Textures/Icon/AppIcon.png";
+            string fullIconPath = Path.Combine(Directory.GetCurrentDirectory(), iconPath);
+            if (!File.Exists(fullIconPath)) return;
+
+            AssetDatabase.ImportAsset(iconPath, ImportAssetOptions.ForceSynchronousImport);
+            TextureImporter ti = AssetImporter.GetAtPath(iconPath) as TextureImporter;
+            if (ti != null)
+            {
+                bool dirty = false;
+                if (ti.textureType != TextureImporterType.Default) { ti.textureType = TextureImporterType.Default; dirty = true; }
+                if (!ti.alphaIsTransparency) { ti.alphaIsTransparency = true; dirty = true; }
+                if (!ti.isReadable) { ti.isReadable = true; dirty = true; }
+                if (!ti.mipmapEnabled) { ti.mipmapEnabled = true; dirty = true; }
+                if (ti.npotScale != TextureImporterNPOTScale.None) { ti.npotScale = TextureImporterNPOTScale.None; dirty = true; }
+                if (ti.maxTextureSize < 1024) { ti.maxTextureSize = 1024; dirty = true; }
+                if (dirty) ti.SaveAndReimport();
+            }
+
+            Texture2D iconTex = AssetDatabase.LoadAssetAtPath<Texture2D>(iconPath);
+            if (iconTex != null)
+            {
+                PlayerSettings.SetIconsForTargetGroup(BuildTargetGroup.Unknown, new Texture2D[] { iconTex });
+                int[] sizes = PlayerSettings.GetIconSizesForTargetGroup(BuildTargetGroup.Standalone);
+                if (sizes != null && sizes.Length > 0)
+                {
+                    Texture2D[] standaloneIcons = new Texture2D[sizes.Length];
+                    for (int i = 0; i < sizes.Length; i++) standaloneIcons[i] = iconTex;
+                    PlayerSettings.SetIconsForTargetGroup(BuildTargetGroup.Standalone, standaloneIcons);
+                }
+            }
         }
 
         private static void SyncAudioLibraryAssets()
@@ -238,23 +314,37 @@ namespace Game.Billiards.Editor
 
                 string fullExecutablePath = Path.Combine(outputDirectory, ExecutableName);
 
-                // Đóng các tiến trình Game_Bida_3D đang chạy (nếu có) để tránh khóa file khi build
+                // Đóng các tiến trình game đang chạy (nếu có) để tránh khóa file khi build
                 try
                 {
-                    var runningProcs = System.Diagnostics.Process.GetProcessesByName("Game_Bida_3D");
-                    if (runningProcs != null && runningProcs.Length > 0)
+                    string[] procNames = { "Game_Bida_3D", "Co_Thu_Dai_Chien" };
+                    foreach (string pName in procNames)
                     {
-                        foreach (var proc in runningProcs)
+                        var runningProcs = System.Diagnostics.Process.GetProcessesByName(pName);
+                        if (runningProcs != null && runningProcs.Length > 0)
                         {
-                            try
+                            foreach (var proc in runningProcs)
                             {
-                                proc.Kill();
-                                proc.WaitForExit(3000);
+                                try
+                                {
+                                    proc.Kill();
+                                    proc.WaitForExit(3000);
+                                }
+                                catch { }
                             }
-                            catch { }
+                            System.Threading.Thread.Sleep(500);
                         }
-                        System.Threading.Thread.Sleep(500);
                     }
+                }
+                catch { }
+
+                // Dọn file exe và thư mục _Data của tên cũ Game_Bida_3D nếu còn tồn tại
+                try
+                {
+                    string oldExe = Path.Combine(outputDirectory, "Game_Bida_3D.exe");
+                    if (File.Exists(oldExe)) File.Delete(oldExe);
+                    string oldData = Path.Combine(outputDirectory, "Game_Bida_3D_Data");
+                    if (Directory.Exists(oldData)) Directory.Delete(oldData, true);
                 }
                 catch { }
 
@@ -301,9 +391,17 @@ namespace Game.Billiards.Editor
 
                 if (summary.result == BuildResult.Succeeded)
                 {
+                    // Dọn thư mục BurstDebugInformation_DoNotShip và build_status.txt trong thư mục phát hành để sẵn sàng nén gửi người chơi
+                    try
+                    {
+                        CleanBurstDebugDirs(outputDirectory);
+                        if (File.Exists(statusFilePath)) File.Delete(statusFilePath);
+                    }
+                    catch { }
+
                     string info = $"SUCCESS: File={fullExecutablePath}, Size={summary.totalSize / (1024 * 1024):F2}MB, Duration={summary.totalTime.TotalSeconds:F1}s";
                     Debug.Log($"<color=green>✓ XÂY DỰNG THÀNH CÔNG! {info}</color>");
-                    writeStatus(info);
+                    try { File.WriteAllText(localStatusPath, info); } catch { }
                 }
                 else
                 {

@@ -71,6 +71,7 @@ namespace Game.Billiards.UI
             Canvas.ForceUpdateCanvases();
             CueElevationSelector.EnsureBuilt();
             var chatUi = OnlineChatUI.Ensure(hud);
+            var emojiUi = OnlineEmojiController.Ensure(hud);
             Canvas.ForceUpdateCanvases();
 
             // Thanh tên / tỉ số phía trên: trượt xuống (lấy cả khung TopHUDBar để các viền Border & TurnHighlight trượt cùng thẻ người chơi)

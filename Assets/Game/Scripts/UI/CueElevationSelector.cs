@@ -164,7 +164,7 @@ namespace Game.Billiards.UI
 
         private void Update()
         {
-            if (OnlineChatUI.IsChatOpen || OnlineChatUI.IsTyping) return;
+            if (OnlineChatUI.IsChatOpen || OnlineChatUI.IsTyping || OnlineEmojiController.IsPickerOpen) return;
 
             if (!isOpen)
             {

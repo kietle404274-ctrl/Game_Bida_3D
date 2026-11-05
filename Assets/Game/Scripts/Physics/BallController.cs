@@ -1315,60 +1315,16 @@ namespace Game.Billiards.Physics
             Vector3 w0 = chained ? rb.angularVelocity : prevAngular;
             v0.y = 0f;
 
-            string colName = collision.collider != null ? collision.collider.gameObject.name : string.Empty;
-            string goName = collision.gameObject != null ? collision.gameObject.name : string.Empty;
-            bool isPocketFacing = colName.StartsWith("Facing_") || colName.StartsWith("Jaw_") || colName.StartsWith("Backstop_")
-                               || goName.StartsWith("Facing_") || goName.StartsWith("Jaw_") || goName.StartsWith("Backstop_");
-
-            // Xác định pháp tuyến mặt phẳng chuẩn (true planar face normal) của băng thẳng hoặc má lỗ vát
-            // nhằm loại bỏ hoàn toàn sai lệch pháp tuyến tại đỉnh/cạnh (ghost vertex collision) ở 12 đầu mũi băng.
-            Vector3 faceNormal = Vector3.zero;
-            bool isStraightCushion = false;
-            if (colName.StartsWith("Cushion_Foot"))
+            if (!TryResolveCushionPlanarNormal(collision.collider, n, out Vector3 resolvedNormalXZ, out bool isPocketFacing))
             {
-                faceNormal = Vector3.right;
-                isStraightCushion = true;
-            }
-            else if (colName.StartsWith("Cushion_Head"))
-            {
-                faceNormal = Vector3.left;
-                isStraightCushion = true;
-            }
-            else if (colName.StartsWith("Cushion_SidePos"))
-            {
-                faceNormal = Vector3.back;
-                isStraightCushion = true;
-            }
-            else if (colName.StartsWith("Cushion_SideNeg"))
-            {
-                faceNormal = Vector3.forward;
-                isStraightCushion = true;
-            }
-            else if ((colName.StartsWith("Facing_") || colName.StartsWith("Jaw_")) && collision.collider != null)
-            {
-                // Trong TableWrapper.CreateFacingBox, trục +X cục bộ (transform.right) luôn hướng ra ngoài mặt va chạm
-                Vector3 rightXZ = new Vector3(collision.collider.transform.right.x, 0f, collision.collider.transform.right.z);
-                if (rightXZ.sqrMagnitude > 0.001f)
+                if (!rb.isKinematic && v0.sqrMagnitude > rb.velocity.sqrMagnitude + 0.0001f)
                 {
-                    faceNormal = rightXZ.normalized;
+                    rb.velocity = v0;
+                    rb.angularVelocity = w0;
                 }
+                return;
             }
-
-            if (faceNormal.sqrMagnitude > 0.5f)
-            {
-                // Nếu va chạm vào mặt cắt đầu hồi (end-cap) của băng thẳng (nXZ lệch quá nhiều so với pháp tuyến mặt băng),
-                // bỏ qua và khôi phục vận tốc để đầu cắt vuông góc của BoxCollider băng không hất bi lệch hướng.
-                if (isStraightCushion && Vector3.Dot(nXZ, faceNormal) < 0.75f)
-                {
-                    if (!rb.isKinematic && v0.sqrMagnitude > rb.velocity.sqrMagnitude + 0.0001f)
-                    {
-                        rb.velocity = v0;
-                        rb.angularVelocity = w0;
-                    }
-                    return;
-                }
-                nXZ = faceNormal;
-            }
+            nXZ = resolvedNormalXZ;
 
             // n hướng từ băng ra phía bi (từ collider sang ball).
             // Nếu bi đang chuyển động cùng hướng nXZ (đang tách xa băng hoặc trượt dọc mép má vát mở),
@@ -1399,18 +1355,239 @@ namespace Game.Billiards.Physics
             }
         }
 
+        /// <summary>
+        /// Xác định pháp tuyến mặt phẳng chuẩn (true planar face normal) của băng thẳng hoặc má lỗ vát
+        /// nhằm loại bỏ hoàn toàn sai lệch pháp tuyến tại đỉnh/cạnh (ghost vertex collision) ở 12 đầu mũi băng.
+        /// Trả về false nếu va chạm vào mặt sàn nỉ hoặc mặt cắt đầu hồi (end-cap) của băng thẳng.
+        /// </summary>
+        public static bool TryResolveCushionPlanarNormal(
+            Collider collider,
+            Vector3 rawNormal,
+            out Vector3 planarNormalXZ,
+            out bool isPocketFacing)
+        {
+            planarNormalXZ = Vector3.zero;
+            isPocketFacing = false;
+
+            if (Mathf.Abs(rawNormal.y) > 0.6f)
+                return false;
+
+            Vector3 nXZ = new Vector3(rawNormal.x, 0f, rawNormal.z);
+            if (nXZ.sqrMagnitude < 0.001f)
+                return false;
+            nXZ.Normalize();
+
+            string colName = collider != null ? collider.gameObject.name : string.Empty;
+            if (colName == "ClothBedCollider")
+                return false;
+
+            isPocketFacing = colName.StartsWith("Facing_") || colName.StartsWith("Jaw_") || colName.StartsWith("Backstop_");
+
+            Vector3 faceNormal = Vector3.zero;
+            bool isStraightCushion = false;
+            if (colName.StartsWith("Cushion_Foot"))
+            {
+                faceNormal = Vector3.right;
+                isStraightCushion = true;
+            }
+            else if (colName.StartsWith("Cushion_Head"))
+            {
+                faceNormal = Vector3.left;
+                isStraightCushion = true;
+            }
+            else if (colName.StartsWith("Cushion_SidePos"))
+            {
+                faceNormal = Vector3.back;
+                isStraightCushion = true;
+            }
+            else if (colName.StartsWith("Cushion_SideNeg"))
+            {
+                faceNormal = Vector3.forward;
+                isStraightCushion = true;
+            }
+            else if ((colName.StartsWith("Facing_") || colName.StartsWith("Jaw_")) && collider != null)
+            {
+                // Trong TableWrapper.CreateFacingBox, trục +X cục bộ (transform.right) luôn hướng ra ngoài mặt va chạm
+                Vector3 rightXZ = new Vector3(collider.transform.right.x, 0f, collider.transform.right.z);
+                if (rightXZ.sqrMagnitude > 0.001f)
+                {
+                    faceNormal = rightXZ.normalized;
+                }
+            }
+
+            if (faceNormal.sqrMagnitude > 0.5f)
+            {
+                // Nếu va chạm vào mặt cắt đầu hồi (end-cap) của băng thẳng (nXZ lệch quá nhiều so với pháp tuyến mặt băng),
+                // bỏ qua để đầu cắt vuông góc của BoxCollider băng không hất bi lệch hướng.
+                if (isStraightCushion && Vector3.Dot(nXZ, faceNormal) < 0.75f)
+                {
+                    return false;
+                }
+                nXZ = faceNormal;
+            }
+
+            planarNormalXZ = nXZ;
+            return true;
+        }
+
+        /// <summary>
+        /// Dự đoán chính xác hướng bật băng sau va chạm cho thước ngắm (AimGuide) khi đánh A-băng (Kick / Bank shot):
+        /// 1. Tính vận tốc phóng (v0) và vận tốc góc xoáy (w0) ban đầu giống hệt ShotExecutor.ExecuteShot.
+        /// 2. Mô phỏng từng bước tương tác ma sát trượt &amp; ma sát lăn trên nỉ (ApplyClothSpinInteraction) trên quãng đường
+        ///    từ vị trí bi cái tới điểm chạm băng để thu được vận tốc và xoáy thực tế ngay trước khi chạm băng.
+        /// 3. Giải xung lực bật băng (ComputeCushionBounceImpulseStatic) có xét đầy đủ tốc độ chạm, độ cao mũi băng (CushionNoseHeight),
+        ///    ma sát Coulomb tại băng (CushionFriction) và xoáy ép-phê / cu-lê / trô.
+        /// </summary>
+        public static Vector3 PredictCushionBounceDirection(
+            PhysicsConfig config,
+            Vector3 shotDirXZ,
+            float distanceToCushion,
+            float power01,
+            Vector2 cueContact01,
+            Vector3 cushionNormalXZ,
+            bool isPocketFacing)
+        {
+            Vector3 dir = new Vector3(shotDirXZ.x, 0f, shotDirXZ.z);
+            if (dir.sqrMagnitude < 0.0001f)
+                return Vector3.forward;
+            dir.Normalize();
+
+            Vector3 nXZ = new Vector3(cushionNormalXZ.x, 0f, cushionNormalXZ.z);
+            if (nXZ.sqrMagnitude < 0.0001f)
+                return dir;
+            nXZ.Normalize();
+
+            if (config == null)
+            {
+                Vector3 mirror = dir - 2f * Vector3.Dot(dir, nXZ) * nXZ;
+                return mirror.sqrMagnitude > 0.0001f ? mirror.normalized : -dir;
+            }
+
+            float m = Mathf.Max(0.01f, config.BallMass);
+            float r = Mathf.Max(0.005f, config.BallRadius);
+            float inertia = 0.4f * m * r * r;
+
+            // 1. Khởi tạo vận tốc dài v và vận tốc góc w ban đầu giống hệt ShotExecutor.ExecuteShot
+            float clampedPower = Mathf.Clamp(power01, 0.05f, 1f);
+            float impulseMag = clampedPower * config.MaxShotImpulse;
+            Vector3 v = dir * (impulseMag / m);
+
+            Vector2 contact = Vector2.ClampMagnitude(cueContact01, 1f);
+            Vector2 b = contact * config.MaxContactOffset;
+            v /= 1f + config.OffsetSpeedLoss * b.sqrMagnitude;
+
+            Vector3 w = Vector3.zero;
+            if (contact.sqrMagnitude > 0.001f && config.SpinStrength > 0f)
+            {
+                float speed0 = v.magnitude;
+                float k = 2.5f * speed0 / r * config.SpinStrength;
+                Vector3 horizontalSpinAxis = Vector3.Cross(Vector3.up, dir).normalized;
+                float topBackSpin = b.y * k;
+                float sideSpin = -b.x * k;
+                w = (horizontalSpinAxis * topBackSpin) + (Vector3.up * sideSpin);
+            }
+
+            // 2. Tiến hóa vận tốc & xoáy trên mặt nỉ dọc theo quãng đường distanceToCushion
+            float dt = Time.fixedDeltaTime > 0.0005f ? Time.fixedDeltaTime : 0.005f;
+            float linearDragFactor = Mathf.Clamp01(1f - config.LinearDrag * dt);
+            float angularDragFactor = Mathf.Clamp01(1f - config.AngularDrag * dt);
+            float traveled = 0f;
+            int maxSteps = 600;
+
+            for (int step = 0; step < maxSteps && traveled < distanceToCushion; step++)
+            {
+                float linearSpeed = v.magnitude;
+                if (linearSpeed < 0.02f)
+                    break;
+
+                float remDist = distanceToCushion - traveled;
+                float stepDt = Mathf.Min(dt, remDist / linearSpeed);
+                if (stepDt <= 1e-5f)
+                    break;
+
+                Vector3 vSlip = new Vector3(
+                    v.x + (w.z * r),
+                    0f,
+                    v.z - (w.x * r)
+                );
+                float slipSpeed = vSlip.magnitude;
+
+                if (slipSpeed > 0.015f)
+                {
+                    float normalForce = m * 9.81f;
+                    float frictionMagnitude = normalForce * config.ClothFriction;
+                    float maxStopForce = slipSpeed * m / (dt * 3.5f);
+                    frictionMagnitude = Mathf.Min(frictionMagnitude, maxStopForce);
+
+                    Vector3 frictionDir = -vSlip / slipSpeed;
+                    Vector3 frictionForce = frictionDir * frictionMagnitude;
+                    Vector3 torque = new Vector3(-r * frictionForce.z, 0f, r * frictionForce.x);
+
+                    v += (frictionForce / m) * stepDt;
+                    w += (torque / inertia) * stepDt;
+                }
+                else
+                {
+                    w = new Vector3(v.z / r, w.y, -v.x / r);
+                    float rollDecel = config.RollingResistance * 9.81f;
+                    v -= v.normalized * Mathf.Min(linearSpeed * 0.5f, rollDecel * stepDt);
+                }
+
+                if (Mathf.Abs(w.y) > 0.01f)
+                {
+                    w.y = Mathf.MoveTowards(w.y, 0f, config.SpinDecay * stepDt);
+                }
+
+                float dragRatio = stepDt / dt;
+                v *= Mathf.Lerp(1f, linearDragFactor, dragRatio);
+                w *= Mathf.Lerp(1f, angularDragFactor, dragRatio);
+
+                traveled += 0.5f * (linearSpeed + v.magnitude) * stepDt;
+            }
+
+            // Đảm bảo vẫn đủ tốc độ chạm băng để giải xung lực bật băng (nếu lực đặt quá nhẹ không tới băng thì chuẩn hóa theo tốc độ tối thiểu)
+            if (-Vector3.Dot(v, nXZ) < 0.08f)
+            {
+                float fallbackSpeed = Mathf.Max(0.25f, v.magnitude);
+                v = dir * fallbackSpeed;
+            }
+
+            // 3. Giải xung lực bật băng chính xác theo mô hình vật lý thực tế
+            if (ComputeCushionBounceImpulseStatic(config, m, v, w, nXZ, isPocketFacing, out Vector3 vPost, out _))
+            {
+                vPost.y = 0f;
+                if (vPost.sqrMagnitude > 0.0001f)
+                {
+                    return vPost.normalized;
+                }
+            }
+
+            Vector3 fallbackReflect = dir - 2f * Vector3.Dot(dir, nXZ) * nXZ;
+            return fallbackReflect.sqrMagnitude > 0.0001f ? fallbackReflect.normalized : -dir;
+        }
+
         private bool ComputeCushionBounceImpulse(
+            Vector3 v0, Vector3 w0, Vector3 nXZ, bool isPocketFacing,
+            out Vector3 vPost, out Vector3 wPost)
+        {
+            return ComputeCushionBounceImpulseStatic(physicsConfig, rb.mass, v0, w0, nXZ, isPocketFacing, out vPost, out wPost);
+        }
+
+        public static bool ComputeCushionBounceImpulseStatic(
+            PhysicsConfig physicsConfig, float m,
             Vector3 v0, Vector3 w0, Vector3 nXZ, bool isPocketFacing,
             out Vector3 vPost, out Vector3 wPost)
         {
             vPost = v0;
             wPost = w0;
 
+            if (physicsConfig == null)
+                return false;
+
             float vn = -Vector3.Dot(v0, nXZ);
             if (vn < 0.02f)
                 return false;
 
-            float m = rb.mass;
             float R = physicsConfig.BallRadius;
             float inertia = 0.4f * m * R * R;
 

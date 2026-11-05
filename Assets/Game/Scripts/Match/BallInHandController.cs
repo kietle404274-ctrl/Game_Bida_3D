@@ -41,11 +41,14 @@ namespace Game.Billiards.Match
         /// </summary>
         public Func<bool> InputBlockedPredicate;
 
-        // Chỉ báo 4 mũi tên xanh quanh bi cái khi đang đặt bi
+        // Chỉ báo 4 mũi tên quanh bi cái khi đang đặt bi (đổi màu tương phản tự động theo từng loại nỉ bàn)
         private GameObject arrowRoot;
         private Transform[] arrowTransforms;
         private Material arrowMaterial;
+        private Material arrowOutlineMaterial;
         private Mesh arrowMesh;
+        private Mesh arrowOutlineMesh;
+        private Core.TableTheme appliedArrowTheme = (Core.TableTheme)(-1);
         private MaterialPropertyBlock tintBlock;
         private bool tintApplied = false;
 
@@ -362,7 +365,8 @@ namespace Game.Billiards.Match
             bool inputBlocked = (InputBlockedPredicate != null && InputBlockedPredicate())
                 || Game.Billiards.UI.HudModalState.IsModalOpen
                 || Game.Billiards.UI.OnlineChatUI.IsChatOpen
-                || Game.Billiards.UI.OnlineChatUI.IsTyping;
+                || Game.Billiards.UI.OnlineChatUI.IsTyping
+                || Game.Billiards.UI.OnlineEmojiController.IsPickerOpen;
 
             if (!isActive)
             {
@@ -628,17 +632,33 @@ namespace Game.Billiards.Match
             arrowMesh.normals = new[] { Vector3.up, Vector3.up, Vector3.up, Vector3.up, Vector3.up, Vector3.up, Vector3.up };
             arrowMesh.RecalculateBounds();
 
+            // Lớp đế viền tối mỏng nằm ngay dưới mỗi mũi tên để nổi khối rõ nét trên mọi màu vải nỉ
+            arrowOutlineMesh = new Mesh { name = "BallInHandArrowOutlineMesh" };
+            arrowOutlineMesh.vertices = new[]
+            {
+                new Vector3(-0.0235f, -0.0005f, -0.002f), new Vector3(0f, -0.0005f, 0.040f), new Vector3(0.0235f, -0.0005f, -0.002f),
+                new Vector3(-0.0098f, -0.0005f, -0.029f), new Vector3(-0.0098f, -0.0005f, 0f), new Vector3(0.0098f, -0.0005f, 0f), new Vector3(0.0098f, -0.0005f, -0.029f)
+            };
+            arrowOutlineMesh.triangles = new[] { 0, 1, 2, 3, 4, 5, 3, 5, 6 };
+            arrowOutlineMesh.normals = new[] { Vector3.up, Vector3.up, Vector3.up, Vector3.up, Vector3.up, Vector3.up, Vector3.up };
+            arrowOutlineMesh.RecalculateBounds();
+
             Shader shader = Shader.Find("HDRP/Unlit");
             if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
             if (shader == null) shader = Shader.Find("Unlit/Color");
+
             arrowMaterial = new Material(shader);
-            Color blue = new Color(0.12f, 0.62f, 1f, 1f);
-            if (arrowMaterial.HasProperty("_UnlitColor")) arrowMaterial.SetColor("_UnlitColor", blue);
-            if (arrowMaterial.HasProperty("_BaseColor")) arrowMaterial.SetColor("_BaseColor", blue);
-            if (arrowMaterial.HasProperty("_Color")) arrowMaterial.SetColor("_Color", blue);
             if (arrowMaterial.HasProperty("_CullMode")) arrowMaterial.SetFloat("_CullMode", 0f);
             if (arrowMaterial.HasProperty("_Cull")) arrowMaterial.SetFloat("_Cull", 0f);
-            if (arrowMaterial.HasProperty("_EmissiveColor")) arrowMaterial.SetColor("_EmissiveColor", blue * 2f);
+
+            arrowOutlineMaterial = new Material(shader);
+            Color darkOutline = new Color(0.03f, 0.05f, 0.08f, 0.92f);
+            ApplyUnlitMaterialColor(arrowOutlineMaterial, darkOutline, 0f);
+            if (arrowOutlineMaterial.HasProperty("_CullMode")) arrowOutlineMaterial.SetFloat("_CullMode", 0f);
+            if (arrowOutlineMaterial.HasProperty("_Cull")) arrowOutlineMaterial.SetFloat("_Cull", 0f);
+
+            appliedArrowTheme = (Core.TableTheme)(-1);
+            SyncArrowColorWithTheme();
 
             arrowTransforms = new Transform[4];
             for (int i = 0; i < 4; i++)
@@ -652,7 +672,36 @@ namespace Game.Billiards.Match
                 mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 mr.receiveShadows = false;
                 arrowTransforms[i] = go.transform;
+
+                var outlineGo = new GameObject("ArrowOutline_" + i);
+                outlineGo.hideFlags = HideFlags.DontSave;
+                outlineGo.transform.SetParent(go.transform, false);
+                outlineGo.AddComponent<MeshFilter>().sharedMesh = arrowOutlineMesh;
+                var omr = outlineGo.AddComponent<MeshRenderer>();
+                omr.sharedMaterial = arrowOutlineMaterial;
+                omr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                omr.receiveShadows = false;
             }
+        }
+
+        private static void ApplyUnlitMaterialColor(Material mat, Color color, float emissiveMul)
+        {
+            if (mat == null) return;
+            if (mat.HasProperty("_UnlitColor")) mat.SetColor("_UnlitColor", color);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", color);
+            if (mat.HasProperty("_EmissiveColor")) mat.SetColor("_EmissiveColor", color * emissiveMul);
+        }
+
+        private void SyncArrowColorWithTheme()
+        {
+            if (arrowMaterial == null) return;
+            Core.TableTheme activeTheme = Core.TableThemeApplier.ResolveActiveMatchTableTheme();
+            if (activeTheme == appliedArrowTheme) return;
+
+            appliedArrowTheme = activeTheme;
+            Color arrowColor = Core.TableThemeApplier.GetPlacementArrowColorForTheme(activeTheme);
+            ApplyUnlitMaterialColor(arrowMaterial, arrowColor, 1.55f);
         }
 
         private void SetArrowsVisible(bool visible)
@@ -661,12 +710,13 @@ namespace Game.Billiards.Match
         }
 
         /// <summary>
-        /// 4 mũi tên xanh dưới chân bi cái, chuyển động ra/vào liên tục để báo hiệu đang được đặt bi.
+        /// 4 mũi tên dưới chân bi cái (màu sắc tự động tối ưu theo loại nỉ bàn), chuyển động ra/vào liên tục để báo hiệu đang được đặt bi.
         /// Hướng mũi tên khớp với hướng W/A/S/D theo camera.
         /// </summary>
         private void UpdateArrows()
         {
             EnsureArrows();
+            SyncArrowColorWithTheme();
             SetArrowsVisible(true);
 
             var arrowCueBall = ballManager != null ? ballManager.CueBall : null;
@@ -693,7 +743,9 @@ namespace Game.Billiards.Match
         {
             if (arrowRoot != null) Destroy(arrowRoot);
             if (arrowMaterial != null) Destroy(arrowMaterial);
+            if (arrowOutlineMaterial != null) Destroy(arrowOutlineMaterial);
             if (arrowMesh != null) Destroy(arrowMesh);
+            if (arrowOutlineMesh != null) Destroy(arrowOutlineMesh);
         }
 
         private void OnDrawGizmos()

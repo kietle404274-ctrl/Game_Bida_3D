@@ -166,8 +166,8 @@ namespace Game.Billiards.UI
             }
 
             // Trong trận:
-            // show = true nếu người chơi bấm Alt để hiện HOẶC có modal popup mở HOẶC đang mở khung chat Online
-            bool show = userShowCursor || HudModalState.IsModalOpen || OnlineChatUI.IsChatOpen;
+            // show = true nếu người chơi bấm Alt để hiện HOẶC có modal popup mở HOẶC đang mở khung chat / khay Emoji Online
+            bool show = userShowCursor || HudModalState.IsModalOpen || OnlineChatUI.IsChatOpen || OnlineEmojiController.IsPickerOpen;
 
             if (Cursor.visible != show) Cursor.visible = show;
 

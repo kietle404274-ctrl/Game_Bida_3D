@@ -421,7 +421,8 @@ namespace Game.Billiards.Input
                     && (contactSelector == null || !contactSelector.IsOpen)
                     && !UI.HudModalState.IsModalOpen
                     && !UI.OnlineChatUI.IsChatOpen
-                    && !UI.OnlineChatUI.IsTyping;
+                    && !UI.OnlineChatUI.IsTyping
+                    && !UI.OnlineEmojiController.IsPickerOpen;
                 ballInHandController.SetBreakPlacementVisuals(showBreakArrows);
             }
 
@@ -433,8 +434,8 @@ namespace Game.Billiards.Input
             // Popup Hướng dẫn / Luật / Menu đang mở: không ngắm, chỉnh lực hay bắn
             if (UI.HudModalState.IsModalOpen) return;
 
-            // Khung Chat Online đang mở hoặc người chơi đang gõ chữ: khóa xoay camera, chỉnh lực, phím V và bắn
-            if (UI.OnlineChatUI.IsChatOpen || UI.OnlineChatUI.IsTyping) return;
+            // Khung Chat Online hoặc Khay Emoji đang mở: khóa xoay camera, chỉnh lực, phím V, đặt bi và bắn
+            if (UI.OnlineChatUI.IsChatOpen || UI.OnlineChatUI.IsTyping || UI.OnlineEmojiController.IsPickerOpen) return;
 
             // Phím V: chuyển camera ngắm gần / xa (trạng thái giữ trong phiên chơi)
             if (UnityEngine.Input.GetKeyDown(KeyCode.V) && cameraDirector != null)

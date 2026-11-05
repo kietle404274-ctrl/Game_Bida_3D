@@ -732,7 +732,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 1
     m_VerticalOverflow: 1
     m_LineSpacing: 1
-  m_Text: "\U0001F3B1 8-BALL BILLIARDS 3D"
+  m_Text: "\U0001F3B1 C\u01A0 TH\u1EE6 \u0110\u1EA0I CHI\u1EBEN"
 --- !u!222 &660237191
 CanvasRenderer:
   m_ObjectHideFlags: 0

@@ -102,7 +102,7 @@ namespace Game.Billiards.Editor
             headerRt.offsetMin = new Vector2(60, 0);
             headerRt.offsetMax = new Vector2(-60, -20);
 
-            Text titleText = UIBuilderUtilities.CreateText(headerGo.transform, "TitleText", "🎱 8-BALL BILLIARDS 3D", 48, UIBuilderUtilities.ColorAccentGold, TextAnchor.MiddleLeft, FontStyle.Bold);
+            Text titleText = UIBuilderUtilities.CreateText(headerGo.transform, "TitleText", "🎱 CƠ THỦ ĐẠI CHIẾN", 48, UIBuilderUtilities.ColorAccentGold, TextAnchor.MiddleLeft, FontStyle.Bold);
             RectTransform titleRt = titleText.GetComponent<RectTransform>();
             titleRt.anchorMin = new Vector2(0f, 0.45f);
             titleRt.anchorMax = new Vector2(1f, 1f);
@@ -456,43 +456,50 @@ namespace Game.Billiards.Editor
             btnCloseSettings.GetComponent<RectTransform>().sizeDelta = new Vector2(440f, 45f);
 
             // -------------------------------------------------------------------------
-            // MODAL 4: Rules Modal
+            // MODAL 4: Rules Modal (5 Tabs đồng bộ với RulesUI trong trận)
             // -------------------------------------------------------------------------
             GameObject rulesModal = UIBuilderUtilities.CreatePanel(modalsRoot.transform, "RulesModal", UIBuilderUtilities.PanelSprite, UIBuilderUtilities.ColorBgModal);
             RectTransform rmRt = rulesModal.GetComponent<RectTransform>();
             rmRt.anchorMin = new Vector2(0.5f, 0.5f);
             rmRt.anchorMax = new Vector2(0.5f, 0.5f);
-            rmRt.sizeDelta = new Vector2(800f, 620f);
-            StyleCard(rulesModal, 800f, 620f, UIBuilderUtilities.ColorAccentGold, true);
+            rmRt.sizeDelta = new Vector2(820f, 600f);
+            StyleCard(rulesModal, 820f, 600f, UIBuilderUtilities.ColorAccentGold, true);
 
             Text rmTitle = UIBuilderUtilities.CreateText(rulesModal.transform, "Title", "LUẬT THI ĐẤU WPA 8-BALL QUỐC TẾ", 24, UIBuilderUtilities.ColorAccentGold, TextAnchor.MiddleCenter, FontStyle.Bold);
-            rmTitle.rectTransform.anchoredPosition = new Vector2(0f, 260f);
-            rmTitle.rectTransform.sizeDelta = new Vector2(740f, 40f);
+            rmTitle.rectTransform.anchoredPosition = new Vector2(0f, 250f);
+            rmTitle.rectTransform.sizeDelta = new Vector2(760f, 40f);
 
-            string rulesContent = 
-                "<b>1. CÚ ĐÁNH KHAI CUỘC (BREAK SHOT):</b>\n" +
-                "• Phải đưa ít nhất 1 bi mục tiêu vào lỗ HOẶC ít nhất 4 bi chạm băng.\n" +
-                "• Nếu ăn bi hợp lệ, cơ thủ được tiếp tục lượt bắn.\n\n" +
-                "<b>2. BÀN MỞ & CHỌN NHÓM BI:</b>\n" +
-                "• Bàn ở trạng thái MỞ (Open Table) sau khai cuộc.\n" +
-                "• Nhóm bi (Trơn 1-7 hoặc Sọc 9-15) chỉ được xác định khi cơ thủ gọi và ăn bi hợp lệ sau cú khai cuộc.\n\n" +
-                "<b>3. LỖI PHẠM QUY (FOULS):</b>\n" +
-                "• Bi cái rơi vào lỗ hoặc văng khỏi bàn (Scratch).\n" +
-                "• Không chạm đúng nhóm bi của mình đầu tiên.\n" +
-                "• Sau va chạm, không có bất kỳ bi nào chạm băng hoặc vào lỗ.\n" +
-                "• Hình phạt: Đối thủ nhận quyền ĐẶT BI TỰ DO (Ball-in-Hand) ở bất kỳ đâu trên bàn.\n\n" +
-                "<b>4. CÚ ĐÁNH GỌI & KẾT THÚC VÁN (8-BALL):</b>\n" +
-                "• Khi đã dọn sạch nhóm bi của mình, cơ thủ phải GỌI LỖ đưa bi số 8 vào.\n" +
-                "• Ăn bi 8 vào đúng lỗ đã gọi = CHIẾN THẮNG VÁN.\n" +
-                "• Đưa bi 8 vào sai lỗ, rơi bi cái cùng bi 8, hoặc làm văng bi 8 khỏi bàn = XỬ THUA VÁN NGAY LẬP TỨC.";
+            GameObject tabsBar = new GameObject("TabsBar", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+            tabsBar.transform.SetParent(rulesModal.transform, false);
+            RectTransform tabRt = tabsBar.GetComponent<RectTransform>();
+            tabRt.anchoredPosition = new Vector2(0f, 195f);
+            tabRt.sizeDelta = new Vector2(760f, 40f);
+            HorizontalLayoutGroup tabHz = tabsBar.GetComponent<HorizontalLayoutGroup>();
+            tabHz.spacing = 8f;
+            tabHz.childControlWidth = true;
+            tabHz.childControlHeight = true;
+            tabHz.childForceExpandWidth = true;
+            tabHz.childForceExpandHeight = true;
 
-            Text rmBody = UIBuilderUtilities.CreateText(rulesModal.transform, "RulesBody", rulesContent, 15, UIBuilderUtilities.ColorTextWhite, TextAnchor.UpperLeft);
-            rmBody.rectTransform.anchoredPosition = new Vector2(0f, 20f);
-            rmBody.rectTransform.sizeDelta = new Vector2(720f, 380f);
+            HudBtn(tabsBar.transform, "TabBreak", "Khai Cuộc", "none", MutedFrame, 140f, 38f, 13);
+            HudBtn(tabsBar.transform, "TabOpen", "Bàn Mở", "none", MutedFrame, 140f, 38f, 13);
+            HudBtn(tabsBar.transform, "TabFoul", "Phạm Quy", "none", MutedFrame, 140f, 38f, 13);
+            HudBtn(tabsBar.transform, "TabEight", "Bi Số 8", "none", MutedFrame, 140f, 38f, 13);
+            HudBtn(tabsBar.transform, "TabWinLose", "Thắng/Thua", "none", MutedFrame, 140f, 38f, 13);
 
-            Button btnCloseRules = HudBtn(rulesModal.transform, "BtnCloseRules", "ĐÃ HIỂU & ĐÓNG", "close", UIBuilderUtilities.ColorAccentCyan, 400f, 45f, 15);
-            btnCloseRules.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -240f);
-            btnCloseRules.GetComponent<RectTransform>().sizeDelta = new Vector2(400f, 45f);
+            Text ruleHeadText = UIBuilderUtilities.CreateText(rulesModal.transform, "RuleHeadText", "1. CÚ ĐÁNH KHAI CUỘC (BREAK SHOT):", 18, UIBuilderUtilities.ColorAccentCyan, TextAnchor.MiddleLeft, FontStyle.Bold);
+            ruleHeadText.rectTransform.anchoredPosition = new Vector2(0f, 140f);
+            ruleHeadText.rectTransform.sizeDelta = new Vector2(760f, 30f);
+
+            Text rmBody = UIBuilderUtilities.CreateText(rulesModal.transform, "RulesBody", "", 15, UIBuilderUtilities.ColorTextWhite, TextAnchor.UpperLeft);
+            rmBody.rectTransform.anchoredPosition = new Vector2(-4f, -26f);
+            rmBody.rectTransform.sizeDelta = new Vector2(690f, 270f);
+            rmBody.horizontalOverflow = HorizontalWrapMode.Wrap;
+            rmBody.lineSpacing = 1.35f;
+
+            Button btnCloseRules = HudBtn(rulesModal.transform, "BtnCloseRules", "ĐÃ HIỂU & ĐÓNG", "close", UIBuilderUtilities.ColorAccentCyan, 380f, 44f, 15);
+            btnCloseRules.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -235f);
+            btnCloseRules.GetComponent<RectTransform>().sizeDelta = new Vector2(380f, 44f);
 
             // -------------------------------------------------------------------------
             // MODAL 5: Quit Confirm Modal

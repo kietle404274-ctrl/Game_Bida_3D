@@ -64,11 +64,60 @@ namespace Game.Billiards.Core
             switch (theme)
             {
                 case TableTheme.Purple: return new Color(0.52f, 0.44f, 0.86f, 1f);
-                case TableTheme.Green:  return new Color(0.28f, 0.65f, 0.47f, 1f);
-                case TableTheme.Red:    return new Color(0.86f, 0.42f, 0.38f, 1f);
+                case TableTheme.Green:  return new Color(0.12f, 0.56f, 0.29f, 1f);
+                case TableTheme.Red:    return new Color(0.86f, 0.32f, 0.28f, 1f);
                 case TableTheme.Grey:   return new Color(0.58f, 0.60f, 0.62f, 1f);
                 case TableTheme.Blue:
-                default:                return new Color(0.36f, 0.66f, 0.72f, 1f);
+                default:                return new Color(0.46f, 0.74f, 0.89f, 1f);
+            }
+        }
+
+        /// <summary>
+        /// Trả về màu sắc cho 4 mũi tên đặt bi (Ball-In-Hand &amp; đặt bi phá khai cuộc) có độ tương phản
+        /// và thẩm mỹ phù hợp nhất với từng màu vải nỉ bàn thi đấu.
+        /// </summary>
+        public static Color GetPlacementArrowColorForTheme(TableTheme theme)
+        {
+            switch (theme)
+            {
+                case TableTheme.Grey:
+                    // Bàn Xám: giữ nguyên màu Xanh Dương Sáng (#1EA8FF) nổi bật trên nền nỉ xám
+                    return new Color(0.12f, 0.66f, 1.00f, 1f);
+                case TableTheme.Blue:
+                    // Bàn Xanh Dương Tự Nhiên (Kkking K9022S): Vàng Hoàng Kim (#FFD426) đối xứng bổ túc nổi bật
+                    return new Color(1.00f, 0.83f, 0.15f, 1f);
+                case TableTheme.Green:
+                    // Bàn Xanh Lá: Vàng Kim Sáng Rực (#FFDA2C) tương phản cao trên nền nỉ xanh lá
+                    return new Color(1.00f, 0.85f, 0.17f, 1f);
+                case TableTheme.Red:
+                    // Bàn Đỏ: Xanh Ngọc Điện Tử (#24EEFF) tách biệt hoàn toàn với nền đỏ
+                    return new Color(0.14f, 0.93f, 1.00f, 1f);
+                case TableTheme.Purple:
+                default:
+                    // Bàn Tím: Vàng Chanh Rực Rỡ (#FFE82A) đối đỉnh với sắc tím
+                    return new Color(1.00f, 0.91f, 0.16f, 1f);
+            }
+        }
+
+        /// <summary>
+        /// Trả về 1 màu thước ngắm đồng nhất (cho cả 3 tia + vòng Ghost Ball) có độ tương phản cao nhất theo từng màu bàn.
+        /// </summary>
+        public static Color GetAimGuideColorForTheme(TableTheme theme)
+        {
+            switch (theme)
+            {
+                case TableTheme.Grey:
+                    // Vàng Hoàng Kim rực rỡ trên nền bàn Xám Tro
+                    return new Color(1.00f, 0.88f, 0.21f, 1f);
+                case TableTheme.Purple:
+                    // Vàng Chanh Sáng đối lập trực tiếp với nền bàn Tím
+                    return new Color(1.00f, 0.93f, 0.20f, 1f);
+                case TableTheme.Blue:
+                case TableTheme.Green:
+                case TableTheme.Red:
+                default:
+                    // Trắng Tinh Khiết Sáng Rực (kết hợp viền tối chống chìm) trên nền Xanh Dương Giải Đấu, Xanh Lục Bảo & Đỏ
+                    return new Color(1.00f, 1.00f, 1.00f, 1f);
             }
         }
 
